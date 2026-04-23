@@ -1,0 +1,13 @@
+target/
+dist/
+out/
+.idea/
+.vscode/
+*.log
+*.tmp
+*.qcow2
+*.img
+*.iso
+.DS_Store
+Thumbs.db
+
