@@ -7,6 +7,8 @@ use newos_abi::boot::{
 use crate::kernel_info;
 use crate::memory::{FrameAllocator, MemorySummary};
 use crate::serial::{self, SerialWriter};
+use alloc::vec::Vec;
+use x86_64::VirtAddr;
 
 pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     serial::init();
@@ -15,9 +17,10 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     let kernel = kernel_info();
     let memory_summary = MemorySummary::from_boot_info(boot_info);
     let mut frame_allocator = FrameAllocator::new(boot_info);
-    let first_frame = frame_allocator.allocate_frame();
-    let second_frame = frame_allocator.allocate_frame();
-    let third_frame = frame_allocator.allocate_frame();
+
+    let first_frame = frame_allocator.allocate_physical_frame();
+    let second_frame = frame_allocator.allocate_physical_frame();
+    let third_frame = frame_allocator.allocate_physical_frame();
 
     let _ = writeln!(writer, "NewOS freestanding kernel reached");
     let _ = writeln!(writer, "project: {}", kernel.project_name);
@@ -47,11 +50,23 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     let _ = writeln!(
         writer,
         "frame allocator sample: {:#018x}, {:#018x}, {:#018x}",
-        first_frame.map(|frame| frame.start_address).unwrap_or(0),
-        second_frame.map(|frame| frame.start_address).unwrap_or(0),
-        third_frame.map(|frame| frame.start_address).unwrap_or(0),
+        first_frame.map(|f| f.start_address).unwrap_or(0),
+        second_frame.map(|f| f.start_address).unwrap_or(0),
+        third_frame.map(|f| f.start_address).unwrap_or(0),
     );
     let _ = writeln!(writer, "status: physical frame allocator reached");
+
+    // Initialize paging with an offset of 0 (since we are currently on UEFI identity mapping)
+    let mut mapper = unsafe { crate::memory::paging::init(VirtAddr::new(0), &mut frame_allocator) };
+    
+    // Initialize the kernel heap
+    crate::memory::heap::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+
+    let mut heap_test = Vec::new();
+    for i in 0..5 {
+        heap_test.push(i);
+    }
+    let _ = writeln!(writer, "status: heap initialized, vec test: {:?}", heap_test);
 
     BootOutcome::ExitSuccess
 }

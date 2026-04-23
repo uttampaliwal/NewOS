@@ -16,3 +16,5 @@ bench = false
 
 [dependencies]
 newos-abi = { path = "../shared/abi" }
+spin = "0.10.0"
+x86_64 = { version = "0.15.4", default-features = false, features = ["instructions"] }

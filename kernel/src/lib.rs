@@ -5,6 +5,9 @@
 //! This crate is intentionally tiny in Phase 0. The next milestone will add
 //! bootloader integration, low-level entry, logging, and hardware bring-up.
 
+extern crate alloc;
+
+
 pub mod boot;
 pub mod memory;
 pub mod serial;

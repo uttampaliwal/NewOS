@@ -1,4 +1,9 @@
 use newos_abi::boot::{BootInfo, BootMemoryDescriptor, MEMORY_TYPE_CONVENTIONAL};
+use x86_64::structures::paging::{FrameAllocator as X86FrameAllocator, PhysFrame as X86PhysFrame, Size4KiB};
+use x86_64::PhysAddr;
+
+pub mod paging;
+pub mod heap;
 
 pub const PAGE_SIZE: u64 = 4096;
 const LOW_MEMORY_CUTOFF: u64 = 0x100000;
@@ -56,7 +61,7 @@ impl<'a> FrameAllocator<'a> {
         }
     }
 
-    pub fn allocate_frame(&mut self) -> Option<PhysFrame> {
+    pub fn allocate_physical_frame(&mut self) -> Option<PhysFrame> {
         for descriptor in self.boot_info.memory_map.iter() {
             if descriptor.ty != MEMORY_TYPE_CONVENTIONAL {
                 continue;
@@ -74,6 +79,13 @@ impl<'a> FrameAllocator<'a> {
         }
 
         None
+    }
+}
+
+unsafe impl<'a> X86FrameAllocator<Size4KiB> for FrameAllocator<'a> {
+    fn allocate_frame(&mut self) -> Option<X86PhysFrame<Size4KiB>> {
+        let frame = self.allocate_physical_frame()?;
+        Some(X86PhysFrame::containing_address(PhysAddr::new(frame.start_address)))
     }
 }
 
@@ -138,7 +150,7 @@ mod tests {
         let mut allocator = FrameAllocator::new(&boot_info);
 
         assert_eq!(
-            allocator.allocate_frame(),
+            allocator.allocate_physical_frame(),
             Some(PhysFrame {
                 start_address: 0x200000,
             })
@@ -155,11 +167,11 @@ mod tests {
         let boot_info = boot_info(&descriptors);
         let mut allocator = FrameAllocator::new(&boot_info);
 
-        assert_eq!(allocator.allocate_frame().map(|frame| frame.start_address), Some(0x100000));
-        assert_eq!(allocator.allocate_frame().map(|frame| frame.start_address), Some(0x101000));
-        assert_eq!(allocator.allocate_frame().map(|frame| frame.start_address), Some(0x400000));
-        assert_eq!(allocator.allocate_frame().map(|frame| frame.start_address), Some(0x401000));
-        assert_eq!(allocator.allocate_frame(), None);
+        assert_eq!(allocator.allocate_physical_frame().map(|frame| frame.start_address), Some(0x100000));
+        assert_eq!(allocator.allocate_physical_frame().map(|frame| frame.start_address), Some(0x101000));
+        assert_eq!(allocator.allocate_physical_frame().map(|frame| frame.start_address), Some(0x400000));
+        assert_eq!(allocator.allocate_physical_frame().map(|frame| frame.start_address), Some(0x401000));
+        assert_eq!(allocator.allocate_physical_frame(), None);
     }
 
     #[test]
@@ -172,7 +184,7 @@ mod tests {
         let boot_info = boot_info(&descriptors);
         let mut allocator = FrameAllocator::new(&boot_info);
 
-        assert_eq!(allocator.allocate_frame().map(|frame| frame.start_address), Some(0x100000));
+        assert_eq!(allocator.allocate_physical_frame().map(|frame| frame.start_address), Some(0x100000));
     }
 
     fn descriptor(ty: u32, phys_start: u64, page_count: u64) -> BootMemoryDescriptor {

@@ -16,3 +16,9 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Uttam", "Codex"]
 repository = "https://example.com/newos"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
