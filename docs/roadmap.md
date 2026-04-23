@@ -32,6 +32,16 @@ See [Phase 1 First Boot Plan](C:\Users\uttam\development\NewOS\docs\phase-1-firs
 
 See [Phase 2 Freestanding Handoff](C:\Users\uttam\development\NewOS\docs\phase-2-freestanding-handoff.md).
 
+## Phase 3: Physical memory bring-up
+
+- boot-memory-map iteration helpers
+- kernel-side memory summary
+- bump-style physical frame allocator over conventional memory
+- low-memory skip policy for early safety
+- serial proof that the kernel can hand out page-frame addresses
+
+See [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\phase-3-memory-bringup.md).
+
 ## Phase 2: Bring-up
 
 - GDT and IDT

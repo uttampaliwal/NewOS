@@ -40,3 +40,5 @@ Use the handed-off memory map to start real kernel bring-up:
 - page-frame allocation
 - page tables
 - interrupt and timer initialization
+
+This next step is now underway through the Phase 3 memory bring-up milestone.

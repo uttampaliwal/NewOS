@@ -1,10 +1,11 @@
 use core::fmt::Write;
 
 use newos_abi::boot::{
-    BootEnvironment, BootInfo, BootLoaderKind, BootOutcome, MEMORY_TYPE_CONVENTIONAL,
+    BootEnvironment, BootInfo, BootLoaderKind, BootOutcome,
 };
 
 use crate::kernel_info;
+use crate::memory::{FrameAllocator, MemorySummary};
 use crate::serial::{self, SerialWriter};
 
 pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
@@ -12,23 +13,11 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
 
     let mut writer = SerialWriter;
     let kernel = kernel_info();
-
-    let conventional_pages = boot_info
-        .memory_map
-        .entry_count()
-        .checked_sub(0)
-        .map(|_| {
-            let mut total = 0u64;
-            for index in 0..boot_info.memory_map.entry_count() {
-                if let Some(descriptor) = boot_info.memory_map.get(index) {
-                    if descriptor.ty == MEMORY_TYPE_CONVENTIONAL {
-                        total += descriptor.page_count;
-                    }
-                }
-            }
-            total
-        })
-        .unwrap_or(0);
+    let memory_summary = MemorySummary::from_boot_info(boot_info);
+    let mut frame_allocator = FrameAllocator::new(boot_info);
+    let first_frame = frame_allocator.allocate_frame();
+    let second_frame = frame_allocator.allocate_frame();
+    let third_frame = frame_allocator.allocate_frame();
 
     let _ = writeln!(writer, "NewOS freestanding kernel reached");
     let _ = writeln!(writer, "project: {}", kernel.project_name);
@@ -39,9 +28,30 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     let _ = writeln!(writer, "boot services exited: {}", boot_info.boot_services_exited());
     let _ = writeln!(writer, "kernel image base: 0x{:016x}", boot_info.kernel_image_base);
     let _ = writeln!(writer, "kernel image size: {} bytes", boot_info.kernel_image_size);
-    let _ = writeln!(writer, "memory map entries: {}", boot_info.memory_map.entry_count());
-    let _ = writeln!(writer, "conventional memory pages: {}", conventional_pages);
-    let _ = writeln!(writer, "status: freestanding kernel handoff reached");
+    let _ = writeln!(writer, "memory map entries: {}", memory_summary.descriptor_count);
+    let _ = writeln!(
+        writer,
+        "conventional regions: {}",
+        memory_summary.conventional_region_count
+    );
+    let _ = writeln!(
+        writer,
+        "conventional memory pages: {}",
+        memory_summary.conventional_page_count
+    );
+    let _ = writeln!(
+        writer,
+        "largest conventional region: {} pages",
+        memory_summary.largest_conventional_region_pages
+    );
+    let _ = writeln!(
+        writer,
+        "frame allocator sample: {:#018x}, {:#018x}, {:#018x}",
+        first_frame.map(|frame| frame.start_address).unwrap_or(0),
+        second_frame.map(|frame| frame.start_address).unwrap_or(0),
+        third_frame.map(|frame| frame.start_address).unwrap_or(0),
+    );
+    let _ = writeln!(writer, "status: physical frame allocator reached");
 
     BootOutcome::ExitSuccess
 }

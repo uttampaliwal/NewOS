@@ -6,6 +6,7 @@
 //! bootloader integration, low-level entry, logging, and hardware bring-up.
 
 pub mod boot;
+pub mod memory;
 pub mod serial;
 
 use newos_abi::version::{ABI_VERSION, PROJECT_NAME};

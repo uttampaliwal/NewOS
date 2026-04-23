@@ -6,7 +6,7 @@ The goal is a secure, modern, Linux-like operating system with a terminal-first 
 
 ## Current phase
 
-We have completed `Phase 0`, completed the first UEFI boot milestone, and started `Phase 2`: freestanding kernel handoff.
+We have completed `Phase 0`, completed the first UEFI boot milestone, completed freestanding kernel handoff, and started `Phase 3`: physical memory bring-up.
 
 ## Repository layout
 
@@ -33,12 +33,13 @@ We have completed `Phase 0`, completed the first UEFI boot milestone, and starte
 - a verified UEFI loader path that boots in QEMU and prints over serial
 - a verified `x86_64-unknown-none` freestanding kernel image
 - a verified `UEFI loader -> ExitBootServices -> freestanding kernel` handoff
+- a verified early physical frame allocator over handed-off conventional memory
 
 ## Immediate next milestones
 
 1. Build and run the UEFI first-boot path under QEMU with serial output
-2. Extend the freestanding kernel entry into real memory-management bring-up
-3. Add paging, interrupts, and a basic memory allocator
+2. Extend the physical memory layer into page tables and explicit virtual memory
+3. Add interrupts, timer bring-up, and a kernel heap bootstrap
 4. Introduce the first user/kernel ABI boundaries
 
 Start with [docs/quickstart.md](C:\Users\uttam\development\NewOS\docs\quickstart.md).

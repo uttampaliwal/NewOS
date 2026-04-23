@@ -11,6 +11,7 @@ This repository is intentionally organized for learning. Start here before touch
 5. [Phase 1 First Boot Plan](C:\Users\uttam\development\NewOS\docs\phase-1-first-boot.md)
 6. [ADR 0002 UEFI-First Bring-Up](C:\Users\uttam\development\NewOS\docs\adr-0002-uefi-first-bringup.md)
 7. [Phase 2 Freestanding Handoff](C:\Users\uttam\development\NewOS\docs\phase-2-freestanding-handoff.md)
+8. [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\phase-3-memory-bringup.md)
 
 ## Development rhythm
 
@@ -40,6 +41,7 @@ Phase 0 is complete when:
 - the `x86_64-unknown-uefi` and `x86_64-unknown-none` targets are installed for nightly
 - the EDK2 UEFI firmware image is available through the QEMU install
 - `cargo xtask run-uefi` successfully reaches the freestanding kernel path in QEMU
+- the freestanding kernel can summarize conventional memory and allocate sample physical frames
 
 ## Next practical step
 

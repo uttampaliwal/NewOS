@@ -72,6 +72,28 @@ impl BootMemoryMap {
             Some(&*self.descriptors.cast::<u8>().add(offset).cast::<BootMemoryDescriptor>())
         }
     }
+
+    pub fn iter(&self) -> BootMemoryMapIter<'_> {
+        BootMemoryMapIter {
+            map: self,
+            index: 0,
+        }
+    }
+}
+
+pub struct BootMemoryMapIter<'a> {
+    map: &'a BootMemoryMap,
+    index: usize,
+}
+
+impl<'a> Iterator for BootMemoryMapIter<'a> {
+    type Item = &'a BootMemoryDescriptor;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.map.get(self.index)?;
+        self.index += 1;
+        Some(item)
+    }
 }
 
 #[repr(C)]
@@ -127,5 +149,39 @@ mod tests {
 
         assert_eq!(map.entry_count(), 0);
         assert_eq!(map.get(0), None);
+    }
+
+    #[test]
+    fn memory_map_iterator_visits_each_descriptor() {
+        let descriptors = [
+            BootMemoryDescriptor {
+                ty: MEMORY_TYPE_CONVENTIONAL,
+                reserved: 0,
+                phys_start: 0x1000,
+                virt_start: 0,
+                page_count: 2,
+                att: 0,
+            },
+            BootMemoryDescriptor {
+                ty: 0,
+                reserved: 0,
+                phys_start: 0x4000,
+                virt_start: 0,
+                page_count: 1,
+                att: 0,
+            },
+        ];
+
+        let map = BootMemoryMap {
+            descriptors: descriptors.as_ptr(),
+            map_size: descriptors.len() * size_of::<BootMemoryDescriptor>(),
+            desc_size: size_of::<BootMemoryDescriptor>(),
+            desc_version: 1,
+        };
+
+        let mut iter = map.iter();
+        assert_eq!(iter.next().map(|desc| desc.phys_start), Some(0x1000));
+        assert_eq!(iter.next().map(|desc| desc.phys_start), Some(0x4000));
+        assert_eq!(iter.next(), None);
     }
 }
