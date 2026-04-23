@@ -5,32 +5,23 @@ use core::arch::asm;
 use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 
-use newos_kernel::kernel_info;
+use newos_abi::boot::{BootInfo, BootOutcome};
+use newos_abi::version::ABI_VERSION;
 use uefi::prelude::*;
 
 const COM1_BASE: u16 = 0x3F8;
 const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
 
-macro_rules! serial_println {
-    () => {
-        $crate::serial::print(format_args!("\n"))
-    };
-    ($format:literal $(, $arg:expr)*) => {
-        $crate::serial::print(format_args!(concat!($format, "\n") $(, $arg)*))
-    };
-}
-
 #[entry]
 fn main() -> Status {
     serial::init();
 
-    let info = kernel_info();
-    serial_println!("NewOS Phase 1 UEFI bring-up");
-    serial_println!("project: {}", info.project_name);
-    serial_println!("abi: {}", info.abi_version);
-    serial_println!("status: boot path reached");
-
-    qemu_exit_success();
+    let boot_info = BootInfo::uefi(ABI_VERSION);
+    let mut console = serial::SerialConsole;
+    match newos_kernel::boot::early_boot(&mut console, &boot_info) {
+        BootOutcome::ExitSuccess => qemu_exit_success(),
+        BootOutcome::ExitFailure => qemu_exit_failure(),
+    }
 }
 
 #[panic_handler]
@@ -89,6 +80,8 @@ unsafe fn in8(port: u16) -> u8 {
 mod serial {
     use super::*;
 
+    pub struct SerialConsole;
+
     pub fn init() {
         unsafe {
             out8(COM1_BASE + 1, 0x00);
@@ -104,6 +97,13 @@ mod serial {
     pub fn print(args: fmt::Arguments<'_>) {
         let mut writer = SerialWriter;
         let _ = writer.write_fmt(args);
+    }
+
+    impl SerialConsole {
+        pub fn write_raw(&mut self, value: &str) {
+            let mut writer = SerialWriter;
+            let _ = writer.write_str(value);
+        }
     }
 
     struct SerialWriter;
@@ -131,5 +131,11 @@ mod serial {
 
             Ok(())
         }
+    }
+}
+
+impl newos_kernel::boot::BootConsole for serial::SerialConsole {
+    fn write_str(&mut self, value: &str) {
+        self.write_raw(value);
     }
 }

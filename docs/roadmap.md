@@ -13,6 +13,7 @@
 
 - toolchain setup for UEFI and freestanding builds
 - thin UEFI loader image
+- explicit loader-to-kernel boot contract
 - serial logging
 - panic path
 - QEMU run workflow

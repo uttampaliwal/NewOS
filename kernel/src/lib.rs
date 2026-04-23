@@ -5,6 +5,8 @@
 //! This crate is intentionally tiny in Phase 0. The next milestone will add
 //! bootloader integration, low-level entry, logging, and hardware bring-up.
 
+pub mod boot;
+
 use newos_abi::version::{ABI_VERSION, PROJECT_NAME};
 
 pub struct KernelInfo {
@@ -18,4 +20,3 @@ pub const fn kernel_info() -> KernelInfo {
         abi_version: ABI_VERSION,
     }
 }
-

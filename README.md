@@ -31,6 +31,7 @@ We have completed `Phase 0` and started `Phase 1`: first boot through a thin UEF
 - kernel crate skeleton and kernel architecture notes
 - `xtask` developer commands for host checks and the UEFI first-boot path
 - a verified UEFI loader path that boots in QEMU and prints over serial
+- an explicit boot contract between the UEFI loader and the kernel stage
 
 ## Immediate next milestones
 

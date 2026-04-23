@@ -33,6 +33,8 @@ The kernel owns:
 - syscall dispatch
 - core device and filesystem abstractions
 
+Even in the current UEFI-first milestone, we keep a visible handoff boundary between loader-facing code and kernel-facing code. That habit will make the later freestanding transition much cleaner.
+
 ### 3. System services
 
 Long term, more policy should live outside the kernel than inside it. The kernel should provide mechanisms; higher-level services should provide user-facing behavior where possible.

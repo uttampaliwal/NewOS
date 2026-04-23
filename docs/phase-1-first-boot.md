@@ -45,6 +45,8 @@ The serial success path has been verified on the current Windows 11 host using:
 - `cargo xtask doctor`
 - `cargo xtask run-uefi`
 
+The verified output now comes from the kernel stage through an explicit boot contract, not only from the firmware-facing loader.
+
 ## Non-goals
 
 - user mode
