@@ -8,7 +8,7 @@ NewOS aims to feel familiar to Linux users while keeping a cleaner internal desi
 
 - `Kernel model`: Rust-first modular monolith
 - `Primary platform`: x86_64 on QEMU first, then one reference real machine
-- `Boot strategy`: UEFI plus Limine
+- `Boot strategy`: UEFI-first bring-up with a thin loader, then freestanding kernel handoff
 - `Early UX`: terminal-first
 - `Future desktop`: Wayland-oriented compositor and desktop stack
 - `Compatibility`: Linux-like behavior and strong source portability, not Linux binary compatibility as an early target
@@ -18,7 +18,9 @@ NewOS aims to feel familiar to Linux users while keeping a cleaner internal desi
 
 ### 1. Firmware and boot
 
-UEFI firmware loads a bootloader that hands control to our kernel using a stable boot protocol. We will rely on a mature bootloader first so we can spend our learning time on kernel design rather than bootloader maintenance.
+The first bring-up step uses a thin UEFI loader because it matches modern hardware, works well on the current Windows and QEMU host, and keeps the early learning loop short. This loader is a staging point, not the long-term kernel architecture.
+
+After the first serial boot milestone, we will grow toward a freestanding kernel handoff with a cleaner separation between boot-time firmware interaction and kernel runtime.
 
 ### 2. Kernel core
 
@@ -46,4 +48,3 @@ Userland begins with an `init` process, a shell, basic utilities, and a native l
 - Make subsystems observable with logs, metrics, and error enums.
 - Prefer standards over custom formats unless we have a strong reason otherwise.
 - Document the reason for each non-obvious architectural choice.
-

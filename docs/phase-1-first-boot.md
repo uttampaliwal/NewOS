@@ -4,42 +4,56 @@ This is the next concrete milestone after the current repository scaffold.
 
 ## Goal
 
-Boot a tiny NewOS kernel in QEMU and print a reliable message over serial output.
+Boot a tiny NewOS UEFI loader in QEMU and print a reliable message over serial output.
 
 ## Why this matters
 
 This is the first moment where the project becomes a real operating system effort rather than just a codebase. Once we can boot and log, every later subsystem becomes easier to debug.
 
+We are deliberately using a thin UEFI-first bring-up step because it is the lowest-friction path on the current Windows and QEMU host. The freestanding kernel target is already prepared for the next phase.
+
 ## Expected deliverables
 
-- Windows host instructions for installing QEMU
-- Rust toolchain instructions for freestanding kernel builds
-- bootloader integration using Limine
-- kernel entry point and linker/layout decisions documented
-- serial logging and panic output visible in QEMU
+- UEFI loader crate
+- documented QEMU plus EDK2 run workflow
+- serial logging and a useful panic path
 - one command to build and one command to run the image
+- documented transition plan toward a freestanding kernel handoff
+- serial logging and panic output visible in QEMU
 
 ## Implementation slices
 
-1. Add the required toolchain pieces and document each install step.
-2. Add a freestanding kernel target configuration.
-3. Integrate Limine and generate a bootable image.
-4. Replace the current kernel library skeleton with the first entry/boot path.
-5. Add serial writer support and a minimal panic handler.
-6. Add an `xtask` command that builds and runs QEMU consistently.
+1. Verify the required host toolchain pieces and document the actual machine state.
+2. Add a UEFI loader crate targeting `x86_64-unknown-uefi`.
+3. Add serial writer support and a minimal panic handler.
+4. Add an `xtask` command that builds the EFI image and stages it into an EFI system partition directory.
+5. Add an `xtask` command that runs QEMU with EDK2 and a virtual FAT disk.
+6. Keep the freestanding `x86_64-unknown-none` target ready for the next phase.
 
 ## Success criteria
 
 - QEMU launches from the documented command on your Windows machine
-- the kernel reaches its entry point
+- the loader reaches its entry point
 - serial output shows a deterministic boot message
 - a forced panic prints something useful instead of hanging silently
+- the build and run flow is simple enough to repeat while learning
+
+## Current status
+
+The serial success path has been verified on the current Windows 11 host using:
+
+- `cargo xtask doctor`
+- `cargo xtask run-uefi`
 
 ## Non-goals
 
 - user mode
+- full kernel handoff
 - memory allocator
 - interrupts
 - filesystems
 - GUI
 
+## Next step after this phase
+
+Move the booted path from a firmware-facing loader into a freestanding kernel entry with explicit handoff boundaries.

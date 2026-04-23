@@ -6,11 +6,12 @@ The goal is a secure, modern, Linux-like operating system with a terminal-first 
 
 ## Current phase
 
-We are in `Phase 0`: workspace setup, documentation, tooling, and the first kernel skeleton.
+We have completed `Phase 0` and started `Phase 1`: first boot through a thin UEFI bring-up path.
 
 ## Repository layout
 
 - `docs/` project docs, architecture notes, milestone plans, and host setup guides
+- `boot/` early boot and firmware-facing entrypoints
 - `kernel/` the future kernel crate and low-level boot/runtime materials
 - `shared/` shared interfaces and types that can be reused across kernel and userland
 - `tools/xtask/` developer automation entrypoints for building, testing, and packaging
@@ -27,15 +28,21 @@ We are in `Phase 0`: workspace setup, documentation, tooling, and the first kern
 
 - Rust workspace scaffold
 - shared ABI crate with host-testable types
-- `xtask` command skeleton for future developer workflows
 - kernel crate skeleton and kernel architecture notes
+- `xtask` developer commands for host checks and the UEFI first-boot path
+- a verified UEFI loader path that boots in QEMU and prints over serial
 
 ## Immediate next milestones
 
-1. Install the missing emulator/toolchain pieces on the Windows host
-2. Make the kernel crate boot under QEMU with serial output
+1. Build and run the UEFI first-boot path under QEMU with serial output
+2. Move from firmware bring-up into freestanding kernel entry and memory setup
 3. Add paging, interrupts, and a basic memory allocator
 4. Introduce the first user/kernel ABI boundaries
 
 Start with [docs/quickstart.md](C:\Users\uttam\development\NewOS\docs\quickstart.md).
 
+## Useful commands
+
+- `cargo xtask doctor`
+- `cargo xtask build-uefi`
+- `cargo xtask run-uefi`

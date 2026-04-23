@@ -9,18 +9,26 @@ This guide is for the current host machine: Windows 11 with Rust already install
 - `rustup`
 - `git`
 - stable toolchain: `stable-x86_64-pc-windows-msvc`
+- nightly toolchain: `nightly-x86_64-pc-windows-msvc`
+- QEMU 11 on the path
 
 ## Still needed for the first boot milestone
 
-- QEMU for x86_64 emulation
-- a freestanding Rust target and likely nightly Rust for low-level kernel builds
-- Limine binaries or source checkout
+- build verification of the new UEFI boot path
+- freestanding kernel handoff after the UEFI step
 
 ## Checked on this machine
 
 - `cargo test` succeeds for the current default workspace members
 - `cargo check -p newos-kernel --lib` succeeds
-- `qemu-system-x86_64` was not found on the current PATH
+- `qemu-system-x86_64` is on the current PATH
+- QEMU was installed under `C:\msys64\ucrt64\bin`
+- EDK2 firmware was found at `C:\msys64\ucrt64\share\qemu\edk2-x86_64-code.fd`
+- EDK2 vars storage was found at `C:\msys64\ucrt64\share\qemu\edk2-i386-vars.fd`
+- nightly Rust is installed and up to date as of this setup pass
+- nightly components include `rust-src`, `rustfmt`, `clippy`, and `llvm-tools-preview`
+- nightly targets now include `x86_64-unknown-uefi` and `x86_64-unknown-none`
+- `cargo xtask run-uefi` succeeded on this machine
 
 ## Recommended host workflow
 
@@ -38,6 +46,11 @@ This guide is for the current host machine: Windows 11 with Rust already install
 
 ## Planned future additions
 
-- exact QEMU install steps for Windows
-- exact Rust target install commands
 - PowerShell helpers for build/run/debug
+- bare-metal bring-up guide for the separate SSD path
+
+## Useful environment overrides
+
+- `NEWOS_OVMF_CODE` override the firmware code image path
+- `NEWOS_OVMF_VARS` override the firmware vars image path
+- `NEWOS_QEMU_ACCEL` override the accelerator, for example `whpx` or `tcg`

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "boot/uefi-loader",
     "shared/abi",
     "tools/xtask",
     "kernel",

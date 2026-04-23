@@ -11,12 +11,12 @@
 
 ## Phase 1: First boot
 
-- toolchain setup for freestanding builds
-- Limine integration
-- bootable kernel image
+- toolchain setup for UEFI and freestanding builds
+- thin UEFI loader image
 - serial logging
 - panic path
 - QEMU run workflow
+- prepared `x86_64-unknown-none` target for the next handoff step
 
 See [Phase 1 First Boot Plan](C:\Users\uttam\development\NewOS\docs\phase-1-first-boot.md).
 

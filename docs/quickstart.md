@@ -9,6 +9,7 @@ This repository is intentionally organized for learning. Start here before touch
 3. [Roadmap](C:\Users\uttam\development\NewOS\docs\roadmap.md)
 4. [Windows Host Setup](C:\Users\uttam\development\NewOS\docs\windows-host-setup.md)
 5. [Phase 1 First Boot Plan](C:\Users\uttam\development\NewOS\docs\phase-1-first-boot.md)
+6. [ADR 0002 UEFI-First Bring-Up](C:\Users\uttam\development\NewOS\docs\adr-0002-uefi-first-bringup.md)
 
 ## Development rhythm
 
@@ -33,5 +34,21 @@ Phase 0 is complete when:
 - `cargo test` passes for the host-buildable workspace members
 - `cargo xtask status` runs successfully
 - `cargo check -p newos-kernel --lib` succeeds
-- only the stable Windows Rust toolchain is installed right now
-- `qemu-system-x86_64` is not currently installed or on the path
+- QEMU 11 is installed and on the path
+- nightly Rust is installed and updated
+- the `x86_64-unknown-uefi` and `x86_64-unknown-none` targets are installed for nightly
+- the EDK2 UEFI firmware image is available through the QEMU install
+- `cargo xtask run-uefi` successfully reaches the Phase 1 serial boot path in QEMU
+
+## Next practical step
+
+Start with:
+
+1. `cargo xtask doctor`
+2. `cargo xtask run-uefi`
+
+If your firmware files live somewhere unusual, set:
+
+- `NEWOS_OVMF_CODE`
+- `NEWOS_OVMF_VARS`
+- `NEWOS_QEMU_ACCEL`
