@@ -42,7 +42,6 @@ name = "newos-uefi-loader"
 version = "0.1.0"
 dependencies = [
  "newos-abi",
- "newos-kernel",
  "uefi",
 ]
 

@@ -8,6 +8,11 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "newos-kernel-image"
+path = "src/bin/newos-kernel-image.rs"
+test = false
+bench = false
+
 [dependencies]
 newos-abi = { path = "../shared/abi" }
-

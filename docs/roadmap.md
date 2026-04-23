@@ -21,6 +21,17 @@
 
 See [Phase 1 First Boot Plan](C:\Users\uttam\development\NewOS\docs\phase-1-first-boot.md).
 
+## Phase 2: Freestanding handoff
+
+- separate freestanding kernel ELF image
+- custom kernel linker layout
+- UEFI filesystem read of the kernel image
+- kernel image loaded into memory from the UEFI loader
+- `ExitBootServices` plus memory-map handoff
+- transfer of control into the freestanding kernel entry point
+
+See [Phase 2 Freestanding Handoff](C:\Users\uttam\development\NewOS\docs\phase-2-freestanding-handoff.md).
+
 ## Phase 2: Bring-up
 
 - GDT and IDT

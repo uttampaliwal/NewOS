@@ -29,6 +29,7 @@ This guide is for the current host machine: Windows 11 with Rust already install
 - nightly components include `rust-src`, `rustfmt`, `clippy`, and `llvm-tools-preview`
 - nightly targets now include `x86_64-unknown-uefi` and `x86_64-unknown-none`
 - `cargo xtask run-uefi` succeeded on this machine
+- the current QEMU workflow successfully reaches a separate freestanding kernel image after `ExitBootServices`
 
 ## Recommended host workflow
 

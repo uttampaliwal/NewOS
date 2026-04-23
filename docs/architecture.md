@@ -20,7 +20,9 @@ NewOS aims to feel familiar to Linux users while keeping a cleaner internal desi
 
 The first bring-up step uses a thin UEFI loader because it matches modern hardware, works well on the current Windows and QEMU host, and keeps the early learning loop short. This loader is a staging point, not the long-term kernel architecture.
 
-After the first serial boot milestone, we will grow toward a freestanding kernel handoff with a cleaner separation between boot-time firmware interaction and kernel runtime.
+We have now crossed the first real boundary: the UEFI loader stages a separate freestanding kernel image, exits boot services, and jumps into the kernel with an explicit `BootInfo` contract.
+
+The next job is to deepen that freestanding kernel runtime with memory-management and interrupt setup instead of adding more firmware-side complexity.
 
 ### 2. Kernel core
 

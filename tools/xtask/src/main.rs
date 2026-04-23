@@ -27,7 +27,7 @@ fn main() {
 
 fn print_status(workspace_root: &Path) {
     println!("NewOS workspace is ready at {}.", workspace_root.display());
-    println!("Current milestone: Phase 1 UEFI first boot bring-up.");
+    println!("Current milestone: freestanding kernel handoff.");
     println!("Useful commands: cargo xtask doctor, cargo xtask build-uefi, cargo xtask run-uefi");
 }
 
@@ -69,6 +69,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn build_uefi(workspace_root: &Path) -> PathBuf {
+    let staged_kernel = build_kernel_image(workspace_root);
     run_or_die(
         "cargo",
         [
@@ -98,6 +99,42 @@ fn build_uefi(workspace_root: &Path) -> PathBuf {
 
     let staged_image = esp_boot_dir.join("BOOTX64.EFI");
     fs::copy(&built_image, &staged_image).expect("copying EFI image should succeed");
+    println!("Kernel image staged at {}", staged_kernel.display());
+    staged_image
+}
+
+fn build_kernel_image(workspace_root: &Path) -> PathBuf {
+    run_or_die(
+        "cargo",
+        [
+            "+nightly",
+            "build",
+            "-p",
+            "newos-kernel",
+            "--bin",
+            "newos-kernel-image",
+            "--target",
+            "x86_64-unknown-none",
+        ],
+        workspace_root,
+    );
+
+    let built_image = workspace_root
+        .join("target")
+        .join("x86_64-unknown-none")
+        .join("debug")
+        .join("newos-kernel-image");
+
+    if !built_image.exists() {
+        eprintln!("Expected freestanding kernel image was not produced: {}", built_image.display());
+        std::process::exit(1);
+    }
+
+    let staged_dir = workspace_root.join("out").join("esp").join("newos");
+    fs::create_dir_all(&staged_dir).expect("creating kernel staging directory should succeed");
+
+    let staged_image = staged_dir.join("kernel.elf");
+    fs::copy(&built_image, &staged_image).expect("copying kernel image should succeed");
     staged_image
 }
 

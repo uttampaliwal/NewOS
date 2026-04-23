@@ -7,5 +7,4 @@ publish = false
 
 [dependencies]
 newos-abi = { path = "../../shared/abi" }
-newos-kernel = { path = "../../kernel" }
-uefi = "0.37.0"
+uefi = { version = "0.37.0", features = ["alloc", "global_allocator"] }

@@ -6,7 +6,7 @@ The goal is a secure, modern, Linux-like operating system with a terminal-first 
 
 ## Current phase
 
-We have completed `Phase 0` and started `Phase 1`: first boot through a thin UEFI bring-up path.
+We have completed `Phase 0`, completed the first UEFI boot milestone, and started `Phase 2`: freestanding kernel handoff.
 
 ## Repository layout
 
@@ -29,14 +29,15 @@ We have completed `Phase 0` and started `Phase 1`: first boot through a thin UEF
 - Rust workspace scaffold
 - shared ABI crate with host-testable types
 - kernel crate skeleton and kernel architecture notes
-- `xtask` developer commands for host checks and the UEFI first-boot path
+- `xtask` developer commands for host checks and staged boot artifacts
 - a verified UEFI loader path that boots in QEMU and prints over serial
-- an explicit boot contract between the UEFI loader and the kernel stage
+- a verified `x86_64-unknown-none` freestanding kernel image
+- a verified `UEFI loader -> ExitBootServices -> freestanding kernel` handoff
 
 ## Immediate next milestones
 
 1. Build and run the UEFI first-boot path under QEMU with serial output
-2. Move from firmware bring-up into freestanding kernel entry and memory setup
+2. Extend the freestanding kernel entry into real memory-management bring-up
 3. Add paging, interrupts, and a basic memory allocator
 4. Introduce the first user/kernel ABI boundaries
 
