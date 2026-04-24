@@ -1,53 +1,83 @@
 # NewOS
 
-NewOS is a Rust-first operating system project built step by step for learning and long-term usability.
+A Rust-first operating system built step by step for learning and long-term usability.
 
-The goal is a secure, modern, Linux-like operating system with a terminal-first first release and a Wayland-based GUI later. We are building it in a way that keeps each subsystem understandable, replaceable, and well documented.
+<p align="center">
+  <img src="docs/images/qemu-boot-demo.gif" alt="NewOS boot demo" width="80%" />
+</p>
 
-## Current phase
+## Current Status
 
-We have completed `Phase 0`, completed the first UEFI boot milestone, completed freestanding kernel handoff, and completed `Phase 3`: physical memory bring-up. We are now starting `Phase 4`: Interrupts and Timers.
+| Phase | Status | Milestone |
+|-------|--------|-----------|
+| 0 | ✅ Complete | Foundation & scaffold |
+| 1 | ✅ Complete | First boot & UEFI loader |
+| 2 | ✅ Complete | Freestanding kernel handoff |
+| 3 | ✅ Complete | Physical memory bring-up |
+| 4 | 🔄 In Progress | Interrupts & timers |
+| 5 | 🚧 Pending | Execution & syscalls |
+| 6 | 🚧 Pending | Terminal-first usability |
+| 7 | 🚧 Pending | Wayland desktop path |
 
-## Repository layout
+## What Works
 
-- `docs/` project docs, architecture notes, milestone plans, and host setup guides
-- `boot/` early boot and firmware-facing entrypoints
-- `kernel/` the future kernel crate and low-level boot/runtime materials
-- `shared/` shared interfaces and types that can be reused across kernel and userland
-- `tools/xtask/` developer automation entrypoints for building, testing, and packaging
+- Verified UEFI loader → freestanding kernel handoff in QEMU
+- `x86_64-unknown-none` kernel image with serial output
+- Physical frame allocator + bump heap with `alloc` crate support
+- GDT, IDT, TSS, and PIC setup with hardware timer interrupts
+
+## Quick Start
+
+```powershell
+#Install build tools (see docs/windows-host-setup.md)
+cargo xtask doctor
+
+#Build and run in QEMU
+cargo xtask run-uefi
+```
+
+See [docs/quickstart.md](docs/quickstart.md) for full setup.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Roadmap](docs/roadmap.md)
+- [Phase Docs](docs/) - detailed phase breakdowns
+
+## Repository Layout
+
+```
+docs/          - project documentation, ADRs, and guides
+boot/         - UEFI firmware-facing entry points
+kernel/       - freestanding kernel core
+shared/abi    - shared types for kernel/userland boundary
+tools/xtask   - developer automation
+```
 
 ## Principles
 
 - Learn deeply while building something real
 - Prefer modern, maintainable designs over clever shortcuts
 - Use open standards where compatibility matters
-- Keep interfaces explicit so parts can be upgraded or replaced cleanly
+- Keep interfaces explicit so parts can be upgraded cleanly
 - Write docs as we go so future changes stay understandable
 
-## What works today
+## Technology Stack
 
-- Rust workspace scaffold
-- shared ABI crate with host-testable types
-- kernel crate skeleton and kernel architecture notes
-- `xtask` developer commands for host checks and staged boot artifacts
-- a verified UEFI loader path that boots in QEMU and prints over serial
-- a verified `x86_64-unknown-none` freestanding kernel image
-- a verified `UEFI loader -> ExitBootServices -> freestanding kernel` handoff
-- a verified early physical frame allocator over handed-off conventional memory
-- a verified kernel heap (bump allocator) with `alloc` crate support
-- a verified GDT, IDT, TSS, and PIC setup with hardware timer interrupts
+- Language: Rust (nightly, `no_std`)
+- Target: `x86_64-unknown-none`
+- Build: custom `xtask` automation
+- Testing: QEMU + OVMF
 
-## Immediate next milestones
+## Contributing
 
-1. Build and run the UEFI first-boot path under QEMU with serial output
-2. Extend the physical memory layer into page tables and explicit virtual memory
-3. Add interrupts and timer bring-up
-4. Introduce the first user/kernel ABI boundaries
+See [CONTRIBUTING.md](CONTRIBUTING.md). All contributions welcome!
 
-Start with [docs/quickstart.md](C:\Users\uttam\development\NewOS\docs\quickstart.md).
+## License
 
-## Useful commands
+Licensed under MIT or Apache-2.0. See [LICENSE](LICENSE).
 
-- `cargo xtask doctor`
-- `cargo xtask build-uefi`
-- `cargo xtask run-uefi`
+## Contact
+
+- Open an issue for bugs or feature requests
+- Discuss in GitHub Discussions

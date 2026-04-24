@@ -15,7 +15,7 @@ resolver = "2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Uttam", "Codex", "Antigravity"]
-repository = "https://example.com/newos"
+repository = "https://github.com/uttampaliwal/NewOS"
 
 [profile.dev]
 panic = "abort"
