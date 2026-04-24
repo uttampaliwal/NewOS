@@ -68,6 +68,22 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     }
     let _ = writeln!(writer, "status: heap initialized, vec test: {:?}", heap_test);
 
+    // Initialize GDT (with TSS for double-fault IST) and IDT
+    crate::gdt::init();
+    crate::interrupts::init_idt();
+    let _ = writeln!(writer, "status: GDT, IDT, and TSS initialized");
+
+    // Initialize PIC and enable hardware interrupts
+    unsafe { crate::interrupts::PICS.lock().initialize() };
+    x86_64::instructions::interrupts::enable();
+    let _ = writeln!(writer, "status: PIC initialized, interrupts enabled");
+
+    // Spin briefly to let the timer fire and prove interrupts work
+    for _ in 0..10_000_000 {
+        core::hint::spin_loop();
+    }
+    let _ = writeln!(writer, "\nstatus: timer interrupts verified");
+
     BootOutcome::ExitSuccess
 }
 

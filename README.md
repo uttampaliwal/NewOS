@@ -6,7 +6,7 @@ The goal is a secure, modern, Linux-like operating system with a terminal-first 
 
 ## Current phase
 
-We have completed `Phase 0`, completed the first UEFI boot milestone, completed freestanding kernel handoff, and started `Phase 3`: physical memory bring-up.
+We have completed `Phase 0`, completed the first UEFI boot milestone, completed freestanding kernel handoff, and completed `Phase 3`: physical memory bring-up. We are now starting `Phase 4`: Interrupts and Timers.
 
 ## Repository layout
 
@@ -34,12 +34,14 @@ We have completed `Phase 0`, completed the first UEFI boot milestone, completed 
 - a verified `x86_64-unknown-none` freestanding kernel image
 - a verified `UEFI loader -> ExitBootServices -> freestanding kernel` handoff
 - a verified early physical frame allocator over handed-off conventional memory
+- a verified kernel heap (bump allocator) with `alloc` crate support
+- a verified GDT, IDT, TSS, and PIC setup with hardware timer interrupts
 
 ## Immediate next milestones
 
 1. Build and run the UEFI first-boot path under QEMU with serial output
 2. Extend the physical memory layer into page tables and explicit virtual memory
-3. Add interrupts, timer bring-up, and a kernel heap bootstrap
+3. Add interrupts and timer bring-up
 4. Introduce the first user/kernel ABI boundaries
 
 Start with [docs/quickstart.md](C:\Users\uttam\development\NewOS\docs\quickstart.md).

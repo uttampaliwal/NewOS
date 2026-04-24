@@ -42,7 +42,7 @@ See [Phase 2 Freestanding Handoff](C:\Users\uttam\development\NewOS\docs\phase-2
 
 See [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\phase-3-memory-bringup.md).
 
-## Phase 2: Bring-up
+## Phase 4: Interrupts and Timers
 
 - GDT and IDT
 - interrupts and timer

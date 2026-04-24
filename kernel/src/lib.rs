@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(abi_x86_interrupt)]
 
 //! Kernel skeleton for NewOS.
 //!
@@ -9,6 +10,8 @@ extern crate alloc;
 
 
 pub mod boot;
+pub mod gdt;
+pub mod interrupts;
 pub mod memory;
 pub mod serial;
 

@@ -14,7 +14,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-authors = ["Uttam", "Codex"]
+authors = ["Uttam", "Codex","Antigravity"]
 repository = "https://example.com/newos"
 
 [profile.dev]
