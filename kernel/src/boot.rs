@@ -1,8 +1,6 @@
 use core::fmt::Write;
 
-use newos_abi::boot::{
-    BootEnvironment, BootInfo, BootLoaderKind, BootOutcome,
-};
+use newos_abi::boot::{BootEnvironment, BootInfo, BootLoaderKind, BootOutcome};
 
 use crate::kernel_info;
 use crate::memory::{FrameAllocator, MemorySummary};
@@ -26,12 +24,32 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     let _ = writeln!(writer, "project: {}", kernel.project_name);
     let _ = writeln!(writer, "kernel abi: {}", kernel.abi_version);
     let _ = writeln!(writer, "boot abi: {}", boot_info.abi_version);
-    let _ = writeln!(writer, "environment: {}", describe_environment(boot_info.environment));
+    let _ = writeln!(
+        writer,
+        "environment: {}",
+        describe_environment(boot_info.environment)
+    );
     let _ = writeln!(writer, "loader: {}", describe_loader(boot_info.loader));
-    let _ = writeln!(writer, "boot services exited: {}", boot_info.boot_services_exited());
-    let _ = writeln!(writer, "kernel image base: 0x{:016x}", boot_info.kernel_image_base);
-    let _ = writeln!(writer, "kernel image size: {} bytes", boot_info.kernel_image_size);
-    let _ = writeln!(writer, "memory map entries: {}", memory_summary.descriptor_count);
+    let _ = writeln!(
+        writer,
+        "boot services exited: {}",
+        boot_info.boot_services_exited()
+    );
+    let _ = writeln!(
+        writer,
+        "kernel image base: 0x{:016x}",
+        boot_info.kernel_image_base
+    );
+    let _ = writeln!(
+        writer,
+        "kernel image size: {} bytes",
+        boot_info.kernel_image_size
+    );
+    let _ = writeln!(
+        writer,
+        "memory map entries: {}",
+        memory_summary.descriptor_count
+    );
     let _ = writeln!(
         writer,
         "conventional regions: {}",
@@ -58,15 +76,20 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
 
     // Initialize paging with an offset of 0 (since we are currently on UEFI identity mapping)
     let mut mapper = unsafe { crate::memory::paging::init(VirtAddr::new(0), &mut frame_allocator) };
-    
+
     // Initialize the kernel heap
-    crate::memory::heap::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+    crate::memory::heap::init_heap(&mut mapper, &mut frame_allocator)
+        .expect("heap initialization failed");
 
     let mut heap_test = Vec::new();
     for i in 0..5 {
         heap_test.push(i);
     }
-    let _ = writeln!(writer, "status: heap initialized, vec test: {:?}", heap_test);
+    let _ = writeln!(
+        writer,
+        "status: heap initialized, vec test: {:?}",
+        heap_test
+    );
 
     // Initialize GDT (with TSS for double-fault IST) and IDT
     crate::gdt::init();
@@ -78,7 +101,8 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     x86_64::instructions::interrupts::enable();
     let _ = writeln!(writer, "status: PIC initialized, interrupts enabled");
 
-    // Create test tasks
+    // Create test tasks and shell
+    crate::task::scheduler::add_task(crate::task::Task::new(shell_task));
     crate::task::scheduler::add_task(crate::task::Task::new(task_a));
     crate::task::scheduler::add_task(crate::task::Task::new(task_b));
     let _ = writeln!(writer, "status: tasks added, starting scheduler...");
@@ -94,7 +118,9 @@ extern "sysv64" fn task_a() {
     }
     crate::serial::print(format_args!("\nstatus: Task A finished\n"));
     // Prevent return (which would crash since there's no return address)
-    loop { crate::task::scheduler::yield_task(); }
+    loop {
+        crate::task::scheduler::yield_task();
+    }
 }
 
 extern "sysv64" fn task_b() {
@@ -104,7 +130,36 @@ extern "sysv64" fn task_b() {
     }
     crate::serial::print(format_args!("\nstatus: Task B finished\n"));
     // Loop to keep yielding
-    loop { crate::task::scheduler::yield_task(); }
+    loop {
+        crate::task::scheduler::yield_task();
+    }
+}
+
+extern "sysv64" fn shell_task() {
+    let mut repl = crate::shell::Repl::new();
+
+    // Print welcome message
+    let _ = writeln!(SerialWriter, "\r\n=== NewOS Shell (Phase 6 Demo) ===");
+    let _ = writeln!(SerialWriter, "Type 'help' for available commands\r\n");
+    let _ = write!(SerialWriter, "{}", repl.prompt_str());
+
+    // Demo commands - run a few automatically
+    let _ = repl.process_command("info").write_output(&mut SerialWriter);
+    let _ = writeln!(SerialWriter, "");
+    let _ = repl
+        .process_command("version")
+        .write_output(&mut SerialWriter);
+    let _ = writeln!(SerialWriter, "");
+    let _ = repl.process_command("help").write_output(&mut SerialWriter);
+    let _ = writeln!(SerialWriter, "");
+    let _ = repl.process_command("mem").write_output(&mut SerialWriter);
+    let _ = writeln!(SerialWriter, "");
+
+    // Shell loop - respond to internal commands
+    loop {
+        crate::serial::print(format_args!("\r\n{}> ", repl.prompt_str()));
+        crate::task::scheduler::yield_task();
+    }
 }
 
 const fn describe_environment(environment: BootEnvironment) -> &'static str {

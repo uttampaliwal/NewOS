@@ -1,5 +1,57 @@
 # NewOS Roadmap
 
+## Project Progress Visualization
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                              NewOS Development Timeline                             │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│  Phase   │ Q1  │ Q2  │ Q3  │ Q4  │ 2027  │ Description                            │
+├─────────┼─────┼─────┼─────┼─────┼───────┼───────────────────────────────────────┤
+│  0      │ ███ │     │     │     │       │ Foundation & scaffold                 │
+│  1      │  ███│ ███ │     │     │       │ First boot & UEFI loader               │
+│  2      │     │ ███ │     │     │       │ Freestanding kernel handoff             │
+│  3      │     │ ███ │     │     │       │ Physical memory bring-up                │
+│  4      │     │     │ ███ │     │       │ Interrupts & timers                   │
+│  5      │     │     │ ███ │ ███ │       │ Execution & syscalls    [IN PROGRESS]  │
+│  6      │     │     │     │ ███ │ ████  │ Terminal-first usability             │
+│  7      │     │     │     │     │ ████  │ Wayland desktop path                 │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+Legend: ███ = Active  [IN PROGRESS] = Current focus
+```
+
+## Phase Progress Bars
+
+```
+Phase 0: ████████████████████████████████████ 100% Complete
+Phase 1: ████████████████████████████████████ 100% Complete
+Phase 2: ████████████████████████████████████ 100% Complete
+Phase 3: ████████████████████████████████████ 100% Complete
+Phase 4: ██████████████████░░░░░░░░░░░░░░░░░░  60% Complete
+Phase 5: ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15% In Progress
+Phase 6: ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0% Pending
+Phase 7: ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0% Pending
+```
+
+## Current Status (Q2 2026)
+
+```
+Phase 4 ─────────────────────────────────────────────────►
+    └─ GDT/IDT setup           [DONE]
+    └─ TSS for double-fault   [DONE]
+    └─ Timer interrupts       [DONE]
+
+Phase 5 ──────────────────────────────────────────────────────►
+    └─ Cooperative multitask  [DONE]  ◄─── WE ARE HERE
+    └─ Syscall layer          [TODO]
+    └─ User mode              [TODO]
+    └─ Basic shell            [TODO]
+
+Phase 6 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    └─ VFS                    [TODO]
+    └─ Initramfs              [TODO]
+    └─ Interactive shell     [TODO]
 ```
 Timeline: Building from Scratch to Desktop OS
 =========================================

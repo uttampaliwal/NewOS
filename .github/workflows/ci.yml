@@ -114,7 +114,7 @@ jobs:
         uses: dtolnay/rust-action@stable
 
       - name: Run host tests
-        run: cargo test --workspace
+        run: cargo test --workspace -- --nocapture
 
       - name: Check formatting
         run: cargo fmt --check

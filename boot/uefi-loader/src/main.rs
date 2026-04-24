@@ -40,10 +40,14 @@ fn main() -> Status {
     let boot_info_ptr = allocate_boot_info();
 
     let loaded_kernel = {
-        let image_fs = boot::get_image_file_system(boot::image_handle()).expect("image filesystem should be available");
+        let image_fs = boot::get_image_file_system(boot::image_handle())
+            .expect("image filesystem should be available");
         let mut file_system = FileSystem::new(image_fs);
-        let kernel_bytes = file_system.read(KERNEL_IMAGE_PATH).expect("kernel image should be readable");
-        let loaded_kernel = elf::load_kernel(&kernel_bytes).expect("kernel ELF should load successfully");
+        let kernel_bytes = file_system
+            .read(KERNEL_IMAGE_PATH)
+            .expect("kernel image should be readable");
+        let loaded_kernel =
+            elf::load_kernel(&kernel_bytes).expect("kernel ELF should load successfully");
 
         serial_println!("kernel file loaded");
         serial_println!("entry: 0x{:016x}", loaded_kernel.entry_point);
@@ -89,12 +93,8 @@ fn boot_info_template(loaded_kernel: LoadedKernel) -> BootInfo {
 }
 
 fn allocate_boot_info() -> NonNull<BootInfo> {
-    let page = boot::allocate_pages(
-        AllocateType::AnyPages,
-        MemoryType::LOADER_DATA,
-        1,
-    )
-    .expect("boot info page allocation should succeed");
+    let page = boot::allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, 1)
+        .expect("boot info page allocation should succeed");
 
     page.cast()
 }

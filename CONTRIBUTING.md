@@ -15,7 +15,55 @@ Thank you for your interest in contributing to NewOS! This document outlines how
 
 - Rust nightly (via rustup)
 - QEMU (x86_64 with OVMF)
-- Windows: Visual Studio Build Tools or MinGW-w64
+- Platform-specific requirements below
+
+### Windows Setup
+
+1. Install [Rust nightly](https://rustup.rs):
+
+```powershell
+rustup install nightly
+rustup default nightly
+rustup target add x86_64-unknown-uefi --toolchain nightly
+rustup target add x86_64-unknown-none --toolchain nightly
+```
+
+2. Install QEMU and OVMF:
+
+```powershell
+choco install qemu
+```
+
+### Linux Setup (Ubuntu/Debian)
+
+```bash
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+rustup install nightly
+rustup default nightly
+rustup target add x86_64-unknown-uefi --toolchain nightly
+rustup target add x86_64-unknown-none --toolchain nightly
+
+# Install QEMU and OVMF
+sudo apt-get update
+sudo apt-get install qemu-system-x86 edk2-ovmf
+```
+
+### macOS Setup
+
+```bash
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+rustup install nightly
+rustup default nightly
+rustup target add x86_64-unknown-uefi --toolchain nightly
+rustup target add x86_64-unknown-none --toolchain nightly
+
+# Install QEMU (via Homebrew)
+brew install qemu
+```
 
 ### Verify Setup
 

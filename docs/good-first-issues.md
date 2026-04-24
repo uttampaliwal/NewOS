@@ -13,45 +13,48 @@ This file documents beginner-friendly issues that are great for new contributors
 
 ## Recommended Starter Issues
 
-### 1. Improve documentation comments
+### 1. Add more shell commands
 
-**Location**: Various files in `kernel/` and `boot/`
-**Labels**: `documentation`, `good first issue`
+**Location**: `kernel/src/shell.rs`
+**Labels**: `enhancement`, `good first issue`
 **Difficulty**: Beginner
 
-Add doc comments to public functions that lack them. Check with:
+Add support for additional commands like:
+- `date` - show current date/time (simulated)
+- `uptime` - show system uptime
+- `echo` - with options like `-n`
 
-```powershell
-cargo doc --document-private-items
-```
-
-### 2. Unit tests for shared/abi
+### 2. Expand unit tests for shared/abi
 
 **Location**: `shared/abi/`
 **Labels**: `testing`, `good first issue`
 **Difficulty**: Beginner
 
-Add unit tests for the ABI types. Run:
+Current tests cover boot info and syscall IDs. Add tests for:
+- Memory descriptor validation
+- BootInfo serialization
+- Syscall header defaults
 
+Run tests:
 ```powershell
 cargo test -p newos-abi
 ```
 
-### 3. Memory allocator visualization
+### 3. Document interrupt handlers
 
-**Location**: `kernel/src/memory/`
+**Location**: `kernel/src/interrupts.rs`
+**Labels**: `documentation`, `good first issue`
+**Difficulty**: Beginner
+
+Add doc comments explaining each interrupt handler.
+
+### 4. Scheduler statistics
+
+**Location**: `kernel/src/task/scheduler.rs`
 **Labels**: `enhancement`, `good first issue`
 **Difficulty**: Intermediate
 
-Add serial output showing allocator state for debugging.
-
-### 4. Interrupt handler tests
-
-**Location**: `kernel/src/interrupts/`
-**Labels**: `testing`, `good first issue`
-**Difficulty**: Intermediate
-
-Verify timer interrupts fire at expected intervals.
+Add serial output showing task count, running task ID.
 
 ---
 

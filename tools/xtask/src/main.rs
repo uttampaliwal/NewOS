@@ -32,10 +32,46 @@ fn print_status(workspace_root: &Path) {
 }
 
 fn print_doctor() {
-    print_check("qemu-system-x86_64 on PATH", command_works("qemu-system-x86_64", ["--version"]));
-    print_check("nightly toolchain available", output_contains("rustup", ["toolchain", "list"], "nightly-x86_64-pc-windows-msvc"));
-    print_check("x86_64-unknown-uefi target installed", output_contains("rustup", ["target", "list", "--installed", "--toolchain", "nightly-x86_64-pc-windows-msvc"], "x86_64-unknown-uefi"));
-    print_check("x86_64-unknown-none target installed", output_contains("rustup", ["target", "list", "--installed", "--toolchain", "nightly-x86_64-pc-windows-msvc"], "x86_64-unknown-none"));
+    print_check(
+        "qemu-system-x86_64 on PATH",
+        command_works("qemu-system-x86_64", ["--version"]),
+    );
+    print_check(
+        "nightly toolchain available",
+        output_contains(
+            "rustup",
+            ["toolchain", "list"],
+            "nightly-x86_64-pc-windows-msvc",
+        ),
+    );
+    print_check(
+        "x86_64-unknown-uefi target installed",
+        output_contains(
+            "rustup",
+            [
+                "target",
+                "list",
+                "--installed",
+                "--toolchain",
+                "nightly-x86_64-pc-windows-msvc",
+            ],
+            "x86_64-unknown-uefi",
+        ),
+    );
+    print_check(
+        "x86_64-unknown-none target installed",
+        output_contains(
+            "rustup",
+            [
+                "target",
+                "list",
+                "--installed",
+                "--toolchain",
+                "nightly-x86_64-pc-windows-msvc",
+            ],
+            "x86_64-unknown-none",
+        ),
+    );
     match find_ovmf_code() {
         Some(path) => println!("[ok] EDK2 firmware found at {}", path.display()),
         None => println!("[missing] EDK2 firmware image not found. Set NEWOS_OVMF_CODE if needed."),
@@ -90,11 +126,18 @@ fn build_uefi(workspace_root: &Path) -> PathBuf {
         .join("newos-uefi-loader.efi");
 
     if !built_image.exists() {
-        eprintln!("Expected EFI image was not produced: {}", built_image.display());
+        eprintln!(
+            "Expected EFI image was not produced: {}",
+            built_image.display()
+        );
         std::process::exit(1);
     }
 
-    let esp_boot_dir = workspace_root.join("out").join("esp").join("EFI").join("BOOT");
+    let esp_boot_dir = workspace_root
+        .join("out")
+        .join("esp")
+        .join("EFI")
+        .join("BOOT");
     fs::create_dir_all(&esp_boot_dir).expect("creating EFI boot directory should succeed");
 
     let staged_image = esp_boot_dir.join("BOOTX64.EFI");
@@ -126,7 +169,10 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
         .join("newos-kernel-image");
 
     if !built_image.exists() {
-        eprintln!("Expected freestanding kernel image was not produced: {}", built_image.display());
+        eprintln!(
+            "Expected freestanding kernel image was not produced: {}",
+            built_image.display()
+        );
         std::process::exit(1);
     }
 
@@ -151,7 +197,13 @@ fn run_uefi(workspace_root: &Path) {
     let staged_ovmf_code = stage_ovmf_code(workspace_root, &ovmf_code);
     let staged_ovmf_vars = stage_ovmf_vars(workspace_root, &ovmf_vars);
 
-    let fat_root = normalize_for_qemu_path(staged_image.parent().and_then(Path::parent).and_then(Path::parent).expect("ESP root should exist"));
+    let fat_root = normalize_for_qemu_path(
+        staged_image
+            .parent()
+            .and_then(Path::parent)
+            .and_then(Path::parent)
+            .expect("ESP root should exist"),
+    );
     let acceleration = env::var("NEWOS_QEMU_ACCEL").unwrap_or_else(|_| "whpx".to_string());
 
     let status = ProcessCommand::new("qemu-system-x86_64")
@@ -218,8 +270,12 @@ fn find_ovmf_code() -> Option<PathBuf> {
         }
     }
 
-    candidates.push(PathBuf::from(r"C:\msys64\ucrt64\share\qemu\edk2-x86_64-code.fd"));
-    candidates.push(PathBuf::from(r"C:\Program Files\qemu\share\qemu\edk2-x86_64-code.fd"));
+    candidates.push(PathBuf::from(
+        r"C:\msys64\ucrt64\share\qemu\edk2-x86_64-code.fd",
+    ));
+    candidates.push(PathBuf::from(
+        r"C:\Program Files\qemu\share\qemu\edk2-x86_64-code.fd",
+    ));
 
     candidates.into_iter().find(|path| path.exists())
 }
@@ -241,19 +297,24 @@ fn find_ovmf_vars() -> Option<PathBuf> {
         }
     }
 
-    candidates.push(PathBuf::from(r"C:\msys64\ucrt64\share\qemu\edk2-x86_64-vars.fd"));
-    candidates.push(PathBuf::from(r"C:\msys64\ucrt64\share\qemu\edk2-i386-vars.fd"));
-    candidates.push(PathBuf::from(r"C:\Program Files\qemu\share\qemu\edk2-x86_64-vars.fd"));
-    candidates.push(PathBuf::from(r"C:\Program Files\qemu\share\qemu\edk2-i386-vars.fd"));
+    candidates.push(PathBuf::from(
+        r"C:\msys64\ucrt64\share\qemu\edk2-x86_64-vars.fd",
+    ));
+    candidates.push(PathBuf::from(
+        r"C:\msys64\ucrt64\share\qemu\edk2-i386-vars.fd",
+    ));
+    candidates.push(PathBuf::from(
+        r"C:\Program Files\qemu\share\qemu\edk2-x86_64-vars.fd",
+    ));
+    candidates.push(PathBuf::from(
+        r"C:\Program Files\qemu\share\qemu\edk2-i386-vars.fd",
+    ));
 
     candidates.into_iter().find(|path| path.exists())
 }
 
 fn find_command_path(command: &str) -> Option<PathBuf> {
-    let output = ProcessCommand::new("where")
-        .arg(command)
-        .output()
-        .ok()?;
+    let output = ProcessCommand::new("where").arg(command).output().ok()?;
 
     if !output.status.success() {
         return None;

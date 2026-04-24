@@ -63,13 +63,22 @@ impl BootMemoryMap {
     }
 
     pub fn get(&self, index: usize) -> Option<&BootMemoryDescriptor> {
-        if index >= self.entry_count() || self.descriptors.is_null() || self.desc_size < size_of::<BootMemoryDescriptor>() {
+        if index >= self.entry_count()
+            || self.descriptors.is_null()
+            || self.desc_size < size_of::<BootMemoryDescriptor>()
+        {
             return None;
         }
 
         let offset = index.checked_mul(self.desc_size)?;
         unsafe {
-            Some(&*self.descriptors.cast::<u8>().add(offset).cast::<BootMemoryDescriptor>())
+            Some(
+                &*self
+                    .descriptors
+                    .cast::<u8>()
+                    .add(offset)
+                    .cast::<BootMemoryDescriptor>(),
+            )
         }
     }
 

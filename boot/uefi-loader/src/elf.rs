@@ -163,7 +163,9 @@ fn parse_header(image: &[u8]) -> Result<ElfHeader, LoadError> {
 
     let program_header_entry_size = read_u16(image, 54)?;
     if usize::from(program_header_entry_size) < 56 {
-        return Err(LoadError::InvalidProgramHeaderSize(program_header_entry_size));
+        return Err(LoadError::InvalidProgramHeaderSize(
+            program_header_entry_size,
+        ));
     }
 
     Ok(ElfHeader {
@@ -181,7 +183,11 @@ fn parse_program_header(
 ) -> Result<Option<ProgramHeader>, LoadError> {
     let start = header
         .program_header_offset
-        .checked_add(index.checked_mul(header.program_header_entry_size).ok_or(LoadError::ProgramHeaderOutOfBounds)?)
+        .checked_add(
+            index
+                .checked_mul(header.program_header_entry_size)
+                .ok_or(LoadError::ProgramHeaderOutOfBounds)?,
+        )
         .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
     let end = start
         .checked_add(header.program_header_entry_size)
@@ -223,20 +229,32 @@ fn parse_program_header(
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, LoadError> {
-    let end = offset.checked_add(2).ok_or(LoadError::ProgramHeaderOutOfBounds)?;
-    let slice = bytes.get(offset..end).ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+    let end = offset
+        .checked_add(2)
+        .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+    let slice = bytes
+        .get(offset..end)
+        .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
     Ok(u16::from_le_bytes([slice[0], slice[1]]))
 }
 
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, LoadError> {
-    let end = offset.checked_add(4).ok_or(LoadError::ProgramHeaderOutOfBounds)?;
-    let slice = bytes.get(offset..end).ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+    let end = offset
+        .checked_add(4)
+        .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+    let slice = bytes
+        .get(offset..end)
+        .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
     Ok(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
 }
 
 fn read_u64(bytes: &[u8], offset: usize) -> Result<u64, LoadError> {
-    let end = offset.checked_add(8).ok_or(LoadError::ProgramHeaderOutOfBounds)?;
-    let slice = bytes.get(offset..end).ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+    let end = offset
+        .checked_add(8)
+        .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+    let slice = bytes
+        .get(offset..end)
+        .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
     Ok(u64::from_le_bytes([
         slice[0], slice[1], slice[2], slice[3], slice[4], slice[5], slice[6], slice[7],
     ]))
