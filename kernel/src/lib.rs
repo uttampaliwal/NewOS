@@ -14,6 +14,7 @@ pub mod gdt;
 pub mod interrupts;
 pub mod memory;
 pub mod serial;
+pub mod task;
 
 use newos_abi::version::{ABI_VERSION, PROJECT_NAME};
 

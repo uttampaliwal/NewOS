@@ -78,13 +78,33 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     x86_64::instructions::interrupts::enable();
     let _ = writeln!(writer, "status: PIC initialized, interrupts enabled");
 
-    // Spin briefly to let the timer fire and prove interrupts work
-    for _ in 0..10_000_000 {
-        core::hint::spin_loop();
-    }
-    let _ = writeln!(writer, "\nstatus: timer interrupts verified");
+    // Create test tasks
+    crate::task::scheduler::add_task(crate::task::Task::new(task_a));
+    crate::task::scheduler::add_task(crate::task::Task::new(task_b));
+    let _ = writeln!(writer, "status: tasks added, starting scheduler...");
 
-    BootOutcome::ExitSuccess
+    // Start scheduling (this will not return)
+    crate::task::scheduler::start_scheduling();
+}
+
+extern "sysv64" fn task_a() {
+    for _ in 0..10 {
+        crate::serial::print(format_args!("A"));
+        crate::task::scheduler::yield_task();
+    }
+    crate::serial::print(format_args!("\nstatus: Task A finished\n"));
+    // Prevent return (which would crash since there's no return address)
+    loop { crate::task::scheduler::yield_task(); }
+}
+
+extern "sysv64" fn task_b() {
+    for _ in 0..10 {
+        crate::serial::print(format_args!("B"));
+        crate::task::scheduler::yield_task();
+    }
+    crate::serial::print(format_args!("\nstatus: Task B finished\n"));
+    // Loop to keep yielding
+    loop { crate::task::scheduler::yield_task(); }
 }
 
 const fn describe_environment(environment: BootEnvironment) -> &'static str {

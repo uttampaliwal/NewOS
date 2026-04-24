@@ -44,13 +44,10 @@ See [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\pha
 
 ## Phase 4: Interrupts and Timers
 
-- GDT and IDT
-- interrupts and timer
-- physical memory map parsing
-- page frame allocator
-- kernel heap allocator
+- GDT, IDT, and TSS
+- Hardware interrupts (PIC) and timer ticks
 
-## Phase 3: Execution
+## Phase 5: Execution
 
 - kernel tasks
 - syscall entry
@@ -58,7 +55,7 @@ See [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\pha
 - ELF loading
 - init process
 
-## Phase 4: Terminal-first usability
+## Phase 6: Terminal-first usability
 
 - VFS
 - initramfs
@@ -66,7 +63,7 @@ See [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\pha
 - files, pipes, and process lifecycle
 - basic networking
 
-## Phase 5: Modern desktop path
+## Phase 7: Modern desktop path
 
 - display and input stack
 - Wayland-oriented compositor model
