@@ -8,7 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Contributing guide with coding standards and PR workflow
+- Documentation: architecture diagrams, roadmap timeline
+- CI: QEMU smoke test workflow
+- Developer guides: good first issues, contributing workflow
 
 ## [v0.0.4] - 2026-04-24
 

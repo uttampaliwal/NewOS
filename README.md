@@ -5,13 +5,22 @@
     <img src="https://img.shields.io/github/actions/status/workflow/uttampaliwal/NewOS/ci?style=flat-square" alt="CI Status" />
   </a>
   <a href="https://crates.io/crates/newos-kernel">
-    <img src="https://img.shields.io/badge/rustc-nightly-blue?style=flat-square" alt="Rust Version" />
+    <img src="https://img.shields.io/crates/v/newos-kernel" alt="Crate" />
+  </a>
+  <a href="https://github.com/uttampaliwal/NewOS/releases">
+    <img src="https://img.shields.io/github/v/release/uttampaliwal/NewOS" alt="Release" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT%20or%20Apache--2.0-blue?style=flat-square" alt="License" />
   </a>
   <a href="https://github.com/uttampaliwal/NewOS/issues">
     <img src="https://img.shields.io/github/issues-raw/uttampaliwal/NewOS?style=flat-square" alt="Issues" />
+  </a>
+  <a href="https://github.com/uttampaliwal/NewOS/forks">
+    <img src="https://img.shields.io/github/forks/uttampaliwal/NewOS?style=flat-square" alt="Forks" />
+  </a>
+  <a href="https://github.com/uttampaliwal/NewOS/stargazers">
+    <img src="https://img.shields.io/github/stars/uttampaliwal/NewOS?style=flat-square" alt="Stars" />
   </a>
 </p>
 
@@ -20,7 +29,7 @@
 > *Exploring the potential of AI tools in building a capable and usable operating system.*
 
 <p align="center">
-  <img src="docs/images/qemu-boot-demo.gif" alt="NewOS boot demo" width="80%" />
+  <img src="docs/images/boot-demo.gif" alt="NewOS boot demo" width="80%" />
 </p>
 
 ## Current Status
@@ -60,10 +69,20 @@ See [docs/quickstart.md](docs/quickstart.md) for full setup.
 
 Build an understandable, replaceable, and well-documented OS from first principles — while learning deeply and using modern tools.
 
+## Architecture
+
+<p align="center">
+  <img src="docs/architecture-diagram.svg" alt="Architecture" width="100%" />
+</p>
+
+See [docs/architecture-diagram.md](docs/architecture-diagram.md) for detailed system design.
+
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [Roadmap](docs/roadmap.md)
+- [Architecture](docs/architecture.md) - System overview
+- [Architecture Diagrams](docs/architecture-diagram.md) - Visual design documents
+- [Roadmap Timeline](docs/roadmap-timeline.md) - Phase progress visualization
+- [Roadmap](docs/roadmap.md) - Detailed phase specs
 - [Phase Docs](docs/) - detailed phase breakdowns
 
 ## Repository Layout
