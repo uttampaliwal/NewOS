@@ -6,6 +6,7 @@ use x86_64::structures::paging::{
 
 pub mod heap;
 pub mod paging;
+pub mod user;
 
 pub const PAGE_SIZE: u64 = 4096;
 const LOW_MEMORY_CUTOFF: u64 = 0x100000;
