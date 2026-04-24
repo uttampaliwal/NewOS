@@ -6,7 +6,6 @@ extern crate alloc;
 mod elf;
 
 use core::arch::asm;
-use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 use core::ptr::NonNull;
 
@@ -74,7 +73,7 @@ fn main() -> Status {
 #[panic_handler]
 fn panic(info: &PanicInfo<'_>) -> ! {
     serial::init();
-    serial::print(format_args!("panic: {}\n", info));
+    serial::print!("panic: {}\n", info);
     qemu_exit_failure();
 }
 

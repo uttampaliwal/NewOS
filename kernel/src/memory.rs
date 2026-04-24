@@ -4,6 +4,7 @@ use x86_64::structures::paging::{
     FrameAllocator as X86FrameAllocator, PhysFrame as X86PhysFrame, Size4KiB,
 };
 
+pub mod allocator;
 pub mod heap;
 pub mod paging;
 pub mod user;
