@@ -1,7 +1,11 @@
 use core::fmt;
-pub use newos_serial::{init, SerialWriter, print, println};
+pub use newos_serial::{init, SerialWriter, println};
 
-// For backward compatibility within the kernel
-pub fn print_fmt(args: fmt::Arguments<'_>) {
-    print!("{}", args);
+#[macro_export]
+macro_rules! serial_print {
+    ($($arg:tt)*) => { newos_serial::print!($($arg)*) };
+}
+
+pub fn print(args: fmt::Arguments<'_>) {
+    newos_serial::print!("{}", args);
 }
