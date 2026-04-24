@@ -17,6 +17,7 @@ bench = false
 [dependencies]
 lazy_static = { version = "1.5.0", default-features = false, features = ["spin_no_std"] }
 newos-abi = { path = "../shared/abi" }
+newos-serial = { path = "../shared/serial" }
 pic8259 = "0.11.0"
 spin = "0.10.0"
 x86_64 = { version = "0.15.4", default-features = false, features = ["abi_x86_interrupt", "instructions"] }

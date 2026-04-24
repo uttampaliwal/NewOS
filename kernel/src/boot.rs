@@ -10,6 +10,11 @@ use x86_64::VirtAddr;
 
 pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     serial::init();
+    
+    if let Err(e) = validate_boot_info(boot_info) {
+        crate::serial::println!("BOOT ERROR: Invalid BootInfo: {}", e);
+        panic!("Fatal boot error: {}", e);
+    }
 
     let mut writer = SerialWriter;
     let kernel = kernel_info();
@@ -174,4 +179,24 @@ const fn describe_loader(loader: BootLoaderKind) -> &'static str {
         BootLoaderKind::Unknown => "unknown",
         BootLoaderKind::UefiLoader => "uefi-loader",
     }
+}
+
+fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
+    if boot_info.abi_version != 1 {
+        return Err("Unsupported BootInfo ABI version");
+    }
+
+    if boot_info.memory_map.descriptors.is_null() {
+        return Err("Memory map descriptors pointer is null");
+    }
+
+    if boot_info.memory_map.map_size == 0 {
+        return Err("Memory map is empty");
+    }
+
+    if boot_info.memory_map.desc_size < core::mem::size_of::<newos_abi::boot::BootMemoryDescriptor>() {
+        return Err("Memory map descriptor size is too small");
+    }
+
+    Ok(())
 }

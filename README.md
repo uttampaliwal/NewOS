@@ -40,8 +40,8 @@
 | 1 | ✅ Complete | First boot & UEFI loader |
 | 2 | ✅ Complete | Freestanding kernel handoff |
 | 3 | ✅ Complete | Physical memory bring-up |
-| 4 | 🔄 In Progress | Interrupts & timers |
-| 5 | 🚧 Pending | Execution & syscalls |
+| 4 | ✅ Complete | Interrupts & timers |
+| 5 | ✅ Complete | Execution & syscalls |
 | 6 | 🚧 Pending | Terminal-first usability |
 | 7 | 🚧 Pending | Wayland desktop path |
 

@@ -6,7 +6,7 @@ Thank you for your interest in contributing to NewOS! This document outlines how
 
 1. Fork the repository
 2. Clone your fork: `git clone https://github.com/<your-username>/NewOS.git`
-3. Add the upstream remote: `git remote add upstream https://github.com/anomalyco/NewOS.git`
+3. Add the upstream remote: `git remote add upstream https://github.com/uttampaliwal/NewOS.git`
 4. Create a feature branch: `git checkout -b feature/my-feature`
 
 ## Development Environment

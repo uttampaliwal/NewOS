@@ -12,8 +12,8 @@
 │  1      │  ███│ ███ │     │     │       │ First boot & UEFI loader               │
 │  2      │     │ ███ │     │     │       │ Freestanding kernel handoff             │
 │  3      │     │ ███ │     │     │       │ Physical memory bring-up                │
-│  4      │     │     │ ███ │     │       │ Interrupts & timers                   │
-│  5      │     │     │ ███ │ ███ │       │ Execution & syscalls    [IN PROGRESS]  │
+│  4      │     │     │ ███ │     │       │ Interrupts & timers   [DONE]           │
+│  5      │     │     │ ███ │ ███ │       │ Execution & syscalls  [DONE]           │
 │  6      │     │     │     │ ███ │ ████  │ Terminal-first usability             │
 │  7      │     │     │     │     │ ████  │ Wayland desktop path                 │
 └─────────────────────────────────────────────────────────────────────────────────────┘
@@ -28,8 +28,8 @@ Phase 0: ███████████████████████�
 Phase 1: ████████████████████████████████████ 100% Complete
 Phase 2: ████████████████████████████████████ 100% Complete
 Phase 3: ████████████████████████████████████ 100% Complete
-Phase 4: ██████████████████░░░░░░░░░░░░░░░░░░  60% Complete
-Phase 5: ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15% In Progress
+Phase 4: ████████████████████████████████████ 100% Complete
+Phase 5: ████████████████████████████████████ 100% Complete
 Phase 6: ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0% Pending
 Phase 7: ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0% Pending
 ```
@@ -120,8 +120,8 @@ v1.0.0 ────────────────────────�
 | 1 | First Boot | Q1 2026 | ✅ Complete | UEFI loader, serial output |
 | 2 | Freestanding | Q2 2026 | ✅ Complete | Kernel ELF, boot handoff |
 | 3 | Memory | Q2 2026 | ✅ Complete | Frame allocator, bump heap |
-| 4 | Interrupts | Q2-Q3 2026 | 🔄 In Progress | GDT, IDT, TSS, PIC, timer |
-| 5 | Execution | Q3-Q4 2026 | 🚧 Pending | Syscalls, exec, user mode |
+| 4 | Interrupts | Q2-Q3 2026 | ✅ Complete | GDT, IDT, TSS, PIC, timer |
+| 5 | Execution | Q3-Q4 2026 | ✅ Complete | Syscalls, exec, user mode |
 | 6 | Terminal | Q4 2026-Q1 2027 | 🚧 Pending | VFS, initramfs, shell |
 | 7 | Desktop | 2027 | 🚧 Pending | Wayland, compositor |
 

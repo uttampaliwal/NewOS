@@ -22,14 +22,7 @@ use uefi::{Status, cstr16};
 const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
 const KERNEL_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\newos\kernel.elf");
 
-macro_rules! serial_println {
-    () => {
-        $crate::serial::print(format_args!("\n"))
-    };
-    ($format:literal $(, $arg:expr)*) => {
-        $crate::serial::print(format_args!(concat!($format, "\n") $(, $arg)*))
-    };
-}
+use newos_serial::{self as serial, println as serial_println};
 
 #[entry]
 fn main() -> Status {
@@ -121,68 +114,3 @@ fn qemu_exit(code: u32) -> ! {
     }
 }
 
-mod serial {
-    use super::*;
-
-    const COM1_BASE: u16 = 0x3F8;
-
-    pub fn init() {
-        unsafe {
-            out8(COM1_BASE + 1, 0x00);
-            out8(COM1_BASE + 3, 0x80);
-            out8(COM1_BASE, 0x03);
-            out8(COM1_BASE + 1, 0x00);
-            out8(COM1_BASE + 3, 0x03);
-            out8(COM1_BASE + 2, 0xC7);
-            out8(COM1_BASE + 4, 0x0B);
-        }
-    }
-
-    pub fn print(args: fmt::Arguments<'_>) {
-        let mut writer = SerialWriter;
-        let _ = writer.write_fmt(args);
-    }
-
-    struct SerialWriter;
-
-    impl SerialWriter {
-        fn write_byte(&mut self, byte: u8) {
-            unsafe {
-                while (in8(COM1_BASE + 5) & 0x20) == 0 {}
-                out8(COM1_BASE, byte);
-            }
-        }
-    }
-
-    impl Write for SerialWriter {
-        fn write_str(&mut self, value: &str) -> fmt::Result {
-            for byte in value.bytes() {
-                match byte {
-                    b'\n' => {
-                        self.write_byte(b'\r');
-                        self.write_byte(b'\n');
-                    }
-                    _ => self.write_byte(byte),
-                }
-            }
-
-            Ok(())
-        }
-    }
-
-    unsafe fn out8(port: u16, value: u8) {
-        unsafe {
-            asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack, preserves_flags));
-        }
-    }
-
-    unsafe fn in8(port: u16) -> u8 {
-        let value: u8;
-
-        unsafe {
-            asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack, preserves_flags));
-        }
-
-        value
-    }
-}

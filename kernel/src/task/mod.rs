@@ -35,6 +35,14 @@ unsafe extern "sysv64" {
     fn switch_context(prev_rsp: *mut usize, next_rsp: *const usize);
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskState {
+    Ready,
+    Running,
+    Blocked,
+    Zombie,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TaskId(usize);
 
@@ -47,9 +55,10 @@ impl TaskId {
 }
 
 pub struct Task {
-    #[allow(dead_code)] // Will be used when we add preemption or task management
+    #[allow(dead_code)]
     id: TaskId,
     stack_ptr: usize,
+    state: TaskState,
     #[allow(dead_code)] // Kept to ensure the stack is not deallocated
     stack: Box<[u8]>,
 }
@@ -59,16 +68,22 @@ impl Task {
         const STACK_SIZE: usize = 4096 * 4; // 16 KiB stack
         let mut stack = alloc::vec![0u8; STACK_SIZE].into_boxed_slice();
 
-        let stack_ptr = stack.as_mut_ptr() as usize + STACK_SIZE;
-        let mut stack_ptr = stack_ptr as *mut usize;
+        // SAFETY: We are creating a task stack. The stack grows downwards,
+        // so the stack pointer starts at the end of the allocated buffer.
+        let stack_top = stack.as_mut_ptr() as usize + STACK_SIZE;
+        let mut stack_ptr = stack_top as *mut usize;
 
         unsafe {
             // Setup the initial stack frame that switch_context expects.
             // 1. Return address (entry point)
+            // When switch_context performs its 'ret' instruction, it will pop this
+            // address and jump to the task's entry point.
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(entry_point as usize);
 
             // 2. Callee-saved registers (RBX, RBP, R12, R13, R14, R15)
+            // switch_context expects these to be on the stack so it can 'pop' them.
+            // We initialize them to zero for a fresh task.
             for _ in 0..6 {
                 stack_ptr = stack_ptr.sub(1);
                 stack_ptr.write(0);
@@ -78,6 +93,7 @@ impl Task {
         Self {
             id: TaskId::new(),
             stack_ptr: stack_ptr as usize,
+            state: TaskState::Ready,
             stack,
         }
     }

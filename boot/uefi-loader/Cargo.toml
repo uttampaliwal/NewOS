@@ -7,4 +7,5 @@ publish = false
 
 [dependencies]
 newos-abi = { path = "../../shared/abi" }
+newos-serial = { path = "../../shared/serial" }
 uefi = { version = "0.37.0", features = ["alloc", "global_allocator"] }

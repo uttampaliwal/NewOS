@@ -2,6 +2,7 @@
 members = [
     "boot/uefi-loader",
     "shared/abi",
+    "shared/serial",
     "tools/xtask",
     "kernel",
 ]

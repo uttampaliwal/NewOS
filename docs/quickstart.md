@@ -4,14 +4,14 @@ This repository is intentionally organized for learning. Start here before touch
 
 ## Read first
 
-1. [Project Overview](C:\Users\uttam\development\NewOS\README.md)
-2. [Architecture](C:\Users\uttam\development\NewOS\docs\architecture.md)
-3. [Roadmap](C:\Users\uttam\development\NewOS\docs\roadmap.md)
-4. [Windows Host Setup](C:\Users\uttam\development\NewOS\docs\windows-host-setup.md)
-5. [Phase 1 First Boot Plan](C:\Users\uttam\development\NewOS\docs\phase-1-first-boot.md)
-6. [ADR 0002 UEFI-First Bring-Up](C:\Users\uttam\development\NewOS\docs\adr-0002-uefi-first-bringup.md)
-7. [Phase 2 Freestanding Handoff](C:\Users\uttam\development\NewOS\docs\phase-2-freestanding-handoff.md)
-8. [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\phase-3-memory-bringup.md)
+1. [Project Overview](../README.md)
+2. [Architecture](architecture.md)
+3. [Roadmap](roadmap.md)
+4. [Windows Host Setup](windows-host-setup.md)
+5. [Phase 1 First Boot Plan](phase-1-first-boot.md)
+6. [ADR 0002 UEFI-First Bring-Up](adr-0002-uefi-first-bringup.md)
+7. [Phase 2 Freestanding Handoff](phase-2-freestanding-handoff.md)
+8. [Phase 3 Physical Memory Bring-Up](phase-3-memory-bringup.md)
 
 ## Development rhythm
 
