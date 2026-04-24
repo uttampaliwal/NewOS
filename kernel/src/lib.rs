@@ -9,11 +9,13 @@
 extern crate alloc;
 
 pub mod boot;
+pub mod elf;
 pub mod gdt;
 pub mod interrupts;
 pub mod memory;
 pub mod serial;
 pub mod shell;
+pub mod syscall;
 pub mod task;
 
 use newos_abi::version::{ABI_VERSION, PROJECT_NAME};

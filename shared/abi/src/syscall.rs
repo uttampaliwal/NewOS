@@ -1,19 +1,79 @@
-#[cfg(test)]
-mod tests {
-    #[repr(u16)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum Syscall {
-        Write = 1,
-        Exit = 2,
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Syscall {
+    Write = 1,
+    Exit = 2,
+    Read = 3,
+    Open = 4,
+    Close = 5,
+    Exec = 6,
+    Fork = 7,
+    Wait = 8,
+    Yielder = 9,
+}
+
+impl Syscall {
+    pub const fn from_u16(value: u16) -> Option<Self> {
+        match value {
+            1 => Some(Self::Write),
+            2 => Some(Self::Exit),
+            3 => Some(Self::Read),
+            4 => Some(Self::Open),
+            5 => Some(Self::Close),
+            6 => Some(Self::Exec),
+            7 => Some(Self::Fork),
+            8 => Some(Self::Wait),
+            9 => Some(Self::Yielder),
+            _ => None,
+        }
     }
 
-    #[repr(C)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    struct SyscallHeader {
-        pub number: u16,
-        pub flags: u16,
-        pub reserved: u32,
+    pub const fn id(&self) -> u16 {
+        *self as u16
     }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SyscallHeader {
+    pub number: u16,
+    pub flags: u16,
+    pub reserved: u32,
+}
+
+impl SyscallHeader {
+    pub const fn new(number: Syscall) -> Self {
+        Self {
+            number: number as u16,
+            flags: 0,
+            reserved: 0,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SyscallArgs {
+    pub arg0: u64,
+    pub arg1: u64,
+    pub arg2: u64,
+    pub arg3: u64,
+}
+
+impl SyscallArgs {
+    pub const fn new(arg0: u64, arg1: u64, arg2: u64, arg3: u64) -> Self {
+        Self {
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 
     #[test]
     fn write_syscall_id_is_one() {
@@ -26,8 +86,27 @@ mod tests {
     }
 
     #[test]
-    fn syscall_header_size_is_valid() {
+    fn syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(1), Some(Syscall::Write));
+        assert_eq!(Syscall::from_u16(2), Some(Syscall::Exit));
+        assert_eq!(Syscall::from_u16(3), Some(Syscall::Read));
+    }
+
+    #[test]
+    fn syscall_header_size() {
         use core::mem::size_of;
         assert_eq!(size_of::<SyscallHeader>(), 8);
+    }
+
+    #[test]
+    fn syscall_args_size() {
+        use core::mem::size_of;
+        assert_eq!(size_of::<SyscallArgs>(), 32);
+    }
+
+    #[test]
+    fn syscall_id_method() {
+        assert_eq!(Syscall::Write.id(), 1);
+        assert_eq!(Syscall::Exit.id(), 2);
     }
 }
