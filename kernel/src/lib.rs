@@ -17,6 +17,7 @@ pub mod serial;
 pub mod shell;
 pub mod syscall;
 pub mod task;
+pub mod vfs;
 
 use newos_abi::version::{ABI_VERSION, PROJECT_NAME};
 

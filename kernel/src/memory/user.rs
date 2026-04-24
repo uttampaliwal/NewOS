@@ -1,6 +1,9 @@
 use alloc::vec::Vec;
 use x86_64::VirtAddr;
-use x86_64::structures::paging::{PageTableFlags, Size4KiB, Mapper, FrameAllocator as X86FrameAllocator, PhysFrame, Page, PageSize};
+use x86_64::structures::paging::{
+    FrameAllocator as X86FrameAllocator, Mapper, Page, PageSize, PageTableFlags, PhysFrame,
+    Size4KiB,
+};
 
 pub const USER_STACK_BASE: u64 = 0x7fff_f000;
 pub const USER_STACK_SIZE_PAGES: usize = 16;
@@ -27,9 +30,13 @@ impl UserSpace {
             let frame = frame_allocator.allocate_frame().ok_or(())?;
             let virt = VirtAddr::new(stack_base - (i as u64 * page_size));
             let page = Page::from_start_address(virt).map_err(|_| ())?;
-            let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+            let flags = PageTableFlags::PRESENT
+                | PageTableFlags::WRITABLE
+                | PageTableFlags::USER_ACCESSIBLE;
             unsafe {
-                let _ = mapper.map_to(page, frame, flags, frame_allocator).map_err(|_| ())?;
+                let _ = mapper
+                    .map_to(page, frame, flags, frame_allocator)
+                    .map_err(|_| ())?;
             }
             self.page_tables.push(frame);
         }

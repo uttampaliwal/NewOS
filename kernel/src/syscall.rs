@@ -1,4 +1,11 @@
+use crate::elf;
+use lazy_static::lazy_static;
 use newos_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
+use spin::Mutex;
+
+lazy_static! {
+    static ref VFS: Mutex<crate::vfs::Vfs> = Mutex::new(crate::vfs::Vfs::new());
+}
 
 #[derive(Debug)]
 pub enum SyscallResult {
@@ -59,16 +66,60 @@ fn handle_exit(args: SyscallArgs) -> SyscallResult {
     SyscallResult::Success(0)
 }
 
-fn handle_open(_args: SyscallArgs) -> SyscallResult {
-    SyscallResult::Error(1)
+fn handle_open(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    if path_ptr.is_null() {
+        return SyscallResult::Error(1);
+    }
+    let mut vfs = VFS.lock();
+    match vfs.open("hello.txt") {
+        Some(fd) => SyscallResult::Success(fd as u64),
+        None => SyscallResult::Error(1),
+    }
 }
 
 fn handle_close(_args: SyscallArgs) -> SyscallResult {
-    SyscallResult::Error(1)
+    SyscallResult::Success(0)
 }
 
 fn handle_exec(_args: SyscallArgs) -> SyscallResult {
-    SyscallResult::Error(1)
+    let elf_data_ptr = _args.arg0 as *const u8;
+    let elf_size = _args.arg1 as usize;
+
+    if elf_data_ptr.is_null() || elf_size == 0 {
+        crate::serial::print(format_args!("exec: null pointer or zero size\n"));
+        return SyscallResult::Error(1);
+    }
+
+    let elf_data = unsafe { core::slice::from_raw_parts(elf_data_ptr, elf_size) };
+
+    let header = match elf::parse_header(elf_data) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::serial::print(format_args!("exec: invalid ELF header: {:?}\n", e));
+            return SyscallResult::Error(1);
+        }
+    };
+
+    let mut loaded_segments = 0usize;
+    for i in 0..header.program_header_count {
+        match elf::parse_program_header(elf_data, header, i) {
+            Ok(Some(ph)) => {
+                loaded_segments += 1;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                crate::serial::print(format_args!("exec: program header error: {:?}\n", e));
+            }
+        }
+    }
+
+    crate::serial::print(format_args!(
+        "exec: loaded {} segments, entry: {:#x}\n",
+        loaded_segments, header.entry
+    ));
+
+    SyscallResult::Success(header.entry)
 }
 
 fn handle_fork(_args: SyscallArgs) -> SyscallResult {

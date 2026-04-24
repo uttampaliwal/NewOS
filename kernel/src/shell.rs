@@ -36,6 +36,14 @@ impl Repl {
         match parts[0] {
             "help" => CommandResult::Help,
             "info" => CommandResult::Info,
+            "ls" => CommandResult::Ls,
+            "cat" => {
+                if parts.len() > 1 {
+                    CommandResult::Cat(parts[1].to_string())
+                } else {
+                    CommandResult::Echo("Usage: cat <file>".to_string())
+                }
+            }
             "echo" => {
                 if parts.len() > 1 {
                     CommandResult::Echo(parts[1..].join(" "))
@@ -67,6 +75,8 @@ pub enum CommandResult {
     Empty,
     Help,
     Info,
+    Ls,
+    Cat(String),
     Echo(String),
     Clear,
     Version,
@@ -84,6 +94,8 @@ impl CommandResult {
                 writeln!(writer, "Available commands:")?;
                 writeln!(writer, "  help    - Show this help message")?;
                 writeln!(writer, "  info   - Show kernel information")?;
+                writeln!(writer, "  ls     - List files")?;
+                writeln!(writer, "  cat    - Show file contents")?;
                 writeln!(writer, "  echo   - Echo text back")?;
                 writeln!(writer, "  clear  - Clear the screen")?;
                 writeln!(writer, "  version - Show version")?;
@@ -95,6 +107,17 @@ impl CommandResult {
                 writeln!(writer, "NewOS - A Rust-first operating system")?;
                 writeln!(writer, "Phase 6: Terminal-first usability")?;
                 writeln!(writer, "Built with Rust (nightly, no_std)")
+            }
+            CommandResult::Ls => {
+                let vfs = crate::vfs::Vfs::new();
+                let files = vfs.list_dir();
+                for name in files.iter() {
+                    let _ = writeln!(writer, "{}", name);
+                }
+                Ok(())
+            }
+            CommandResult::Cat(path) => {
+                writeln!(writer, "cat: file '{}' - demo only", path)
             }
             CommandResult::Echo(text) => {
                 writeln!(writer, "{}", text)
