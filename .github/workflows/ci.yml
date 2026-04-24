@@ -48,6 +48,61 @@ jobs:
       - name: Build freestanding kernel
         run: cargo +nightly build -p newos-kernel --target x86_64-unknown-none
 
+  qemu-smoke-test:
+    runs-on: windows-latest
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-action@nightly
+        with:
+          components: rust-src
+
+      - name: Add nightly targets
+        run: |
+          rustup +nightly target add x86_64-unknown-uefi
+          rustup +nightly target add x86_64-unknown-none
+
+      - name: Install QEMU
+        run: choco install qemu -y
+
+      - name: Find OVMF firmware
+        shell: pwsh
+        run: |
+          $code = Get-ChildItem -Path "C:\Program Files","C:\Program Files (x86)","C:\tools" -Recurse -Filter "edk2-x86_64-code.fd" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          $vars = Get-ChildItem -Path "C:\Program Files","C:\Program Files (x86)","C:\tools" -Recurse -Filter "*x86_64-vars.fd" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if ($code) {
+            Write-Host "OVMF_CODE=$code" >> $env:GITHUB_ENV
+            Write-Host "Found OVMF code: $code"
+          }
+          if ($vars) {
+            Write-Host "OVMF_VARS=$vars" >> $env:GITHUB_ENV
+            Write-Host "Found OVMF vars: $vars"
+          }
+        id: find-ovmf
+
+      - name: Create vars file if needed
+        if: env.OVMF_CODE != '' && env.OVMF_VARS == ''
+        shell: pwsh
+        run: |
+          Copy-Item $env:OVMF_CODE C:\ovmf-vars.fd
+          Write-Host "OVMF_VARS=C:\ovmf-vars.fd" >> $env:GITHUB_ENV
+
+      - name: Build and run in QEMU
+        if: env.OVMF_CODE != ''
+        shell: pwsh
+        run: |
+          cargo xtask build-uefi
+          cargo xtask run-uefi
+        timeout-minutes: 5
+
+      - name: Skip if OVMF not found
+        if: env.OVMF_CODE == ''
+        run: echo "OVMF firmware not found - skipping QEMU smoke test"
+
   test-host:
     runs-on: windows-latest
 

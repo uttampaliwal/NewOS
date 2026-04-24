@@ -1,0 +1,36 @@
+# Memory Allocator Demo
+
+```
+NewOS Kernel v0.0.4 - Phase 3: Physical Memory Bring-up
+=====================================================
+
+=== Boot Memory Map ===
+Descriptor 0: Type=Conventional, PhysicalAddr=0x0, Pages=0, Length=0
+Descriptor 1: Type=Conventional, PhysicalAddr=0x1000, Pages=128, Length=524288
+Descriptor 2: Type=Conventional, PhysicalAddr=0x80000, Pages=130048, Length=533770288
+...
+Total conventional memory: 513792 KB
+
+=== Physical Frame Allocator ===
+Total frames: 127948 (0x1000 per frame)
+Used frames: 0
+Free frames: 127948
+
+=== Bump Heap ===
+Base: 0x200000
+Offset: 0
+Capacity: 8 MB
+
+Alloc test:
+  - Allocated 4096 bytes @ 0x200000
+  - Allocated 8192 bytes @ 0x202000
+  - Allocated 1024 bytes @ 0x204000
+  - Total allocated: 13312 bytes
+
+=== Virtual Memory ===
+Page table root: 0x1000
+Identity mapping: 0x00000000 - 0x40000000
+Higher half: 0xFFFF800000000000 - ...
+```
+
+See [docs/phase-3-memory-bringup.md](../phase-3-memory-bringup.md) for implementation details.

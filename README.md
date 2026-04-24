@@ -1,6 +1,23 @@
 # NewOS
 
-A Rust-first operating system built step by step for learning and long-term usability.
+<p align="center">
+  <a href="https://github.com/uttampaliwal/NewOS/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/status/workflow/uttampaliwal/NewOS/ci?style=flat-square" alt="CI Status" />
+  </a>
+  <a href="https://crates.io/crates/newos-kernel">
+    <img src="https://img.shields.io/badge/rustc-nightly-blue?style=flat-square" alt="Rust Version" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT%20or%20Apache--2.0-blue?style=flat-square" alt="License" />
+  </a>
+  <a href="https://github.com/uttampaliwal/NewOS/issues">
+    <img src="https://img.shields.io/github/issues-raw/uttampaliwal/NewOS?style=flat-square" alt="Issues" />
+  </a>
+</p>
+
+**A Rust-first operating system built step by step for learning and long-term usability.**
+
+> *Exploring the potential of AI tools in building a capable and usable operating system.*
 
 <p align="center">
   <img src="docs/images/qemu-boot-demo.gif" alt="NewOS boot demo" width="80%" />
@@ -25,18 +42,23 @@ A Rust-first operating system built step by step for learning and long-term usab
 - `x86_64-unknown-none` kernel image with serial output
 - Physical frame allocator + bump heap with `alloc` crate support
 - GDT, IDT, TSS, and PIC setup with hardware timer interrupts
+- Cooperative kernel multitasking
 
 ## Quick Start
 
 ```powershell
-#Install build tools (see docs/windows-host-setup.md)
+# Install build tools (see docs/windows-host-setup.md)
 cargo xtask doctor
 
-#Build and run in QEMU
+# Build and run in QEMU
 cargo xtask run-uefi
 ```
 
 See [docs/quickstart.md](docs/quickstart.md) for full setup.
+
+## Mission
+
+Build an understandable, replaceable, and well-documented OS from first principles — while learning deeply and using modern tools.
 
 ## Documentation
 
@@ -62,6 +84,14 @@ tools/xtask   - developer automation
 - Keep interfaces explicit so parts can be upgraded cleanly
 - Write docs as we go so future changes stay understandable
 
+## Contributing
+
+We welcome contributions! Start by:
+
+1. Picking a [good first issue](https://github.com/uttampaliwal/NewOS/labels/good%20first%20issue)
+2. Reading [CONTRIBUTING.md](CONTRIBUTING.md)
+3. Joining the discussion in [GitHub Discussions](https://github.com/uttampaliwal/NewOS/discussions)
+
 ## Technology Stack
 
 - Language: Rust (nightly, `no_std`)
@@ -69,15 +99,11 @@ tools/xtask   - developer automation
 - Build: custom `xtask` automation
 - Testing: QEMU + OVMF
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). All contributions welcome!
-
 ## License
 
 Licensed under MIT or Apache-2.0. See [LICENSE](LICENSE).
 
 ## Contact
 
-- Open an issue for bugs or feature requests
-- Discuss in GitHub Discussions
+- Open an [issue](https://github.com/uttampaliwal/NewOS/issues) for bugs or feature requests
+- Discuss in [GitHub Discussions](https://github.com/uttampaliwal/NewOS/discussions)
