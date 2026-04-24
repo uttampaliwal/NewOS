@@ -3,6 +3,9 @@ dist/
 out/
 .idea/
 .vscode/
+extraa/
+
+
 *.log
 *.tmp
 *.qcow2
@@ -10,5 +13,3 @@ out/
 *.iso
 .DS_Store
 Thumbs.db
-
-NewOS_Repository_Assessment.pdf

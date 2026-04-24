@@ -1,39 +1,6 @@
-use alloc::boxed::Box;
-use core::arch::global_asm;
+use alloc::alloc::{Layout, alloc, dealloc};
 
 pub mod scheduler;
-
-global_asm!(
-    r#"
-    .global switch_context
-switch_context:
-    // sysv64 ABI: rdi = prev_rsp, rsi = next_rsp
-    push rbx
-    push rbp
-    push r12
-    push r13
-    push r14
-    push r15
-
-    // Save current stack pointer to prev_rsp
-    mov [rdi], rsp
-    // Load next stack pointer from next_rsp
-    mov rsp, [rsi]
-
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop rbp
-    pop rbx
-
-    ret
-    "#
-);
-
-unsafe extern "sysv64" {
-    fn switch_context(prev_rsp: *mut usize, next_rsp: *const usize);
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
@@ -57,34 +24,49 @@ impl TaskId {
 pub struct Task {
     #[allow(dead_code)]
     id: TaskId,
-    stack_ptr: usize,
+    pub(crate) stack_ptr: usize,
+    pub(crate) kernel_stack_top: usize,
     state: TaskState,
-    #[allow(dead_code)] // Kept to ensure the stack is not deallocated
-    stack: Box<[u8]>,
+    stack_base: *mut u8,
+    stack_size: usize,
 }
 
 impl Task {
     pub fn new(entry_point: extern "sysv64" fn()) -> Self {
         const STACK_SIZE: usize = 4096 * 4; // 16 KiB stack
-        let mut stack = alloc::vec![0u8; STACK_SIZE].into_boxed_slice();
+        
+        let layout = Layout::from_size_align(STACK_SIZE, 16).unwrap();
+        let stack_base = unsafe { alloc(layout) };
+        if stack_base.is_null() {
+            panic!("failed to allocate task stack");
+        }
 
-        // SAFETY: We are creating a task stack. The stack grows downwards,
-        // so the stack pointer starts at the end of the allocated buffer.
-        let stack_top = stack.as_mut_ptr() as usize + STACK_SIZE;
+        let stack_top = stack_base as usize + STACK_SIZE;
         let mut stack_ptr = stack_top as *mut usize;
 
         unsafe {
-            // Setup the initial stack frame that switch_context expects.
-            // 1. Return address (entry point)
-            // When switch_context performs its 'ret' instruction, it will pop this
-            // address and jump to the task's entry point.
+            // Setup the stack to look like an interrupted state for iretq and pop-all-regs
+            
+            // 1. IRETQ Frame (pushed by CPU)
+            // SS
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0); 
+            // RSP
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(stack_top);
+            // RFLAGS
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0x202); // Interrupts enabled
+            // CS
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0x08);
+            // RIP
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(entry_point as usize);
 
-            // 2. Callee-saved registers (RBX, RBP, R12, R13, R14, R15)
-            // switch_context expects these to be on the stack so it can 'pop' them.
-            // We initialize them to zero for a fresh task.
-            for _ in 0..6 {
+            // 2. All general purpose registers (popped by assembly stub)
+            // RAX, RBX, RCX, RDX, RBP, RSI, RDI, R8-R15 (15 registers)
+            for _ in 0..15 {
                 stack_ptr = stack_ptr.sub(1);
                 stack_ptr.write(0);
             }
@@ -93,8 +75,51 @@ impl Task {
         Self {
             id: TaskId::new(),
             stack_ptr: stack_ptr as usize,
+            kernel_stack_top: stack_top,
             state: TaskState::Ready,
-            stack,
+            stack_base,
+            stack_size: STACK_SIZE,
         }
+    }
+}
+
+impl Drop for Task {
+    fn drop(&mut self) {
+        let layout = Layout::from_size_align(self.stack_size, 16).unwrap();
+        unsafe {
+            dealloc(self.stack_base, layout);
+        }
+    }
+}
+
+/// Transition from Ring 0 to Ring 3.
+/// 
+/// SAFETY: The entry point must be a valid user-mode address.
+pub unsafe fn jump_to_user(entry_point: usize) -> ! {
+    const USER_STACK_SIZE: usize = 4096 * 4;
+    let layout = Layout::from_size_align(USER_STACK_SIZE, 16).unwrap();
+    let user_stack_base = unsafe { alloc(layout) };
+    let user_stack_top = user_stack_base as usize + USER_STACK_SIZE;
+
+    // We use the selectors defined in GDT.
+    // User Data: 0x23 (Index 4, RPL 3)
+    // User Code: 0x1b (Index 3, RPL 3)
+    let user_data_selector: u64 = 0x23;
+    let user_code_selector: u64 = 0x1b;
+
+    unsafe {
+        core::arch::asm!(
+            "push {stack_seg}",
+            "push {stack_ptr}",
+            "push 0x202", // RFLAGS: interrupts enabled
+            "push {code_seg}",
+            "push {entry_ptr}",
+            "iretq",
+            stack_seg = in(reg) user_data_selector,
+            stack_ptr = in(reg) user_stack_top,
+            code_seg = in(reg) user_code_selector,
+            entry_ptr = in(reg) entry_point,
+            options(noreturn)
+        );
     }
 }

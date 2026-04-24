@@ -1,5 +1,5 @@
 use core::fmt;
-pub use newos_serial::{init, SerialWriter, println};
+pub use newos_serial::{SerialWriter, init, println};
 
 #[macro_export]
 macro_rules! serial_print {

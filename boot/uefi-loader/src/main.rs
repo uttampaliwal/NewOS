@@ -112,4 +112,3 @@ fn qemu_exit(code: u32) -> ! {
         }
     }
 }
-

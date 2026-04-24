@@ -1,6 +1,6 @@
+use super::linked_list::LinkedListAllocator;
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
-use super::linked_list::LinkedListAllocator;
 
 struct ListNode {
     next: Option<&'static mut ListNode>,
@@ -42,20 +42,18 @@ unsafe impl GlobalAlloc for super::Locked<FixedSizeBlockAllocator> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let mut allocator = self.lock();
         match list_index(&layout) {
-            Some(index) => {
-                match allocator.list_heads[index].take() {
-                    Some(node) => {
-                        allocator.list_heads[index] = node.next.take();
-                        node as *mut ListNode as *mut u8
-                    }
-                    None => {
-                        let block_size = BLOCK_SIZES[index];
-                        let block_align = block_size;
-                        let layout = Layout::from_size_align(block_size, block_align).unwrap();
-                        allocator.fallback_alloc(layout)
-                    }
+            Some(index) => match allocator.list_heads[index].take() {
+                Some(node) => {
+                    allocator.list_heads[index] = node.next.take();
+                    node as *mut ListNode as *mut u8
                 }
-            }
+                None => {
+                    let block_size = BLOCK_SIZES[index];
+                    let block_align = block_size;
+                    let layout = Layout::from_size_align(block_size, block_align).unwrap();
+                    allocator.fallback_alloc(layout)
+                }
+            },
             None => allocator.fallback_alloc(layout),
         }
     }

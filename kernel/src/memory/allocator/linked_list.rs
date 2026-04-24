@@ -1,6 +1,6 @@
+use super::align_up;
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
-use super::align_up;
 
 struct ListNode {
     size: usize,
@@ -110,9 +110,7 @@ impl LinkedListAllocator {
 
     pub fn deallocate(&mut self, ptr: *mut u8, layout: Layout) {
         let (size, _) = Self::size_align(layout);
-        unsafe {
-            self.add_free_region(ptr as usize, size)
-        }
+        unsafe { self.add_free_region(ptr as usize, size) }
     }
 }
 

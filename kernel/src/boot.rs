@@ -10,7 +10,7 @@ use x86_64::VirtAddr;
 
 pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     serial::init();
-    
+
     if let Err(e) = validate_boot_info(boot_info) {
         crate::serial::println!("BOOT ERROR: Invalid BootInfo: {}", e);
         panic!("Fatal boot error: {}", e);
@@ -96,15 +96,14 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
         heap_test
     );
 
-    // Initialize GDT (with TSS for double-fault IST) and IDT
+    // Initialize GDT (with TSS for double-fault IST)
     crate::gdt::init();
-    crate::interrupts::init_idt();
-    let _ = writeln!(writer, "status: GDT, IDT, and TSS initialized");
+    crate::interrupts::init();
+    let _ = writeln!(writer, "status: GDT, IDT, and APIC initialized");
 
-    // Initialize PIC and enable hardware interrupts
-    unsafe { crate::interrupts::PICS.lock().initialize() };
+    // Enable hardware interrupts
     x86_64::instructions::interrupts::enable();
-    let _ = writeln!(writer, "status: PIC initialized, interrupts enabled");
+    let _ = writeln!(writer, "status: interrupts enabled");
 
     // Create test tasks and shell
     crate::task::scheduler::add_task(crate::task::Task::new(shell_task));
@@ -117,28 +116,19 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
 }
 
 extern "sysv64" fn task_a() {
-    for _ in 0..10 {
-        crate::serial::print(format_args!("A"));
-        crate::task::scheduler::yield_task();
-    }
-    crate::serial::print(format_args!("\nstatus: Task A finished\n"));
-    // Prevent return (which would crash since there's no return address)
     loop {
-        crate::task::scheduler::yield_task();
+        crate::serial::print(format_args!("A"));
+        for _ in 0..50000 { unsafe { core::arch::asm!("nop"); } }
     }
 }
 
 extern "sysv64" fn task_b() {
-    for _ in 0..10 {
-        crate::serial::print(format_args!("B"));
-        crate::task::scheduler::yield_task();
-    }
-    crate::serial::print(format_args!("\nstatus: Task B finished\n"));
-    // Loop to keep yielding
     loop {
-        crate::task::scheduler::yield_task();
+        crate::serial::print(format_args!("B"));
+        for _ in 0..50000 { unsafe { core::arch::asm!("nop"); } }
     }
 }
+
 
 extern "sysv64" fn shell_task() {
     let mut repl = crate::shell::Repl::new();
@@ -160,9 +150,8 @@ extern "sysv64" fn shell_task() {
     let _ = repl.process_command("mem").write_output(&mut SerialWriter);
     let _ = writeln!(SerialWriter, "");
 
-    // Shell loop - respond to internal commands
+    // Shell loop
     loop {
-        crate::serial::print(format_args!("\r\n{}> ", repl.prompt_str()));
         crate::task::scheduler::yield_task();
     }
 }
@@ -194,7 +183,9 @@ fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
         return Err("Memory map is empty");
     }
 
-    if boot_info.memory_map.desc_size < core::mem::size_of::<newos_abi::boot::BootMemoryDescriptor>() {
+    if boot_info.memory_map.desc_size
+        < core::mem::size_of::<newos_abi::boot::BootMemoryDescriptor>()
+    {
         return Err("Memory map descriptor size is too small");
     }
 

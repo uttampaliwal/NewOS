@@ -1,4 +1,4 @@
-use super::{Task, switch_context};
+use super::Task;
 use alloc::collections::VecDeque;
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -24,57 +24,92 @@ impl Scheduler {
 }
 
 pub fn add_task(task: Task) {
-    SCHEDULER.lock().tasks.push_back(task);
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        SCHEDULER.lock().tasks.push_back(task);
+    });
 }
 
 pub fn start_scheduling() -> ! {
-    let mut sched = SCHEDULER.lock();
+    let mut next_ptr: usize = 0;
 
-    if let Some(next_task) = sched.tasks.pop_front() {
-        sched.current_task = Some(next_task);
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut sched = SCHEDULER.lock();
 
-        let next_ptr = &sched.current_task.as_ref().unwrap().stack_ptr as *const usize;
-        let prev_ptr = &mut sched.boot_stack_ptr as *mut usize;
+        if let Some(next_task) = sched.tasks.pop_front() {
+            sched.current_task = Some(next_task);
+            next_ptr = sched.current_task.as_ref().unwrap().stack_ptr;
+        }
+    });
 
-        // Unlock the scheduler before switching context
-        drop(sched);
+    if next_ptr != 0 {
+        // Update TSS with the kernel stack top of the first task
+        x86_64::instructions::interrupts::without_interrupts(|| {
+            let sched = SCHEDULER.lock();
+            let kernel_stack_top = sched.current_task.as_ref().unwrap().kernel_stack_top;
+            crate::gdt::set_interrupt_stack(x86_64::VirtAddr::new(kernel_stack_top as u64));
+        });
 
         unsafe {
-            switch_context(prev_ptr, next_ptr);
+            core::arch::asm!(
+                "mov rsp, {0}",
+                "pop r15",
+                "pop r14",
+                "pop r13",
+                "pop r12",
+                "pop r11",
+                "pop r10",
+                "pop r9",
+                "pop r8",
+                "pop rdi",
+                "pop rsi",
+                "pop rbp",
+                "pop rdx",
+                "pop rcx",
+                "pop rbx",
+                "pop rax",
+                "iretq",
+                in(reg) next_ptr,
+                options(noreturn)
+            );
         }
-
-        // When we return to boot task (if ever), we would end up here.
-        // For now, we don't expect to return.
-        panic!("Returned to boot task unexpectedly!");
     }
 
     panic!("No tasks to schedule!");
 }
 
 pub fn yield_task() {
-    let mut sched = SCHEDULER.lock();
-
-    let prev_task = sched
-        .current_task
-        .take()
-        .expect("yield_task: no current task");
-
-    if let Some(next_task) = sched.tasks.pop_front() {
-        sched.tasks.push_back(prev_task);
-        sched.current_task = Some(next_task);
-
-        // prev_task is now at the back of the queue
-        let prev_ptr = &mut sched.tasks.back_mut().unwrap().stack_ptr as *mut usize;
-        let next_ptr = &sched.current_task.as_ref().unwrap().stack_ptr as *const usize;
-
-        // Unlock before switching
-        drop(sched);
-
-        unsafe {
-            switch_context(prev_ptr, next_ptr);
-        }
-    } else {
-        // No other task, just keep running the current one
-        sched.current_task = Some(prev_task);
+    unsafe {
+        core::arch::asm!("int 32");
     }
+}
+
+pub fn timer_tick(current_stack_ptr: usize) -> usize {
+    // Only try to yield if we can get the lock, to avoid deadlocks in interrupt handler
+    if let Some(mut sched) = SCHEDULER.try_lock() {
+        if let Some(mut prev_task) = sched.current_task.take() {
+            if let Some(next_task) = sched.tasks.pop_front() {
+                // Save the current stack pointer
+                prev_task.stack_ptr = current_stack_ptr;
+
+                // Put previous task back in queue
+                sched.tasks.push_back(prev_task);
+
+                // Set current task to the next one
+                sched.current_task = Some(next_task);
+
+                // Update TSS with the kernel stack top of the new task
+                let kernel_stack_top = sched.current_task.as_ref().unwrap().kernel_stack_top;
+                crate::gdt::set_interrupt_stack(x86_64::VirtAddr::new(kernel_stack_top as u64));
+
+                // Return the new stack pointer to the assembly stub
+
+                return sched.current_task.as_ref().unwrap().stack_ptr;
+            } else {
+                // No other task, put it back and return 0 (no switch)
+                sched.current_task = Some(prev_task);
+                return 0;
+            }
+        }
+    }
+    0
 }
