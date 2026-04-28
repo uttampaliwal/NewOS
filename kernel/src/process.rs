@@ -190,4 +190,13 @@ impl Process {
             }
         }
     }
+
+    pub fn kernel_process() -> Self {
+        let (pml4_frame, _) = x86_64::registers::control::Cr3::read();
+        Self {
+            pml4_frame,
+            entry_point: VirtAddr::new(0), // Not used for kernel tasks
+            stack_top: VirtAddr::new(0),    // Not used for kernel tasks
+        }
+    }
 }

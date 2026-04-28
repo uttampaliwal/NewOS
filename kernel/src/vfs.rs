@@ -55,11 +55,33 @@ impl Vfs {
         
         if addr != 0 && size > 0 {
             let data = unsafe { core::slice::from_raw_parts(addr as *const u8, size as usize) };
-            self.entries.push(VfsEntry {
-                name: String::from("initramfs.txt"),
-                file_type: FileType::Regular,
-                data: Some(data),
-            });
+            
+            let mut offset = 0;
+            while offset + 72 <= data.len() {
+                // Read 64-byte filename
+                let name_bytes = &data[offset..offset+64];
+                let name_len = name_bytes.iter().position(|&b| b == 0).unwrap_or(64);
+                let name = core::str::from_utf8(&name_bytes[..name_len]).unwrap_or("unknown");
+                
+                // Read 8-byte size
+                let mut size_bytes = [0u8; 8];
+                size_bytes.copy_from_slice(&data[offset+64..offset+72]);
+                let file_size = u64::from_le_bytes(size_bytes) as usize;
+                
+                offset += 72;
+                
+                if offset + file_size <= data.len() {
+                    let file_data = &data[offset..offset+file_size];
+                    self.entries.push(VfsEntry {
+                        name: String::from(name),
+                        file_type: FileType::Regular,
+                        data: Some(unsafe { core::mem::transmute(file_data) }),
+                    });
+                    offset += file_size;
+                } else {
+                    break;
+                }
+            }
         }
     }
 

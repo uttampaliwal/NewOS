@@ -1,5 +1,6 @@
 use x86_64::VirtAddr;
-use x86_64::structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB};
+use x86_64::structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB, PageTable, OffsetPageTable};
+use crate::process::Process;
 
 pub mod scheduler;
 
@@ -29,6 +30,7 @@ pub struct Task {
     id: TaskId,
     pub(crate) stack_ptr: usize,
     pub(crate) kernel_stack_top: usize,
+    pub(crate) process: Process,
     state: TaskState,
 }
 
@@ -111,11 +113,92 @@ impl Task {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
+            process: Process::kernel_process(),
+            state: TaskState::Ready,
+        }
+    }
+
+    pub fn new_user(
+        process: Process,
+        mapper: &mut impl Mapper<Size4KiB>,
+        frame_allocator: &mut impl FrameAllocator<Size4KiB>,
+        physical_memory_offset: x86_64::VirtAddr,
+    ) -> Self {
+        const STACK_PAGES: u64 = 4;
+        const STACK_SIZE: u64 = STACK_PAGES * 4096;
+        
+        let id = TaskId::new();
+        // Use a unique higher-half address for the kernel stack
+        let kernel_stack_virt = x86_64::VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * 0x1000_0000);
+        let stack_top_virt = kernel_stack_virt + STACK_SIZE;
+
+        unsafe {
+            let pages = Page::<Size4KiB>::range_inclusive(
+                Page::containing_address(kernel_stack_virt),
+                Page::containing_address(kernel_stack_virt + STACK_SIZE - 1u64),
+            );
+
+            for page in pages {
+                let frame = frame_allocator.allocate_frame().expect("out of memory for user-task kernel stack");
+                
+                // Map the kernel stack into the NEW process address space.
+                // We need to switch to the process PML4 temporarily or map it directly.
+                // For simplicity, we'll map it into the process address space using its mapper.
+                let pml4_ptr = (physical_memory_offset + process.pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+                let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+                
+                process_mapper.map_to(
+                    page, 
+                    frame, 
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE, 
+                    frame_allocator
+                ).expect("failed to map kernel stack in process space").ignore();
+            }
+        }
+
+        let mut stack_ptr = stack_top_virt.as_mut_ptr::<usize>();
+
+        unsafe {
+            // SS (User Data 0x23)
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0x23);
+            // RSP
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(process.stack_top.as_u64() as usize);
+            // RFLAGS
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0x202); 
+            // CS (User Code 0x2b)
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0x2b);
+            // RIP
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(process.entry_point.as_u64() as usize);
+
+            // General Purpose Registers (15 zeros)
+            for _ in 0..15 {
+                stack_ptr = stack_ptr.sub(1);
+                stack_ptr.write(0);
+            }
+        }
+
+        Self {
+            id,
+            stack_ptr: stack_ptr as usize,
+            kernel_stack_top: stack_top_virt.as_u64() as usize,
+            process,
             state: TaskState::Ready,
         }
     }
 
     pub fn switch_to(&self) {
-        crate::gdt::set_interrupt_stack(VirtAddr::new(self.kernel_stack_top as u64));
+        crate::gdt::set_interrupt_stack(x86_64::VirtAddr::new(self.kernel_stack_top as u64));
+
+        let (current_pml4, _) = x86_64::registers::control::Cr3::read();
+        if current_pml4 != self.process.pml4_frame {
+            unsafe {
+                x86_64::registers::control::Cr3::write(self.process.pml4_frame, x86_64::registers::control::Cr3Flags::empty());
+            }
+        }
     }
 }

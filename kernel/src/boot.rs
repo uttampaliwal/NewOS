@@ -41,20 +41,34 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     crate::vfs::VFS.lock().init_from_ramdisk(boot_info.ramdisk_addr, boot_info.ramdisk_size);
     let _ = writeln!(writer, "[STG: VFS_INIT]");
 
-    // 5. Bring up stable kernel tasks OR a user process from ELF
-    let _ = writeln!(writer, "[STG: TASKS_READY]");
-
-    // Proof of concept: Try to load a user process from an ELF in VFS (if we had one)
-    // For now, let's keep kernel tasks but verify we CAN load an ELF if data exists
-    /*
+    // 5. Load and start the init process from ELF
+    let _ = writeln!(writer, "[STG: INIT_LOAD]");
     {
         let mut vfs = crate::vfs::VFS.lock();
-        if let Some(fd) = vfs.open("user_program.elf") {
-             // ... load and add to scheduler ...
+        if let Some(fd) = vfs.open("init") {
+            let stat = vfs.stat("init").unwrap();
+            let mut elf_data = alloc::vec![0u8; stat.size as usize];
+            if let Some(len) = vfs.read(fd, &mut elf_data) {
+                let init_proc = crate::process::Process::new_from_elf(
+                    &elf_data[..len],
+                    &mut frame_allocator,
+                    phys_mem_offset,
+                ).expect("failed to load init process ELF");
+                
+                crate::task::scheduler::add_task(crate::task::Task::new_user(
+                    init_proc,
+                    &mut mapper,
+                    &mut frame_allocator,
+                    phys_mem_offset,
+                ));
+                let _ = writeln!(writer, "[STG: INIT_READY]");
+            }
+        } else {
+            let _ = writeln!(writer, "[STG: INIT_NOT_FOUND]");
         }
     }
-    */
 
+    // 6. Bring up stable kernel tasks as well
     crate::task::scheduler::add_task(crate::task::Task::new(
         heartbeat_task,
         &mut mapper,

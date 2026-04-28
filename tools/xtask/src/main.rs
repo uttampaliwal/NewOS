@@ -151,6 +151,37 @@ fn build_uefi(workspace_root: &Path) -> PathBuf {
     staged_image
 }
 
+fn build_userland(workspace_root: &Path) -> PathBuf {
+    run_or_die(
+        "cargo",
+        [
+            "+nightly",
+            "build",
+            "-p",
+            "init",
+            "--target",
+            "x86_64-unknown-none",
+            "--release",
+        ],
+        workspace_root,
+    );
+
+    let built_bin = workspace_root
+        .join("target")
+        .join("x86_64-unknown-none")
+        .join("release")
+        .join("init");
+
+    if !built_bin.exists() {
+        eprintln!(
+            "Expected userland init binary was not produced: {}",
+            built_bin.display()
+        );
+        std::process::exit(1);
+    }
+    built_bin
+}
+
 fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     run_or_die(
         "cargo",
@@ -187,11 +218,29 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     let staged_image = staged_dir.join("kernel.elf");
     fs::copy(&built_image, &staged_image).expect("copying kernel image should succeed");
 
-    // Create a dummy initramfs.img for testing
+    // Package initramfs
+    let init_bin = build_userland(workspace_root);
+    let init_data = fs::read(&init_bin).expect("failed to read init binary");
+    
+    let mut ramdisk = Vec::new();
+    
+    // Helper to add a "file" to our simple ramdisk
+    let mut add_file = |name: &str, data: &[u8]| {
+        let mut header = [0u8; 64];
+        let name_bytes = name.as_bytes();
+        let name_len = name_bytes.len().min(63);
+        header[..name_len].copy_from_slice(&name_bytes[..name_len]);
+        ramdisk.extend_from_slice(&header);
+        ramdisk.extend_from_slice(&(data.len() as u64).to_le_bytes());
+        ramdisk.extend_from_slice(data);
+    };
+
+    add_file("initramfs.txt", b"Hello from Initramfs!\nThis is a kernel experiment.\n");
+    add_file("init", &init_data);
+
     let initramfs_path = staged_dir.join("initramfs.img");
-    fs::write(&initramfs_path, "Hello from Initramfs!\nThis is a kernel experiment.\n")
-        .expect("creating initramfs should succeed");
-    println!("Initramfs created at {}", initramfs_path.display());
+    fs::write(&initramfs_path, &ramdisk).expect("creating initramfs should succeed");
+    println!("Initramfs created at {} ({} bytes, including 'init')", initramfs_path.display(), ramdisk.len());
 
     staged_image
 }

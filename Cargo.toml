@@ -5,6 +5,7 @@ members = [
     "shared/serial",
     "tools/xtask",
     "kernel",
+    "userland/init",
 ]
 default-members = [
     "shared/abi",
