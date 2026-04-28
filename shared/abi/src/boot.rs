@@ -118,6 +118,8 @@ pub struct BootInfo {
     pub kernel_image_base: u64,
     pub kernel_image_size: u64,
     pub physical_memory_offset: u64,
+    pub ramdisk_addr: u64,
+    pub ramdisk_size: u64,
     pub memory_map: BootMemoryMap,
 }
 
@@ -131,6 +133,8 @@ impl BootInfo {
             kernel_image_base: 0,
             kernel_image_size: 0,
             physical_memory_offset: 0,
+            ramdisk_addr: 0,
+            ramdisk_size: 0,
             memory_map: BootMemoryMap::empty(),
         }
     }
@@ -146,15 +150,17 @@ mod tests {
 
     #[test]
     fn uefi_boot_info_uses_expected_defaults() {
-        let boot_info = BootInfo::uefi(2);
+        let boot_info = BootInfo::uefi(3);
 
-        assert_eq!(boot_info.abi_version, 2);
+        assert_eq!(boot_info.abi_version, 3);
         assert_eq!(boot_info.environment, BootEnvironment::Uefi);
         assert_eq!(boot_info.loader, BootLoaderKind::UefiLoader);
         assert_eq!(boot_info.flags, 0);
         assert_eq!(boot_info.kernel_image_base, 0);
         assert_eq!(boot_info.kernel_image_size, 0);
         assert_eq!(boot_info.physical_memory_offset, 0);
+        assert_eq!(boot_info.ramdisk_addr, 0);
+        assert_eq!(boot_info.ramdisk_size, 0);
         assert_eq!(boot_info.memory_map.entry_count(), 0);
     }
 

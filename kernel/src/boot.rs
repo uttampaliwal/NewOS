@@ -18,6 +18,7 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     let mut frame_allocator = FrameAllocator::new(boot_info);
 
     let _ = writeln!(writer, "[STG: KERNEL_REACHED]");
+    let _ = writeln!(writer, "Ramdisk: addr=0x{:016x}, size={} bytes", boot_info.ramdisk_addr, boot_info.ramdisk_size);
     
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
 
@@ -36,8 +37,24 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     crate::syscall::init();
     let _ = writeln!(writer, "[STG: ARCH_INIT]");
 
-    // 4. Bring up stable kernel tasks before reintroducing user mode.
+    // 4. Initialize VFS
+    crate::vfs::VFS.lock().init_from_ramdisk(boot_info.ramdisk_addr, boot_info.ramdisk_size);
+    let _ = writeln!(writer, "[STG: VFS_INIT]");
+
+    // 5. Bring up stable kernel tasks OR a user process from ELF
     let _ = writeln!(writer, "[STG: TASKS_READY]");
+
+    // Proof of concept: Try to load a user process from an ELF in VFS (if we had one)
+    // For now, let's keep kernel tasks but verify we CAN load an ELF if data exists
+    /*
+    {
+        let mut vfs = crate::vfs::VFS.lock();
+        if let Some(fd) = vfs.open("user_program.elf") {
+             // ... load and add to scheduler ...
+        }
+    }
+    */
+
     crate::task::scheduler::add_task(crate::task::Task::new(
         heartbeat_task,
         &mut mapper,
@@ -63,6 +80,21 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
 
 extern "sysv64" fn heartbeat_task() -> ! {
     let mut counter = 0u64;
+
+    // Proof of concept: Read from VFS
+    {
+        let mut vfs = crate::vfs::VFS.lock();
+        if let Some(fd) = vfs.open("initramfs.txt") {
+            let mut buf = [0u8; 64];
+            if let Some(len) = vfs.read(fd, &mut buf) {
+                let content = core::str::from_utf8(&buf[..len]).unwrap_or("INVALID UTF-8");
+                crate::serial::print(format_args!("[vfs:initramfs.txt] {}\n", content));
+            }
+        } else {
+            crate::serial::print(format_args!("[vfs] initramfs.txt not found\n"));
+        }
+    }
+
     loop {
         counter = counter.wrapping_add(1);
         if counter % 64 == 0 {
@@ -98,8 +130,8 @@ extern "sysv64" fn idle_task() -> ! {
 }
 
 fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
-    crate::serial::println!("Validating BootInfo: ABI version = {}, expected = 2", boot_info.abi_version);
-    if boot_info.abi_version != 2 {
+    crate::serial::println!("Validating BootInfo: ABI version = {}, expected = 3", boot_info.abi_version);
+    if boot_info.abi_version != 3 {
         return Err("Unsupported BootInfo ABI version");
     }
     if boot_info.memory_map.descriptors.is_null() {

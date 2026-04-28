@@ -1,11 +1,6 @@
 use crate::elf;
-use lazy_static::lazy_static;
 use newos_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
-use spin::Mutex;
-
-lazy_static! {
-    static ref VFS: Mutex<crate::vfs::Vfs> = Mutex::new(crate::vfs::Vfs::new());
-}
+use crate::vfs::VFS;
 
 #[derive(Debug)]
 pub enum SyscallResult {

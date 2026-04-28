@@ -107,7 +107,7 @@ impl CommandResult {
                 writeln!(writer, "Built with Rust (nightly, no_std)")
             }
             CommandResult::Ls => {
-                let vfs = crate::vfs::Vfs::new();
+                let vfs = crate::vfs::VFS.lock();
                 let files = vfs.list_dir();
                 for name in files.iter() {
                     let _ = writeln!(writer, "{}", name);

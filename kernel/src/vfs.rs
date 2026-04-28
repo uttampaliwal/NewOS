@@ -1,5 +1,11 @@
 use alloc::string::String;
 use alloc::vec::Vec;
+use lazy_static::lazy_static;
+use spin::Mutex;
+
+lazy_static! {
+    pub static ref VFS: Mutex<Vfs> = Mutex::new(Vfs::new());
+}
 
 pub const MAX_OPEN_FILES: usize = 16;
 
@@ -38,12 +44,23 @@ pub struct Vfs {
 
 impl Vfs {
     pub fn new() -> Self {
-        let mut vfs = Self {
+        Self {
             entries: Vec::new(),
             open_files: [const { None }; MAX_OPEN_FILES],
-        };
-        vfs.init_defaults();
-        vfs
+        }
+    }
+
+    pub fn init_from_ramdisk(&mut self, addr: u64, size: u64) {
+        self.init_defaults();
+        
+        if addr != 0 && size > 0 {
+            let data = unsafe { core::slice::from_raw_parts(addr as *const u8, size as usize) };
+            self.entries.push(VfsEntry {
+                name: String::from("initramfs.txt"),
+                file_type: FileType::Regular,
+                data: Some(data),
+            });
+        }
     }
 
     fn init_defaults(&mut self) {
@@ -61,11 +78,6 @@ impl Vfs {
             name: String::from("null"),
             file_type: FileType::Device,
             data: None,
-        });
-        self.entries.push(VfsEntry {
-            name: String::from("hello.txt"),
-            file_type: FileType::Regular,
-            data: Some(b"Hello from NewOS!\n"),
         });
     }
 

@@ -186,6 +186,13 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
 
     let staged_image = staged_dir.join("kernel.elf");
     fs::copy(&built_image, &staged_image).expect("copying kernel image should succeed");
+
+    // Create a dummy initramfs.img for testing
+    let initramfs_path = staged_dir.join("initramfs.img");
+    fs::write(&initramfs_path, "Hello from Initramfs!\nThis is a SOTA OS experiment.\n")
+        .expect("creating initramfs should succeed");
+    println!("Initramfs created at {}", initramfs_path.display());
+
     staged_image
 }
 

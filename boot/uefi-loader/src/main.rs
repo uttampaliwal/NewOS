@@ -22,7 +22,9 @@ use x86_64::registers::control::{Cr3, Cr3Flags};
 
 const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
 const KERNEL_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\newos\kernel.elf");
+const RAMDISK_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\newos\initramfs.img");
 const PHYSICAL_MEMORY_OFFSET: u64 = 0xffff_8000_0000_0000;
+const RAMDISK_VIRTUAL_BASE: u64 = 0xffff_9000_0000_0000;
 
 use newos_serial::{self as serial, println as serial_println};
 
@@ -33,19 +35,42 @@ fn main() -> Status {
 
     serial_println!("NewOS UEFI loader (SOTA Huge-Page Refactor)");
     
-    // 1. Load Kernel ELF
-    let loaded_kernel = {
+    // 1. Load Kernel ELF and Ramdisk
+    let (loaded_kernel, ramdisk_phys, ramdisk_size) = {
         let image_fs = boot::get_image_file_system(boot::image_handle())
             .expect("image filesystem should be available");
         let mut file_system = FileSystem::new(image_fs);
+        
         let kernel_bytes = file_system
             .read(KERNEL_IMAGE_PATH)
             .expect("kernel image should be readable");
         let loaded_kernel =
             elf::load_kernel(&kernel_bytes).expect("kernel ELF should load successfully");
-
         serial_println!("kernel loaded: entry=0x{:016x}", loaded_kernel.entry_point);
-        loaded_kernel
+
+        let ramdisk_bytes = file_system
+            .read(RAMDISK_IMAGE_PATH)
+            .unwrap_or_else(|_| {
+                serial_println!("WARNING: ramdisk not found at {:?}", RAMDISK_IMAGE_PATH);
+                alloc::vec::Vec::new()
+            });
+        
+        let mut phys_addr = 0;
+        let mut size = 0;
+        
+        if !ramdisk_bytes.is_empty() {
+            size = ramdisk_bytes.len() as u64;
+            let pages = size.div_ceil(4096);
+            let ramdisk_alloc = boot::allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, pages as usize)
+                .expect("failed to allocate ramdisk pages");
+            phys_addr = ramdisk_alloc.as_ptr() as u64;
+            unsafe {
+                core::ptr::copy_nonoverlapping(ramdisk_bytes.as_ptr(), phys_addr as *mut u8, ramdisk_bytes.len());
+            }
+            serial_println!("ramdisk loaded: phys=0x{:016x}, size={} bytes", phys_addr, size);
+        }
+
+        (loaded_kernel, phys_addr, size)
     };
 
     // 2. Allocate persistent data while Boot Services are active
@@ -53,7 +78,7 @@ fn main() -> Status {
         .expect("failed to allocate BootInfo");
     let boot_info_ptr = boot_info_page.as_ptr() as *mut BootInfo;
 
-    let scratchpad_pages = 128; // Increased for safe margin
+    let scratchpad_pages = 256; // Increased for more mappings
     let scratchpad_ptr = boot::allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, scratchpad_pages)
         .expect("failed to allocate scratchpad");
     let scratchpad_phys = scratchpad_ptr.as_ptr() as u64;
@@ -68,7 +93,7 @@ fn main() -> Status {
     
     unsafe {
         core::ptr::write_bytes(new_pml4 as *mut PageTable, 0, 1);
-        setup_mappings(new_pml4, scratchpad_phys, loaded_kernel);
+        setup_mappings(new_pml4, scratchpad_phys, loaded_kernel, ramdisk_phys, ramdisk_size);
     }
 
     // 5. Exit Boot Services
@@ -89,6 +114,8 @@ fn main() -> Status {
         boot_info.kernel_image_base = loaded_kernel.virtual_base;
         boot_info.kernel_image_size = loaded_kernel.image_size;
         boot_info.physical_memory_offset = PHYSICAL_MEMORY_OFFSET;
+        boot_info.ramdisk_addr = if ramdisk_size > 0 { RAMDISK_VIRTUAL_BASE } else { 0 };
+        boot_info.ramdisk_size = ramdisk_size;
         boot_info.memory_map = BootMemoryMap {
             descriptors: map_buffer_ptr.as_ptr().cast(),
             map_size: memory_map.meta().map_size,
@@ -112,7 +139,13 @@ fn panic(info: &PanicInfo<'_>) -> ! {
     qemu_exit_failure();
 }
 
-unsafe fn setup_mappings(pml4: &mut PageTable, scratchpad_phys: u64, kernel: LoadedKernel) {
+unsafe fn setup_mappings(
+    pml4: &mut PageTable,
+    scratchpad_phys: u64,
+    kernel: LoadedKernel,
+    ramdisk_phys: u64,
+    ramdisk_size: u64,
+) {
     let (old_pml4_frame, _) = Cr3::read();
     let old_pml4 = unsafe { &*(old_pml4_frame.start_address().as_u64() as *const PageTable) };
 
@@ -136,7 +169,7 @@ unsafe fn setup_mappings(pml4: &mut PageTable, scratchpad_phys: u64, kernel: Loa
     }
     let mut scratch_alloc = ScratchAllocator(&mut alloc);
 
-    // 2. Map Kernel to Higher-Half (0xffffffff80000000) using 4KB pages (standard)
+    // 2. Map Kernel to Higher-Half (0xffffffff80000000) using 4KB pages
     let page_count = kernel.image_size.div_ceil(4096);
     for i in 0..page_count {
         let page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(kernel.virtual_base + i * 4096));
@@ -145,8 +178,19 @@ unsafe fn setup_mappings(pml4: &mut PageTable, scratchpad_phys: u64, kernel: Loa
         unsafe { mapper.map_to(page, frame, flags, &mut scratch_alloc).expect("failed to map kernel").ignore(); }
     }
 
-    // 3. Map first 4GB of physical RAM to Higher-Half Offset (0xffff800000000000)
-    // USING 2MB HUGE PAGES for SOTA efficiency.
+    // 3. Map Ramdisk to Higher-Half (0xffff900000000000) using 4KB pages
+    if ramdisk_size > 0 {
+        let ramdisk_page_count = ramdisk_size.div_ceil(4096);
+        for i in 0..ramdisk_page_count {
+            let page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(RAMDISK_VIRTUAL_BASE + i * 4096));
+            let frame = PhysFrame::containing_address(x86_64::PhysAddr::new(ramdisk_phys + i * 4096));
+            let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+            unsafe { mapper.map_to(page, frame, flags, &mut scratch_alloc).expect("failed to map ramdisk").ignore(); }
+        }
+    }
+
+    // 4. Map first 4GB of physical RAM to Higher-Half Offset (0xffff800000000000)
+    // USING 2MB HUGE PAGES for efficiency.
     for i in 0..(4096 / 2) {
         let addr = PHYSICAL_MEMORY_OFFSET + (i as u64) * 2 * 1024 * 1024;
         let page: x86_64::structures::paging::Page<Size2MiB> = x86_64::structures::paging::Page::containing_address(VirtAddr::new(addr));

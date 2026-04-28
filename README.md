@@ -12,8 +12,8 @@ NewOS aims to feel familiar to Linux users while keeping a cleaner internal desi
 | 1 | Complete | First boot and UEFI loader |
 | 2 | Complete | Freestanding kernel handoff |
 | 3 | Complete | Physical memory bring-up |
-| 4 | In progress | Stable kernel scheduler baseline |
-| 5 | Pending | User mode, ELF loading, and init |
+| 4 | Complete | Stable kernel scheduler baseline |
+| 5 | In progress | User mode and ELF runtime |
 | 6 | Pending | Terminal-first usability |
 | 7 | Pending | Wayland desktop path |
 
@@ -24,7 +24,8 @@ NewOS aims to feel familiar to Linux users while keeping a cleaner internal desi
 - Physical frame allocator and kernel heap bring-up
 - GDT, IDT, TSS, and LAPIC timer initialization
 - Stable higher-half kernel task scheduling baseline
-- Compatibility alias: `cargo xtask uefi-loader`
+- **Initramfs support** (ABI v3) and global VFS
+- **Advanced ELF Loader** with segment mapping and BSS support
 
 ## Current Architectural Position
 
