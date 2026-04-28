@@ -19,7 +19,7 @@
 - QEMU run workflow
 - prepared `x86_64-unknown-none` target for the next handoff step
 
-See [Phase 1 First Boot Plan](C:\Users\uttam\development\NewOS\docs\phase-1-first-boot.md).
+See [Phase 1 First Boot Plan](phase-1-first-boot.md).
 
 ## Phase 2: Freestanding handoff
 
@@ -30,7 +30,7 @@ See [Phase 1 First Boot Plan](C:\Users\uttam\development\NewOS\docs\phase-1-firs
 - `ExitBootServices` plus memory-map handoff
 - transfer of control into the freestanding kernel entry point
 
-See [Phase 2 Freestanding Handoff](C:\Users\uttam\development\NewOS\docs\phase-2-freestanding-handoff.md).
+See [Phase 2 Freestanding Handoff](phase-2-freestanding-handoff.md).
 
 ## Phase 3: Physical memory bring-up
 
@@ -40,7 +40,7 @@ See [Phase 2 Freestanding Handoff](C:\Users\uttam\development\NewOS\docs\phase-2
 - low-memory skip policy for early safety
 - serial proof that the kernel can hand out page-frame addresses
 
-See [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\phase-3-memory-bringup.md).
+See [Phase 3 Physical Memory Bring-Up](phase-3-memory-bringup.md).
 
 ## Phase 4: Interrupts and Timers
 
@@ -48,7 +48,7 @@ See [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\pha
 - LAPIC timer interrupts
 - stable kernel-thread dispatch baseline
 
-See [Phase 4 Stable Kernel Tasks](C:\Users\uttam\development\NewOS\docs\phase-4-stable-kernel-tasks.md).
+See [Phase 4 Stable Kernel Tasks](phase-4-stable-kernel-tasks.md).
 
 ## Phase 5: Execution
 

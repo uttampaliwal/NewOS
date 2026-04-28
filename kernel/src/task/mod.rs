@@ -76,10 +76,21 @@ impl Task {
         let mut stack_ptr = stack_top_virt.as_mut_ptr::<usize>();
 
         unsafe {
-            // Keep a full interrupt-style landing frame so the very first
-            // `iretq` has valid stack storage even on CPUs that expect the
-            // privilege-return slots to exist.
+            // THE NEWOS CONTEXT FRAME
+            // 
+            // When a task is NOT running, its stack looks like this (from high to low address):
+            // 1. [CPU FRAME] SS
+            // 2. [CPU FRAME] RSP
+            // 3. [CPU FRAME] RFLAGS
+            // 4. [CPU FRAME] CS
+            // 5. [CPU FRAME] RIP
+            // 6. RAX, RBX, RCX, RDX, RBP, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, R15 (General Purpose)
+            //
+            // We use 'iretq' to return to both kernel threads and user processes, so we must
+            // ensure the stack always contains a valid CPU frame.
+
             stack_ptr = stack_ptr.sub(1);
+
             stack_ptr.write(0x10);
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(stack_top_virt.as_u64() as usize);

@@ -6,7 +6,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn abi_version_starts_at_one() {
+    fn abi_version_is_current() {
         assert_eq!(ABI_VERSION, 3);
     }
 }

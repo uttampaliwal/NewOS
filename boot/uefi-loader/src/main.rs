@@ -33,7 +33,7 @@ fn main() -> Status {
     serial::init();
     let _ = boot::set_watchdog_timer(0, 0, None);
 
-    serial_println!("NewOS UEFI loader (SOTA Huge-Page Refactor)");
+    serial_println!("NewOS UEFI loader");
     
     // 1. Load Kernel ELF and Ramdisk
     let (loaded_kernel, ramdisk_phys, ramdisk_size) = {

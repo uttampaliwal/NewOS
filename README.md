@@ -24,8 +24,8 @@ NewOS aims to feel familiar to Linux users while keeping a cleaner internal desi
 - Physical frame allocator and kernel heap bring-up
 - GDT, IDT, TSS, and LAPIC timer initialization
 - Stable higher-half kernel task scheduling baseline
-- **Initramfs support** (ABI v3) and global VFS
-- **Advanced ELF Loader** with segment mapping and BSS support
+- Initramfs support (ABI v3) and global VFS
+- ELF segment loader with BSS support
 
 ## Current Architectural Position
 
@@ -48,18 +48,17 @@ cargo xtask run-uefi
 cargo xtask uefi-loader
 ```
 
-See [docs/quickstart.md](C:\Users\uttam\development\NewOS\docs\quickstart.md) for setup details.
+See [docs/quickstart.md](docs/quickstart.md) for setup details.
 
 ## Documentation
 
-- [Architecture](C:\Users\uttam\development\NewOS\docs\architecture.md)
-- [Roadmap](C:\Users\uttam\development\NewOS\docs\roadmap.md)
-- [Phase 1 First Boot](C:\Users\uttam\development\NewOS\docs\phase-1-first-boot.md)
-- [Phase 2 Freestanding Handoff](C:\Users\uttam\development\NewOS\docs\phase-2-freestanding-handoff.md)
-- [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\phase-3-memory-bringup.md)
-- [Phase 4 Stable Kernel Tasks](C:\Users\uttam\development\NewOS\docs\phase-4-stable-kernel-tasks.md)
-- [Windows Host Setup](C:\Users\uttam\development\NewOS\docs\windows-host-setup.md)
-
+- [Architecture](docs/architecture.md)
+- [Roadmap](docs/roadmap.md)
+- [Phase 1 First Boot](docs/phase-1-first-boot.md)
+- [Phase 2 Freestanding Handoff](docs/phase-2-freestanding-handoff.md)        
+- [Phase 3 Physical Memory Bring-Up](docs/phase-3-memory-bringup.md)
+- [Phase 4 Stable Kernel Tasks](docs/phase-4-stable-kernel-tasks.md)
+- [Windows Host Setup](docs/windows-host-setup.md)
 ## Repository Layout
 
 ```text

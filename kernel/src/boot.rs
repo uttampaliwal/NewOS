@@ -134,8 +134,42 @@ fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
     if boot_info.abi_version != 3 {
         return Err("Unsupported BootInfo ABI version");
     }
+
+    // 1. Memory Map Invariants
     if boot_info.memory_map.descriptors.is_null() {
         return Err("Memory map descriptors pointer is null");
     }
+    if (boot_info.memory_map.descriptors as usize) % 8 != 0 {
+        return Err("Memory map descriptors must be 8-byte aligned");
+    }
+    if boot_info.memory_map.map_size == 0 {
+        return Err("Memory map is empty");
+    }
+    if boot_info.memory_map.desc_size < core::mem::size_of::<newos_abi::boot::BootMemoryDescriptor>() {
+        return Err("Memory map descriptor size is too small");
+    }
+
+    // 2. Memory Layout Invariants
+    if boot_info.physical_memory_offset < 0xffff_8000_0000_0000 {
+        return Err("Physical memory offset must be in higher-half");
+    }
+
+    // 3. Kernel Image Invariants
+    if boot_info.kernel_image_base < 0xffff_ffff_8000_0000 {
+        return Err("Kernel image base must be in higher-half kernel region");
+    }
+    if boot_info.kernel_image_size == 0 {
+        return Err("Kernel image size cannot be zero");
+    }
+
+    // 4. Ramdisk Invariants
+    if boot_info.ramdisk_size > 0 && boot_info.ramdisk_addr == 0 {
+        return Err("Ramdisk size is non-zero but address is null");
+    }
+    if boot_info.ramdisk_addr != 0 && boot_info.ramdisk_size == 0 {
+        return Err("Ramdisk address is non-zero but size is null");
+    }
+
     Ok(())
 }
+
