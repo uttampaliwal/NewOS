@@ -1,128 +1,79 @@
 # NewOS
 
-<p align="center">
-  <a href="https://github.com/uttampaliwal/NewOS/actions/workflows/ci.yml">
-    <img src="https://img.shields.io/github/actions/status/workflow/uttampaliwal/NewOS/ci?style=flat-square" alt="CI Status" />
-  </a>
-  <a href="https://crates.io/crates/newos-kernel">
-    <img src="https://img.shields.io/crates/v/newos-kernel" alt="Crate" />
-  </a>
-  <a href="https://github.com/uttampaliwal/NewOS/releases">
-    <img src="https://img.shields.io/github/v/release/uttampaliwal/NewOS" alt="Release" />
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT%20or%20Apache--2.0-blue?style=flat-square" alt="License" />
-  </a>
-  <a href="https://github.com/uttampaliwal/NewOS/issues">
-    <img src="https://img.shields.io/github/issues-raw/uttampaliwal/NewOS?style=flat-square" alt="Issues" />
-  </a>
-  <a href="https://github.com/uttampaliwal/NewOS/forks">
-    <img src="https://img.shields.io/github/forks/uttampaliwal/NewOS?style=flat-square" alt="Forks" />
-  </a>
-  <a href="https://github.com/uttampaliwal/NewOS/stargazers">
-    <img src="https://img.shields.io/github/stars/uttampaliwal/NewOS?style=flat-square" alt="Stars" />
-  </a>
-</p>
-
 **A Rust-first operating system built step by step for learning and long-term usability.**
 
-> *Exploring the potential of AI tools in building a capable and usable operating system.*
-
-<p align="center">
-  <img src="docs/images/boot-demo.gif" alt="NewOS boot demo" width="80%" />
-</p>
+NewOS aims to feel familiar to Linux users while keeping a cleaner internal design. It is not a Linux clone and not a distro. It is a new operating system with Linux-like workability and a modern desktop roadmap.
 
 ## Current Status
 
 | Phase | Status | Milestone |
 |-------|--------|-----------|
-| 0 | ✅ Complete | Foundation & scaffold |
-| 1 | ✅ Complete | First boot & UEFI loader |
-| 2 | ✅ Complete | Freestanding kernel handoff |
-| 3 | ✅ Complete | Physical memory bring-up |
-| 4 | ✅ Complete | Interrupts & timers |
-| 5 | ✅ Complete | Execution & syscalls |
-| 6 | 🚧 Pending | Terminal-first usability |
-| 7 | 🚧 Pending | Wayland desktop path |
+| 0 | Complete | Foundation and scaffold |
+| 1 | Complete | First boot and UEFI loader |
+| 2 | Complete | Freestanding kernel handoff |
+| 3 | Complete | Physical memory bring-up |
+| 4 | In progress | Stable kernel scheduler baseline |
+| 5 | Pending | User mode, ELF loading, and init |
+| 6 | Pending | Terminal-first usability |
+| 7 | Pending | Wayland desktop path |
 
 ## What Works
 
-- Verified UEFI loader → freestanding kernel handoff in QEMU
+- Verified UEFI loader to freestanding kernel handoff in QEMU
 - `x86_64-unknown-none` kernel image with serial output
-- Physical frame allocator + bump heap with `alloc` crate support
-- GDT, IDT, TSS, and PIC setup with hardware timer interrupts
-- Cooperative kernel multitasking
+- Physical frame allocator and kernel heap bring-up
+- GDT, IDT, TSS, and LAPIC timer initialization
+- Stable higher-half kernel task scheduling baseline
+- Compatibility alias: `cargo xtask uefi-loader`
+
+## Current Architectural Position
+
+The kernel now prioritizes a dependable higher-half bring-up path:
+
+- UEFI loader stages a freestanding kernel ELF
+- the loader exits boot services and passes an explicit `BootInfo`
+- the kernel initializes paging, heap, GDT, IDT, TSS, and timer interrupts
+- execution starts from real kernel tasks with mapped kernel stacks
+
+Early user mode is intentionally deferred until the next execution phase. The previous experiment of copying kernel Rust function bytes into user pages is not a sound user-program model, so the project now treats `kernel threads first, user mode later` as the correct milestone boundary.
 
 ## Quick Start
 
 ```powershell
-# Install build tools (see docs/windows-host-setup.md)
 cargo xtask doctor
-
-# Build and run in QEMU
 cargo xtask run-uefi
+
+# Compatibility alias
+cargo xtask uefi-loader
 ```
 
-See [docs/quickstart.md](docs/quickstart.md) for full setup.
-
-## Mission
-
-Build an understandable, replaceable, and well-documented OS from first principles — while learning deeply and using modern tools.
-
-## Architecture
-
-<p align="center">
-  <img src="docs/architecture-diagram.svg" alt="Architecture" width="100%" />
-</p>
-
-See [docs/architecture-diagram.md](docs/architecture-diagram.md) for detailed system design.
+See [docs/quickstart.md](C:\Users\uttam\development\NewOS\docs\quickstart.md) for setup details.
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) - System overview
-- [Architecture Diagrams](docs/architecture-diagram.md) - Visual design documents
-- [Roadmap Timeline](docs/roadmap-timeline.md) - Phase progress visualization
-- [Roadmap](docs/roadmap.md) - Detailed phase specs
-- [Phase Docs](docs/) - detailed phase breakdowns
+- [Architecture](C:\Users\uttam\development\NewOS\docs\architecture.md)
+- [Roadmap](C:\Users\uttam\development\NewOS\docs\roadmap.md)
+- [Phase 1 First Boot](C:\Users\uttam\development\NewOS\docs\phase-1-first-boot.md)
+- [Phase 2 Freestanding Handoff](C:\Users\uttam\development\NewOS\docs\phase-2-freestanding-handoff.md)
+- [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\phase-3-memory-bringup.md)
+- [Phase 4 Stable Kernel Tasks](C:\Users\uttam\development\NewOS\docs\phase-4-stable-kernel-tasks.md)
+- [Windows Host Setup](C:\Users\uttam\development\NewOS\docs\windows-host-setup.md)
 
 ## Repository Layout
 
-```
-docs/          - project documentation, ADRs, and guides
-boot/         - UEFI firmware-facing entry points
-kernel/       - freestanding kernel core
-shared/abi    - shared types for kernel/userland boundary
-tools/xtask   - developer automation
+```text
+docs/          project documentation, ADRs, and guides
+boot/          UEFI firmware-facing entry points
+kernel/        freestanding kernel core
+shared/abi     shared types for kernel or future userland boundaries
+shared/serial  low-level serial output support
+tools/xtask    developer automation
 ```
 
 ## Principles
 
 - Learn deeply while building something real
-- Prefer modern, maintainable designs over clever shortcuts
+- Prefer clean interfaces over milestone shortcuts
 - Use open standards where compatibility matters
-- Keep interfaces explicit so parts can be upgraded cleanly
-- Write docs as we go so future changes stay understandable
-
-## Contributing
-
-We welcome contributions! Start by:
-
-1. Picking a [good first issue](https://github.com/uttampaliwal/NewOS/labels/good%20first%20issue)
-2. Reading [CONTRIBUTING.md](CONTRIBUTING.md)
-3. Joining the discussion in [GitHub Discussions](https://github.com/uttampaliwal/NewOS/discussions)
-
-## Technology Stack
-
-- Language: Rust (nightly, `no_std`)
-- Target: `x86_64-unknown-none`
-- Build: custom `xtask` automation
-- Testing: QEMU + OVMF
-
-## License
-
-Licensed under MIT or Apache-2.0. See [LICENSE](LICENSE).
-
-## Contact
-
-- Open an [issue](https://github.com/uttampaliwal/NewOS/issues) for bugs or feature requests
-- Discuss in [GitHub Discussions](https://github.com/uttampaliwal/NewOS/discussions)
+- Keep unsafe Rust small and justified
+- Write docs as we go so the architecture stays replaceable

@@ -104,7 +104,7 @@ fn handle_exec(_args: SyscallArgs) -> SyscallResult {
     let mut loaded_segments = 0usize;
     for i in 0..header.program_header_count {
         match elf::parse_program_header(elf_data, header, i) {
-            Ok(Some(ph)) => {
+            Ok(Some(_ph)) => {
                 loaded_segments += 1;
             }
             Ok(None) => {}

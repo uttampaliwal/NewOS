@@ -27,8 +27,9 @@ fn main() {
 
 fn print_status(workspace_root: &Path) {
     println!("NewOS workspace is ready at {}.", workspace_root.display());
-    println!("Current milestone: freestanding kernel handoff.");
+    println!("Current milestone: stabilized higher-half kernel bring-up.");
     println!("Useful commands: cargo xtask doctor, cargo xtask build-uefi, cargo xtask run-uefi");
+    println!("Compatibility alias: cargo xtask uefi-loader");
 }
 
 fn print_doctor() {
@@ -87,10 +88,14 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some("doctor") => Command::Doctor,
         Some("build-uefi") => Command::BuildUefi,
         Some("run-uefi") => Command::RunUefi,
+        Some("uefi-loader") => {
+            println!("`cargo xtask uefi-loader` is kept as a compatibility alias for `cargo xtask run-uefi`.");
+            Command::RunUefi
+        }
         Some("status") | None => Command::Status,
         Some(other) => {
             eprintln!("Unknown xtask command: {other}");
-            eprintln!("Available commands: status, doctor, build-uefi, run-uefi");
+            eprintln!("Available commands: status, doctor, build-uefi, run-uefi, uefi-loader");
             std::process::exit(2);
         }
     }

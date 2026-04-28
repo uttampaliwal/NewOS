@@ -16,7 +16,8 @@ const PROGRAM_HEADER_LOAD: u32 = 1;
 #[derive(Debug, Clone, Copy)]
 pub struct LoadedKernel {
     pub entry_point: u64,
-    pub image_base: u64,
+    pub virtual_base: u64,
+    pub physical_base: u64,
     pub image_size: u64,
 }
 
@@ -50,7 +51,8 @@ struct ElfHeader {
 #[derive(Debug, Clone, Copy)]
 struct ProgramHeader {
     file_offset: usize,
-    physical_address: u64,
+    virtual_address: u64,
+    _physical_address: u64,
     file_size: usize,
     memory_size: usize,
 }
@@ -59,19 +61,19 @@ pub fn load_kernel(image: &[u8]) -> Result<LoadedKernel, LoadError> {
     let header = parse_header(image)?;
 
     let mut loadable = 0usize;
-    let mut image_base = u64::MAX;
-    let mut image_end = 0u64;
+    let mut virtual_base = u64::MAX;
+    let mut virtual_end = 0u64;
 
     for index in 0..header.program_header_count {
         let program_header = parse_program_header(image, header, index)?;
         if let Some(program_header) = program_header {
             loadable += 1;
-            image_base = image_base.min(program_header.physical_address);
+            virtual_base = virtual_base.min(program_header.virtual_address);
             let segment_end = program_header
-                .physical_address
+                .virtual_address
                 .checked_add(program_header.memory_size as u64)
                 .ok_or(LoadError::SegmentAddressOverflow)?;
-            image_end = image_end.max(segment_end);
+            virtual_end = virtual_end.max(segment_end);
         }
     }
 
@@ -79,24 +81,27 @@ pub fn load_kernel(image: &[u8]) -> Result<LoadedKernel, LoadError> {
         return Err(LoadError::NoLoadSegments);
     }
 
-    if (image_base & 0xFFF) != 0 {
-        return Err(LoadError::SegmentAlignment(image_base));
+    if (virtual_base & 0xFFF) != 0 {
+        return Err(LoadError::SegmentAlignment(virtual_base));
     }
 
-    let image_size = image_end
-        .checked_sub(image_base)
+    let image_size = virtual_end
+        .checked_sub(virtual_base)
         .ok_or(LoadError::SegmentAddressOverflow)?;
     let page_count = image_size.div_ceil(4096) as usize;
 
-    let image_ptr = boot::allocate_pages(
-        AllocateType::Address(image_base),
+    // Allocate physical memory anywhere (AnyPages) for the kernel
+    let physical_ptr = boot::allocate_pages(
+        AllocateType::AnyPages,
         kernel_memory_type(),
         page_count,
     )
     .map_err(|err| LoadError::AllocationFailed(err.status()))?;
 
+    let physical_base = physical_ptr.as_ptr() as u64;
+
     unsafe {
-        ptr::write_bytes(image_ptr.as_ptr(), 0, page_count * 4096);
+        ptr::write_bytes(physical_ptr.as_ptr(), 0, page_count * 4096);
     }
 
     for index in 0..header.program_header_count {
@@ -109,10 +114,14 @@ pub fn load_kernel(image: &[u8]) -> Result<LoadedKernel, LoadError> {
                 return Err(LoadError::SegmentOutOfBounds);
             }
 
+            // Calculate the physical offset for this segment
+            let offset = program_header.virtual_address - virtual_base;
+            let dest_physical = physical_base + offset;
+
             unsafe {
                 ptr::copy_nonoverlapping(
                     image.as_ptr().add(program_header.file_offset),
-                    program_header.physical_address as *mut u8,
+                    dest_physical as *mut u8,
                     program_header.file_size,
                 );
             }
@@ -121,7 +130,8 @@ pub fn load_kernel(image: &[u8]) -> Result<LoadedKernel, LoadError> {
 
     Ok(LoadedKernel {
         entry_point: header.entry_point,
-        image_base,
+        virtual_base,
+        physical_base,
         image_size,
     })
 }
@@ -202,16 +212,11 @@ fn parse_program_header(
         return Ok(None);
     }
 
-    let physical_address = {
-        let paddr = read_u64(program_header, 24)?;
-        if paddr != 0 {
-            paddr
-        } else {
-            read_u64(program_header, 16)?
-        }
-    };
-    if (physical_address & 0xFFF) != 0 {
-        return Err(LoadError::SegmentAlignment(physical_address));
+    let virtual_address = read_u64(program_header, 16)?;
+    let physical_address = read_u64(program_header, 24)?;
+
+    if (virtual_address & 0xFFF) != 0 {
+        return Err(LoadError::SegmentAlignment(virtual_address));
     }
 
     let file_size = read_u64(program_header, 32)? as usize;
@@ -222,7 +227,8 @@ fn parse_program_header(
 
     Ok(Some(ProgramHeader {
         file_offset: read_u64(program_header, 8)? as usize,
-        physical_address,
+        virtual_address,
+        _physical_address: physical_address,
         file_size,
         memory_size,
     }))

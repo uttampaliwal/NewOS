@@ -11,6 +11,7 @@ pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 pub const SYSCALL_VECTOR: u8 = 0x80;
 pub const TIMER_INTERRUPT_VECTOR: u8 = 32;
+pub const YIELD_INTERRUPT_VECTOR: u8 = 0x81;
 
 pub static PICS: Mutex<ChainedPics> =
     Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
@@ -54,7 +55,7 @@ global_asm!(
     r#"
     .global timer_interrupt_entry
     timer_interrupt_entry:
-        // Save all registers
+        // 1. Save all registers
         push rax
         push rbx
         push rcx
@@ -71,19 +72,17 @@ global_asm!(
         push r14
         push r15
 
-        // Call the scheduler tick
-        // Pass the current stack pointer as the first argument (rdi)
+        // 2. Call the scheduler tick
         mov rdi, rsp
         call timer_interrupt_handler_inner
         
-        // The handler returns the new stack pointer in RAX.
-        // If RAX is 0, we don't switch stacks.
+        // 3. Handle stack switch
         cmp rax, 0
-        je .no_switch
+        je .no_switch_timer
         mov rsp, rax
 
-    .no_switch:
-        // Restore all registers
+    .no_switch_timer:
+        // 4. Restore all registers
         pop r15
         pop r14
         pop r13
@@ -101,11 +100,55 @@ global_asm!(
         pop rax
 
         iretq
+
+    .global yield_interrupt_entry
+    yield_interrupt_entry:
+        push rax
+        push rbx
+        push rcx
+        push rdx
+        push rbp
+        push rsi
+        push rdi
+        push r8
+        push r9
+        push r10
+        push r11
+        push r12
+        push r13
+        push r14
+        push r15
+
+        mov rdi, rsp
+        call yield_interrupt_handler_inner
+
+        cmp rax, 0
+        je .no_switch_yield
+        mov rsp, rax
+
+    .no_switch_yield:
+        pop r15
+        pop r14
+        pop r13
+        pop r12
+        pop r11
+        pop r10
+        pop r9
+        pop r8
+        pop rdi
+        pop rsi
+        pop rbp
+        pop rdx
+        pop rcx
+        pop rbx
+        pop rax
+        iretq
     "#
 );
 
 unsafe extern "C" {
     fn timer_interrupt_entry();
+    fn yield_interrupt_entry();
 }
 
 #[unsafe(no_mangle)]
@@ -113,6 +156,11 @@ pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
     unsafe {
         LAPIC.lock().signal_eoi();
     }
+    crate::task::scheduler::timer_tick(stack_ptr)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn yield_interrupt_handler_inner(stack_ptr: usize) -> usize {
     crate::task::scheduler::timer_tick(stack_ptr)
 }
 
@@ -132,6 +180,9 @@ lazy_static! {
         unsafe {
             let entry_ptr = timer_interrupt_entry as *const ();
             idt[InterruptIndex::Timer.as_u8()].set_handler_fn(core::mem::transmute(entry_ptr));
+
+            let yield_entry_ptr = yield_interrupt_entry as *const ();
+            idt[YIELD_INTERRUPT_VECTOR].set_handler_fn(core::mem::transmute(yield_entry_ptr));
         }
 
         idt[SYSCALL_VECTOR].set_handler_fn(syscall_handler);
@@ -164,10 +215,12 @@ extern "x86-interrupt" fn page_fault_handler(
 }
 
 extern "x86-interrupt" fn gpf_handler(stack_frame: InterruptStackFrame, error_code: u64) {
-    panic!(
-        "EXCEPTION: GENERAL PROTECTION FAULT\nError Code: {:?}\n{:#?}\n",
-        error_code, stack_frame
-    );
+    crate::serial::println!("EXCEPTION: GENERAL PROTECTION FAULT");
+    crate::serial::println!("Error Code: {:?}", error_code);
+    crate::serial::println!("Instruction Pointer: {:?}", stack_frame.instruction_pointer);
+    crate::serial::println!("Stack Pointer: {:?}", stack_frame.stack_pointer);
+    crate::serial::println!("{:#?}", stack_frame);
+    panic!("GPF");
 }
 
 extern "x86-interrupt" fn syscall_handler(_stack_frame: InterruptStackFrame) {

@@ -42,6 +42,7 @@ Phase 0 is complete when:
 - the EDK2 UEFI firmware image is available through the QEMU install
 - `cargo xtask run-uefi` successfully reaches the freestanding kernel path in QEMU
 - the freestanding kernel can summarize conventional memory and allocate sample physical frames
+- the kernel can start its stabilized higher-half scheduler baseline with multiple kernel tasks
 
 ## Next practical step
 
@@ -49,6 +50,7 @@ Start with:
 
 1. `cargo xtask doctor`
 2. `cargo xtask run-uefi`
+3. `cargo xtask uefi-loader` also works as a compatibility alias if that is the command name you already learned
 
 If your firmware files live somewhere unusual, set:
 

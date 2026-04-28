@@ -77,6 +77,7 @@ dependencies = [
  "newos-abi",
  "newos-serial",
  "uefi",
+ "x86_64",
 ]
 
 [[package]]

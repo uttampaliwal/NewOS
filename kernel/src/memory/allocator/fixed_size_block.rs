@@ -1,6 +1,5 @@
 use super::linked_list::LinkedListAllocator;
 use core::alloc::{GlobalAlloc, Layout};
-use core::ptr;
 
 struct ListNode {
     next: Option<&'static mut ListNode>,

@@ -4,14 +4,12 @@ use core::fmt::{self, Write};
 
 pub struct Repl {
     prompt: &'static str,
-    echo: bool,
 }
 
 impl Repl {
     pub const fn new() -> Self {
         Self {
             prompt: "NewOS> ",
-            echo: true,
         }
     }
 
@@ -138,7 +136,7 @@ impl CommandResult {
                 )
             }
             CommandResult::Tasks => {
-                writeln!(writer, "Scheduler: cooperative multitasking enabled")
+                writeln!(writer, "Scheduler: preemptive kernel-task baseline enabled")
             }
             CommandResult::Exit => {
                 writeln!(writer, "Shutting down...")

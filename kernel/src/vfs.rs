@@ -70,7 +70,7 @@ impl Vfs {
     }
 
     pub fn open(&mut self, path: &str) -> Option<usize> {
-        for (i, entry) in self.entries.iter().enumerate() {
+        for entry in &self.entries {
             if entry.name == path {
                 let fd = FileDescriptor {
                     name: String::from(path),

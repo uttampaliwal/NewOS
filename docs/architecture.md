@@ -37,6 +37,8 @@ The kernel owns:
 
 Even in the current UEFI-first milestone, we keep a visible handoff boundary between loader-facing code and kernel-facing code. That habit will make the later freestanding transition much cleaner.
 
+The current execution baseline is intentionally conservative: `kernel threads first, user mode later`. We still want user processes, ELF loading, and a Linux-like userspace model, but we are only reintroducing them after the higher-half kernel, interrupt model, stack discipline, and scheduler frame layout are stable.
+
 ### 3. System services
 
 Long term, more policy should live outside the kernel than inside it. The kernel should provide mechanisms; higher-level services should provide user-facing behavior where possible.

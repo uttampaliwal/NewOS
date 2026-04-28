@@ -10,7 +10,7 @@ PHDRS
 
 SECTIONS
 {
-  . = 0x200000;
+  . = 0xffffffff80000000;
 
   .text : ALIGN(0x1000)
   {

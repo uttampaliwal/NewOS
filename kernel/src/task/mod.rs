@@ -1,6 +1,9 @@
-use alloc::alloc::{Layout, alloc, dealloc};
+use x86_64::VirtAddr;
+use x86_64::structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB};
 
 pub mod scheduler;
+
+pub type TaskEntry = extern "sysv64" fn() -> !;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
@@ -27,45 +30,66 @@ pub struct Task {
     pub(crate) stack_ptr: usize,
     pub(crate) kernel_stack_top: usize,
     state: TaskState,
-    stack_base: *mut u8,
-    stack_size: usize,
 }
 
-impl Task {
-    pub fn new(entry_point: extern "sysv64" fn()) -> Self {
-        const STACK_SIZE: usize = 4096 * 4; // 16 KiB stack
-        
-        let layout = Layout::from_size_align(STACK_SIZE, 16).unwrap();
-        let stack_base = unsafe { alloc(layout) };
-        if stack_base.is_null() {
-            panic!("failed to allocate task stack");
-        }
+// SAFETY: Task owns its stack and contains no borrowed state.
+unsafe impl Send for Task {}
+unsafe impl Sync for Task {}
 
-        let stack_top = stack_base as usize + STACK_SIZE;
-        let mut stack_ptr = stack_top as *mut usize;
+impl Task {
+    pub fn new(
+        entry: TaskEntry,
+        mapper: &mut impl Mapper<Size4KiB>,
+        frame_allocator: &mut impl FrameAllocator<Size4KiB>,
+    ) -> Self {
+        const STACK_PAGES: u64 = 4;
+        const GUARD_PAGES: u64 = 1;
+        const STACK_SIZE: u64 = STACK_PAGES * 4096;
+        const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
+
+        let id = TaskId::new();
+        let stack_region_base =
+            VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * STACK_STRIDE);
+        let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
+        let stack_top_virt = usable_stack_start + STACK_SIZE;
 
         unsafe {
-            // Setup the stack to look like an interrupted state for iretq and pop-all-regs
-            
-            // 1. IRETQ Frame (pushed by CPU)
-            // SS
+            let pages = Page::<Size4KiB>::range_inclusive(
+                Page::containing_address(usable_stack_start),
+                Page::containing_address(stack_top_virt - 1u64),
+            );
+
+            for page in pages {
+                let frame = frame_allocator.allocate_frame().expect("out of memory for kernel stack");
+                mapper
+                    .map_to(
+                        page,
+                        frame,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        frame_allocator,
+                    )
+                    .expect("failed to map kernel stack page")
+                    .flush();
+            }
+        }
+
+        let mut stack_ptr = stack_top_virt.as_mut_ptr::<usize>();
+
+        unsafe {
+            // Keep a full interrupt-style landing frame so the very first
+            // `iretq` has valid stack storage even on CPUs that expect the
+            // privilege-return slots to exist.
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(0); 
-            // RSP
+            stack_ptr.write(0x10);
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(stack_top);
-            // RFLAGS
+            stack_ptr.write(stack_top_virt.as_u64() as usize);
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(0x202); // Interrupts enabled
-            // CS
+            stack_ptr.write(0x202);
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(0x08);
-            // RIP
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(entry_point as usize);
+            stack_ptr.write(entry as usize);
 
-            // 2. All general purpose registers (popped by assembly stub)
-            // RAX, RBX, RCX, RDX, RBP, RSI, RDI, R8-R15 (15 registers)
             for _ in 0..15 {
                 stack_ptr = stack_ptr.sub(1);
                 stack_ptr.write(0);
@@ -73,53 +97,14 @@ impl Task {
         }
 
         Self {
-            id: TaskId::new(),
+            id,
             stack_ptr: stack_ptr as usize,
-            kernel_stack_top: stack_top,
+            kernel_stack_top: stack_top_virt.as_u64() as usize,
             state: TaskState::Ready,
-            stack_base,
-            stack_size: STACK_SIZE,
         }
     }
-}
 
-impl Drop for Task {
-    fn drop(&mut self) {
-        let layout = Layout::from_size_align(self.stack_size, 16).unwrap();
-        unsafe {
-            dealloc(self.stack_base, layout);
-        }
-    }
-}
-
-/// Transition from Ring 0 to Ring 3.
-/// 
-/// SAFETY: The entry point must be a valid user-mode address.
-pub unsafe fn jump_to_user(entry_point: usize) -> ! {
-    const USER_STACK_SIZE: usize = 4096 * 4;
-    let layout = Layout::from_size_align(USER_STACK_SIZE, 16).unwrap();
-    let user_stack_base = unsafe { alloc(layout) };
-    let user_stack_top = user_stack_base as usize + USER_STACK_SIZE;
-
-    // We use the selectors defined in GDT.
-    // User Data: 0x23 (Index 4, RPL 3)
-    // User Code: 0x1b (Index 3, RPL 3)
-    let user_data_selector: u64 = 0x23;
-    let user_code_selector: u64 = 0x1b;
-
-    unsafe {
-        core::arch::asm!(
-            "push {stack_seg}",
-            "push {stack_ptr}",
-            "push 0x202", // RFLAGS: interrupts enabled
-            "push {code_seg}",
-            "push {entry_ptr}",
-            "iretq",
-            stack_seg = in(reg) user_data_selector,
-            stack_ptr = in(reg) user_stack_top,
-            code_seg = in(reg) user_code_selector,
-            entry_ptr = in(reg) entry_point,
-            options(noreturn)
-        );
+    pub fn switch_to(&self) {
+        crate::gdt::set_interrupt_stack(VirtAddr::new(self.kernel_stack_top as u64));
     }
 }

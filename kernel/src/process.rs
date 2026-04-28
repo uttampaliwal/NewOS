@@ -1,52 +1,112 @@
-use alloc::vec::Vec;
+use crate::memory::paging;
 use x86_64::VirtAddr;
-use x86_64::structures::paging::{Page, PageTableFlags, Size4KiB, Mapper, FrameAllocator as X86FrameAllocator, PhysFrame, PageSize};
-use crate::elf;
+use x86_64::structures::paging::{PhysFrame, Size4KiB, Page, PageTableFlags, Mapper, PageTable, OffsetPageTable};
 
-const PAGE_SIZE: u64 = 4096;
-
-pub struct UserProcess {
-    pub entry: u64,
-    pub stack_addr: u64,
-    pub pages_mapped: Vec<PhysFrame<Size4KiB>>,
+#[derive(Debug)]
+pub struct Process {
+    pub pml4_frame: PhysFrame<Size4KiB>,
+    pub entry_point: VirtAddr,
+    pub stack_top: VirtAddr,
 }
 
-impl UserProcess {
-    pub fn load_elf(
-        data: &[u8],
-        _mapper: &mut impl Mapper<Size4KiB>,
-        frame_allocator: &mut impl X86FrameAllocator<Size4KiB>,
-    ) -> Result<Self, ()> {
-        let header = elf::parse_header(data).map_err(|_| ())?;
+impl Process {
+    pub fn new(
+        entry_point_fn: extern "sysv64" fn(),
+        frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+        physical_memory_offset: VirtAddr,
+    ) -> Self {
+        // 1. Create a new address space (clones higher-half kernel as Supervisor-only)
+        let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
+        
+        // 2. Define User Space Layout
+        let stack_start = VirtAddr::new(0x0000_7000_0000_0000);
+        let stack_size: u64 = 4096 * 4;
+        let stack_top = stack_start + stack_size;
+        let code_start = VirtAddr::new(0x0000_0000_0040_0000);
+        let code_size: u64 = 4096;
 
-        let mut user_pages = Vec::new();
+        let mut process = Self {
+            pml4_frame,
+            entry_point: code_start,
+            stack_top,
+        };
 
-        for i in 0..header.program_header_count {
-            if let Ok(Some(ph)) = elf::parse_program_header(data, header, i) {
-                if ph.memory_size == 0 {
-                    continue;
-                }
+        unsafe {
+            // 3. Map User Stack (marked USER)
+            process.map_user_region(stack_start, stack_size, PageTableFlags::WRITABLE, frame_allocator, physical_memory_offset);
+            
+            // 4. Map and Copy Code (marked USER)
+            process.map_user_region(code_start, code_size, PageTableFlags::empty(), frame_allocator, physical_memory_offset);
 
-                let pages_needed = ((ph.memory_size as u64) + PAGE_SIZE - 1) / PAGE_SIZE;
-                for _j in 0..pages_needed {
-                    let frame = match frame_allocator.allocate_frame() {
-                        Some(f) => f,
-                        None => return Err(()),
-                    };
-                    user_pages.push(frame);
-                }
+            // Access the new PML4 to copy the code
+            let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+            let process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+            
+            use x86_64::structures::paging::Translate;
+            let phys_code = process_mapper.translate_addr(code_start).expect("failed to translate user code address");
+            let dest_ptr = (physical_memory_offset + phys_code.as_u64()).as_mut_ptr::<u8>();
+            
+            // Copy the test function bytes to the user space page
+            core::ptr::copy_nonoverlapping(entry_point_fn as *const u8, dest_ptr, 1024);
+        }
+
+        process
+    }
+
+    /// Maps a region of memory as user-accessible in the lower-half address space.
+    pub unsafe fn map_user_region(
+        &mut self,
+        virt_start: VirtAddr,
+        size: u64,
+        extra_flags: PageTableFlags,
+        frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+        physical_memory_offset: VirtAddr,
+    ) {
+        let pml4_ptr = (physical_memory_offset + self.pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+        
+        unsafe {
+            let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+            let flags = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | extra_flags;
+            
+            let pages = Page::<Size4KiB>::range_inclusive(
+                Page::containing_address(virt_start),
+                Page::containing_address(virt_start + size - 1u64),
+            );
+
+            for page in pages {
+                let frame = frame_allocator.allocate_frame().expect("out of memory");
+                process_mapper.map_to(page, frame, flags, frame_allocator).expect("failed to map user page").ignore();
+            }
+
+            // Ensure the PML4 entry itself has the USER_ACCESSIBLE bit for lower-half addresses
+            let p4_idx = virt_start.p4_index();
+            let pml4 = &mut *pml4_ptr;
+            let f4 = pml4[p4_idx].flags();
+            pml4[p4_idx].set_flags(f4 | PageTableFlags::USER_ACCESSIBLE);
+        }
+    }
+
+    /// Maps a kernel-only region into this process's address space.
+    pub unsafe fn map_kernel_region(
+        &mut self,
+        virt_start: VirtAddr,
+        size: u64,
+        flags: PageTableFlags,
+        frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+        physical_memory_offset: VirtAddr,
+    ) {
+        let pml4_ptr = (physical_memory_offset + self.pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+        unsafe {
+            let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+            let pages = Page::<Size4KiB>::range_inclusive(
+                Page::containing_address(virt_start),
+                Page::containing_address(virt_start + size - 1u64),
+            );
+
+            for page in pages {
+                let frame = frame_allocator.allocate_frame().expect("out of memory");
+                process_mapper.map_to(page, frame, flags | PageTableFlags::PRESENT, frame_allocator).expect("failed to map kernel page").ignore();
             }
         }
-
-        for _i in 0..16 {
-            let frame = frame_allocator.allocate_frame().ok_or(())?;
-            user_pages.push(frame);
-        }
-
-        Ok(Self {
-            entry: header.entry,
-            stack_addr: 0x7fff_f000,
-            pages_mapped: user_pages,
-        })
     }
 }

@@ -7,7 +7,6 @@ mod elf;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
-use core::ptr::NonNull;
 
 use elf::LoadedKernel;
 use newos_abi::boot::{BOOT_FLAG_BOOT_SERVICES_EXITED, BootInfo, BootMemoryMap};
@@ -17,9 +16,13 @@ use uefi::fs::FileSystem;
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
 use uefi::prelude::*;
 use uefi::{Status, cstr16};
+use x86_64::VirtAddr;
+use x86_64::structures::paging::{PageTable, PageTableFlags, OffsetPageTable, Mapper, Size4KiB, Page, PhysFrame, Size2MiB};
+use x86_64::registers::control::{Cr3, Cr3Flags};
 
 const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
 const KERNEL_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\newos\kernel.elf");
+const PHYSICAL_MEMORY_OFFSET: u64 = 0xffff_8000_0000_0000;
 
 use newos_serial::{self as serial, println as serial_println};
 
@@ -28,9 +31,9 @@ fn main() -> Status {
     serial::init();
     let _ = boot::set_watchdog_timer(0, 0, None);
 
-    serial_println!("NewOS UEFI loader started");
-    let boot_info_ptr = allocate_boot_info();
-
+    serial_println!("NewOS UEFI loader (SOTA Huge-Page Refactor)");
+    
+    // 1. Load Kernel ELF
     let loaded_kernel = {
         let image_fs = boot::get_image_file_system(boot::image_handle())
             .expect("image filesystem should be available");
@@ -41,31 +44,63 @@ fn main() -> Status {
         let loaded_kernel =
             elf::load_kernel(&kernel_bytes).expect("kernel ELF should load successfully");
 
-        serial_println!("kernel file loaded");
-        serial_println!("entry: 0x{:016x}", loaded_kernel.entry_point);
-        serial_println!("base: 0x{:016x}", loaded_kernel.image_base);
-        serial_println!("size: {} bytes", loaded_kernel.image_size);
-
+        serial_println!("kernel loaded: entry=0x{:016x}", loaded_kernel.entry_point);
         loaded_kernel
     };
 
+    // 2. Allocate persistent data while Boot Services are active
+    let boot_info_page = boot::allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, 1)
+        .expect("failed to allocate BootInfo");
+    let boot_info_ptr = boot_info_page.as_ptr() as *mut BootInfo;
+
+    let scratchpad_pages = 128; // Increased for safe margin
+    let scratchpad_ptr = boot::allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, scratchpad_pages)
+        .expect("failed to allocate scratchpad");
+    let scratchpad_phys = scratchpad_ptr.as_ptr() as u64;
+
+    let map_meta = boot::memory_map(MemoryType::LOADER_DATA).expect("failed to get map meta").meta();
+    let map_buffer_ptr = boot::allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, map_meta.map_size.div_ceil(4096) + 1)
+        .expect("failed to allocate map buffer");
+
+    // 3. Build the NEW PML4 while we still have Boot Services
+    let new_pml4_phys = scratchpad_phys;
+    let new_pml4 = unsafe { &mut *(new_pml4_phys as *mut PageTable) };
+    
     unsafe {
-        (*boot_info_ptr.as_ptr()) = boot_info_template(loaded_kernel);
+        core::ptr::write_bytes(new_pml4 as *mut PageTable, 0, 1);
+        setup_mappings(new_pml4, scratchpad_phys, loaded_kernel);
     }
 
+    // 5. Exit Boot Services
     serial_println!("exiting boot services");
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
 
+    // 6. Populate Persistent Data
     unsafe {
-        let boot_info = &mut *boot_info_ptr.as_ptr();
+        core::ptr::copy_nonoverlapping(
+            memory_map.buffer().as_ptr(),
+            map_buffer_ptr.as_ptr(),
+            memory_map.meta().map_size
+        );
+
+        let boot_info = &mut *boot_info_ptr;
+        *boot_info = BootInfo::uefi(ABI_VERSION);
         boot_info.flags |= BOOT_FLAG_BOOT_SERVICES_EXITED;
+        boot_info.kernel_image_base = loaded_kernel.virtual_base;
+        boot_info.kernel_image_size = loaded_kernel.image_size;
+        boot_info.physical_memory_offset = PHYSICAL_MEMORY_OFFSET;
         boot_info.memory_map = BootMemoryMap {
-            descriptors: memory_map.buffer().as_ptr().cast(),
+            descriptors: map_buffer_ptr.as_ptr().cast(),
             map_size: memory_map.meta().map_size,
             desc_size: memory_map.meta().desc_size,
-            desc_version: memory_map.meta().desc_version,
+            desc_version: memory_map.meta().desc_version as u32,
         };
 
+        // 7. Final Transition
+        serial_println!("Switching CR3...");
+        Cr3::write(PhysFrame::containing_address(x86_64::PhysAddr::new(new_pml4_phys)), Cr3Flags::empty());
+        
+        serial_println!("Jumping to kernel...");
         jump_to_kernel(loaded_kernel.entry_point, boot_info as *const BootInfo)
     }
 }
@@ -77,18 +112,74 @@ fn panic(info: &PanicInfo<'_>) -> ! {
     qemu_exit_failure();
 }
 
-fn boot_info_template(loaded_kernel: LoadedKernel) -> BootInfo {
-    let mut boot_info = BootInfo::uefi(ABI_VERSION);
-    boot_info.kernel_image_base = loaded_kernel.image_base;
-    boot_info.kernel_image_size = loaded_kernel.image_size;
-    boot_info
-}
+unsafe fn setup_mappings(pml4: &mut PageTable, scratchpad_phys: u64, kernel: LoadedKernel) {
+    let (old_pml4_frame, _) = Cr3::read();
+    let old_pml4 = unsafe { &*(old_pml4_frame.start_address().as_u64() as *const PageTable) };
 
-fn allocate_boot_info() -> NonNull<BootInfo> {
-    let page = boot::allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, 1)
-        .expect("boot info page allocation should succeed");
+    // 1. Full clone of UEFI identity mappings (0-256 GB range)
+    for i in 0..256 {
+        pml4[i] = old_pml4[i].clone();
+    }
 
-    page.cast()
+    let mut mapper = unsafe { OffsetPageTable::new(pml4, VirtAddr::new(0)) };
+
+    let mut next_scratch_phys = scratchpad_phys + 4096;
+    let mut alloc = |size: usize| {
+        let addr = next_scratch_phys;
+        next_scratch_phys += size as u64;
+        PhysFrame::<Size4KiB>::containing_address(x86_64::PhysAddr::new(addr))
+    };
+
+    struct ScratchAllocator<'a, F: FnMut(usize) -> PhysFrame<Size4KiB>>(&'a mut F);
+    unsafe impl<'a, F: FnMut(usize) -> PhysFrame<Size4KiB>> x86_64::structures::paging::FrameAllocator<Size4KiB> for ScratchAllocator<'a, F> {
+        fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> { Some((self.0)(4096)) }
+    }
+    let mut scratch_alloc = ScratchAllocator(&mut alloc);
+
+    // 2. Map Kernel to Higher-Half (0xffffffff80000000) using 4KB pages (standard)
+    let page_count = kernel.image_size.div_ceil(4096);
+    for i in 0..page_count {
+        let page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(kernel.virtual_base + i * 4096));
+        let frame = PhysFrame::containing_address(x86_64::PhysAddr::new(kernel.physical_base + i * 4096));
+        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+        unsafe { mapper.map_to(page, frame, flags, &mut scratch_alloc).expect("failed to map kernel").ignore(); }
+    }
+
+    // 3. Map first 4GB of physical RAM to Higher-Half Offset (0xffff800000000000)
+    // USING 2MB HUGE PAGES for SOTA efficiency.
+    for i in 0..(4096 / 2) {
+        let addr = PHYSICAL_MEMORY_OFFSET + (i as u64) * 2 * 1024 * 1024;
+        let page: x86_64::structures::paging::Page<Size2MiB> = x86_64::structures::paging::Page::containing_address(VirtAddr::new(addr));
+        let frame = PhysFrame::<Size2MiB>::containing_address(x86_64::PhysAddr::new((i as u64) * 2 * 1024 * 1024));
+        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+        
+        unsafe {
+            // map_to for 2MiB pages requires a different mapper trait or manual entry
+            // For simplicity and compatibility, we'll use manual entry setting for the 2MB pages
+            let pml4_idx = page.start_address().p4_index();
+            let pdpt_idx = page.start_address().p3_index();
+            let pd_idx = page.start_address().p2_index();
+
+            // Ensure PDPT exists
+            if pml4[pml4_idx].is_unused() {
+                let new_frame = scratch_alloc.0(4096);
+                pml4[pml4_idx].set_frame(new_frame, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
+                core::ptr::write_bytes(new_frame.start_address().as_u64() as *mut u8, 0, 4096);
+            }
+            let pdpt = &mut *(pml4[pml4_idx].frame().unwrap().start_address().as_u64() as *mut PageTable);
+
+            // Ensure PD exists
+            if pdpt[pdpt_idx].is_unused() {
+                let new_frame = scratch_alloc.0(4096);
+                pdpt[pdpt_idx].set_frame(new_frame, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
+                core::ptr::write_bytes(new_frame.start_address().as_u64() as *mut u8, 0, 4096);
+            }
+            let pd = &mut *(pdpt[pdpt_idx].frame().unwrap().start_address().as_u64() as *mut PageTable);
+
+            // Set 2MB entry with HUGE_PAGE flag
+            pd[pd_idx].set_addr(frame.start_address(), flags | PageTableFlags::HUGE_PAGE);
+        }
+    }
 }
 
 unsafe fn jump_to_kernel(entry_point: u64, boot_info: *const BootInfo) -> ! {
@@ -98,17 +189,8 @@ unsafe fn jump_to_kernel(entry_point: u64, boot_info: *const BootInfo) -> ! {
 }
 
 fn qemu_exit_failure() -> ! {
-    qemu_exit(0x11);
-}
-
-fn qemu_exit(code: u32) -> ! {
     unsafe {
-        asm!("out dx, eax", in("dx") QEMU_DEBUG_EXIT_PORT, in("eax") code, options(nomem, nostack, preserves_flags));
+        asm!("out dx, eax", in("dx") QEMU_DEBUG_EXIT_PORT, in("eax") 0x11u32, options(nomem, nostack, preserves_flags));
     }
-
-    loop {
-        unsafe {
-            asm!("hlt", options(nomem, nostack, preserves_flags));
-        }
-    }
+    loop { unsafe { asm!("hlt"); } }
 }

@@ -45,14 +45,16 @@ See [Phase 3 Physical Memory Bring-Up](C:\Users\uttam\development\NewOS\docs\pha
 ## Phase 4: Interrupts and Timers
 
 - GDT, IDT, and TSS
-- Hardware interrupts (PIC) and timer ticks
+- LAPIC timer interrupts
+- stable kernel-thread dispatch baseline
+
+See [Phase 4 Stable Kernel Tasks](C:\Users\uttam\development\NewOS\docs\phase-4-stable-kernel-tasks.md).
 
 ## Phase 5: Execution
 
-- kernel tasks
+- user-mode task model
 - syscall entry
-- user-mode transition
-- ELF loading
+- user ELF loading
 - init process
 
 ## Phase 6: Terminal-first usability

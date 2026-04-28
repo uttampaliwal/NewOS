@@ -1,5 +1,5 @@
 pub const PROJECT_NAME: &str = "NewOS";
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 
 #[cfg(test)]
 mod tests {
@@ -7,6 +7,6 @@ mod tests {
 
     #[test]
     fn abi_version_starts_at_one() {
-        assert_eq!(ABI_VERSION, 1);
+        assert_eq!(ABI_VERSION, 2);
     }
 }

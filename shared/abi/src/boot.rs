@@ -23,6 +23,9 @@ pub enum BootOutcome {
 
 pub const BOOT_FLAG_BOOT_SERVICES_EXITED: u32 = 1 << 0;
 pub const MEMORY_TYPE_CONVENTIONAL: u32 = 7;
+pub const MEMORY_TYPE_LOADER_DATA: u32 = 2;
+pub const MEMORY_TYPE_BOOT_SERVICES_CODE: u32 = 3;
+pub const MEMORY_TYPE_BOOT_SERVICES_DATA: u32 = 4;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,6 +117,7 @@ pub struct BootInfo {
     pub flags: u32,
     pub kernel_image_base: u64,
     pub kernel_image_size: u64,
+    pub physical_memory_offset: u64,
     pub memory_map: BootMemoryMap,
 }
 
@@ -126,6 +130,7 @@ impl BootInfo {
             flags: 0,
             kernel_image_base: 0,
             kernel_image_size: 0,
+            physical_memory_offset: 0,
             memory_map: BootMemoryMap::empty(),
         }
     }
@@ -141,14 +146,15 @@ mod tests {
 
     #[test]
     fn uefi_boot_info_uses_expected_defaults() {
-        let boot_info = BootInfo::uefi(1);
+        let boot_info = BootInfo::uefi(2);
 
-        assert_eq!(boot_info.abi_version, 1);
+        assert_eq!(boot_info.abi_version, 2);
         assert_eq!(boot_info.environment, BootEnvironment::Uefi);
         assert_eq!(boot_info.loader, BootLoaderKind::UefiLoader);
         assert_eq!(boot_info.flags, 0);
         assert_eq!(boot_info.kernel_image_base, 0);
         assert_eq!(boot_info.kernel_image_size, 0);
+        assert_eq!(boot_info.physical_memory_offset, 0);
         assert_eq!(boot_info.memory_map.entry_count(), 0);
     }
 
