@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use pic8259::ChainedPics;
 use spin::Mutex;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
+use x86_64::VirtAddr;
 
 pub mod apic;
 
@@ -11,6 +12,7 @@ pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 pub const SYSCALL_VECTOR: u8 = 0x80;
 pub const TIMER_INTERRUPT_VECTOR: u8 = 32;
+pub const KEYBOARD_INTERRUPT_VECTOR: u8 = 33;
 pub const YIELD_INTERRUPT_VECTOR: u8 = 0x81;
 
 pub static PICS: Mutex<ChainedPics> =
@@ -19,6 +21,9 @@ pub static PICS: Mutex<ChainedPics> =
 lazy_static! {
     pub static ref LAPIC: Mutex<apic::LocalApic> =
         Mutex::new(unsafe { apic::LocalApic::new(apic::get_base_addr()) });
+    
+    pub static ref IOAPIC: Mutex<apic::IoApic> =
+        Mutex::new(unsafe { apic::IoApic::new(VirtAddr::zero()) });
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -33,7 +38,7 @@ impl InterruptIndex {
     }
 }
 
-pub fn init() {
+pub fn init(phys_mem_offset: VirtAddr) {
     init_idt();
     unsafe {
         // Disable legacy PIC
@@ -44,6 +49,11 @@ pub fn init() {
         lapic.initialize();
         // Start timer with a reasonable count for periodic interrupts
         lapic.start_timer(0x10000);
+
+        // Initialize IOAPIC and route Keyboard (IRQ 1)
+        // We use the direct physical map offset
+        let mut ioapic = apic::IoApic::new(phys_mem_offset + 0xFEC00000u64);
+        ioapic.route_irq(1, KEYBOARD_INTERRUPT_VECTOR);
     }
 }
 
@@ -182,12 +192,25 @@ lazy_static! {
             idt[InterruptIndex::Timer.as_u8()].set_handler_fn(core::mem::transmute(entry_ptr));
 
             let yield_entry_ptr = yield_interrupt_entry as *const ();
-            idt[YIELD_INTERRUPT_VECTOR].set_handler_fn(core::mem::transmute(yield_entry_ptr));
+            idt[YIELD_INTERRUPT_VECTOR as u8].set_handler_fn(core::mem::transmute(yield_entry_ptr));
         }
 
+        idt[KEYBOARD_INTERRUPT_VECTOR as u8].set_handler_fn(keyboard_interrupt_handler);
         idt[SYSCALL_VECTOR].set_handler_fn(syscall_handler);
         idt
     };
+}
+
+extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    use x86_64::instructions::port::Port;
+
+    let mut port = Port::new(0x60);
+    let scancode: u8 = unsafe { port.read() };
+    crate::serial::print(format_args!("[kbd] scancode: 0x{:x}\n", scancode));
+
+    unsafe {
+        LAPIC.lock().signal_eoi();
+    }
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {

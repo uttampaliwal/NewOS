@@ -4,6 +4,40 @@
 
 NewOS aims to feel familiar to Linux users while keeping a cleaner internal design. It is not a Linux clone and not a distro. It is a new operating system with Linux-like workability and a modern desktop roadmap.
 
+## Architecture
+
+```mermaid
+graph TD
+    subgraph UserSpace [User Space - Ring 3]
+        Init[init process]
+        Shell[shell]
+        App[user apps]
+    end
+
+    subgraph Kernel [Kernel - Ring 0]
+        subgraph Subsystems
+            Sched[Preemptive Scheduler]
+            VFS[Virtual File System]
+            Memory[Paging & Frame Allocator]
+        end
+        subgraph Arch [Arch-Specific x86_64]
+            IDT[Interrupts / IDT]
+            GDT[Segmentation / GDT]
+            Sys[Syscall Handler]
+        end
+    end
+
+    subgraph Boot [Boot Chain]
+        UEFI[UEFI Firmware] --> Loader[UEFI Loader]
+        Loader --> |Handoff| Kernel
+    end
+
+    Init --> |SYSCALL| Sys
+    Sys --> VFS
+    Sched --> |Context Switch| Arch
+    Memory --> |Page Tables| UEFI
+```
+
 ## Current Status
 
 | Phase | Status | Milestone |

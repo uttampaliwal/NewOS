@@ -2,53 +2,17 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use newos_abi::syscall::Syscall;
+use libnewos::{print, exit};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    let message = "Hello from User Mode init process!\n";
-    
-    // Syscall: Write
-    syscall2(Syscall::Write as u64, message.as_ptr() as u64, message.len() as u64);
+    print("Hello from User Mode init process (using libnewos)!\n");
+    print("This demonstrates a stable SOTA syscall interface.\n");
 
-    // Syscall: Exit
-    syscall1(Syscall::Exit as u64, 0);
-
-    loop {}
-}
-
-fn syscall1(num: u64, arg0: u64) -> u64 {
-    let res: u64;
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            in("rax") num,
-            in("rdi") arg0,
-            out("rcx") _,
-            out("r11") _,
-            lateout("rax") res,
-        );
-    }
-    res
-}
-
-fn syscall2(num: u64, arg0: u64, arg1: u64) -> u64 {
-    let res: u64;
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            in("rax") num,
-            in("rdi") arg0,
-            in("rsi") arg1,
-            out("rcx") _,
-            out("r11") _,
-            lateout("rax") res,
-        );
-    }
-    res
+    exit(0);
 }
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    loop {}
+    exit(1);
 }

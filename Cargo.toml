@@ -6,6 +6,7 @@ members = [
     "tools/xtask",
     "kernel",
     "userland/init",
+    "userland/libnewos",
 ]
 default-members = [
     "shared/abi",

@@ -1,0 +1,8 @@
+[package]
+name = "libnewos"
+version = "0.1.0"
+edition = "2021"
+authors = ["Uttam"]
+
+[dependencies]
+newos-abi = { path = "../../shared/abi" }

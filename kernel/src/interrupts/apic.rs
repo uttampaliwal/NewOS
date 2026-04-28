@@ -60,6 +60,36 @@ impl LocalApic {
     }
 }
 
+pub struct IoApic {
+    base_addr: VirtAddr,
+}
+
+impl IoApic {
+    pub unsafe fn new(base_addr: VirtAddr) -> Self {
+        Self { base_addr }
+    }
+
+    unsafe fn write(&mut self, reg: u32, value: u32) {
+        unsafe {
+            let ioapic_ptr = self.base_addr.as_u64() as *mut u32;
+            ioapic_ptr.write_volatile(reg);
+            ioapic_ptr.add(4).write_volatile(value);
+        }
+    }
+
+    pub unsafe fn route_irq(&mut self, irq: u8, vector: u8) {
+        let low_reg = 0x10 + (irq as u32) * 2;
+        let high_reg = low_reg + 1;
+
+        // Low 32 bits: vector, delivery mode (fixed), destination mode (physical), polarity (high), trigger (edge), mask (0)
+        unsafe {
+            self.write(low_reg, vector as u32);
+            // High 32 bits: destination (APIC ID 0)
+            self.write(high_reg, 0);
+        }
+    }
+}
+
 /// Get the physical base address of the Local APIC from the IA32_APIC_BASE MSR.
 pub fn get_base_addr() -> VirtAddr {
     let mut apic_base_msr = Msr::new(0x1B);

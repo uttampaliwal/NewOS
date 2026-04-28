@@ -33,7 +33,7 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
 
     // 3. Initialize Architecture
     crate::gdt::init();
-    crate::interrupts::init();
+    crate::interrupts::init(phys_mem_offset);
     crate::syscall::init();
     let _ = writeln!(writer, "[STG: ARCH_INIT]");
 
