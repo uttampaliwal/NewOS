@@ -19,7 +19,7 @@ lazy_static! {
 lazy_static! {
     pub static ref GDT: (GlobalDescriptorTable, Selectors) = {
         let mut gdt = GlobalDescriptorTable::new();
-        
+
         // Use raw descriptors to ensure absolute architectural correctness.
         // Bit 47: Present
         // Bit 44: Descriptor Type (1 for code/data)
@@ -31,25 +31,25 @@ lazy_static! {
 
         // 0x08: Kernel Code (DPL 0, Long Mode)
         let kernel_code = gdt.append(Descriptor::kernel_code_segment());
-        
+
         // 0x10: Kernel Data (DPL 0)
         let kernel_data = gdt.append(Descriptor::kernel_data_segment());
-        
+
         // 0x18: User Code 32-bit (Compatibility, required as base for SYSRET)
         // Flags: Present | DescriptorType | Executable | Readable | DPL 3
         let user_code_32 = gdt.append(Descriptor::user_code_segment());
-        
+
         // 0x20: User Data (DPL 3, 64-bit)
         // Flags: Present | DescriptorType | Writable | DPL 3
         let user_data = gdt.append(Descriptor::user_data_segment());
-        
+
         // 0x28: User Code 64-bit (DPL 3, Long Mode)
         // Flags: Present | DescriptorType | Executable | Readable | LongMode | DPL 3
         let user_code_64 = gdt.append(Descriptor::user_code_segment());
-        
+
         // 0x30: TSS
         let tss = gdt.append(Descriptor::tss_segment(&TSS));
-        
+
         (
             gdt,
             Selectors {
@@ -79,7 +79,7 @@ pub struct PerCpu {
     pub user_rsp_temp: u64,
 }
 
-pub static mut PER_CPU: PerCpu = PerCpu { 
+pub static mut PER_CPU: PerCpu = PerCpu {
     kernel_stack_ptr: 0,
     user_rsp_temp: 0,
 };
@@ -110,7 +110,7 @@ pub fn set_interrupt_stack(stack_top: VirtAddr) {
     unsafe {
         let tss_ptr = &raw const TSS as *mut TaskStateSegment;
         (*tss_ptr).privilege_stack_table[0] = stack_top;
-        
+
         // Also update our PER_CPU structure for swapgs-based syscalls
         PER_CPU.kernel_stack_ptr = stack_top.as_u64();
     }

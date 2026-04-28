@@ -1,17 +1,33 @@
-use x86_64::registers::model_specific::{LStar, Msr, SFMask};
-use x86_64::VirtAddr;
 use core::arch::global_asm;
 use newos_abi::syscall::{Syscall, SyscallArgs};
+use x86_64::VirtAddr;
+use x86_64::registers::model_specific::{LStar, Msr, SFMask};
 
 pub mod handler;
 
 #[repr(C, align(16))]
 pub struct SyscallFrame {
-    pub r15: u64, pub r14: u64, pub r13: u64, pub r12: u64, pub r11: u64,
-    pub r10: u64, pub r9: u64,  pub r8: u64,  pub rdi: u64, pub rsi: u64,
-    pub rbp: u64, pub rdx: u64, pub rcx: u64, pub rbx: u64, pub rax: u64,
+    pub r15: u64,
+    pub r14: u64,
+    pub r13: u64,
+    pub r12: u64,
+    pub r11: u64,
+    pub r10: u64,
+    pub r9: u64,
+    pub r8: u64,
+    pub rdi: u64,
+    pub rsi: u64,
+    pub rbp: u64,
+    pub rdx: u64,
+    pub rcx: u64,
+    pub rbx: u64,
+    pub rax: u64,
     // IRETQ frame
-    pub rip: u64, pub cs: u64, pub rflags: u64, pub rsp: u64, pub ss: u64,
+    pub rip: u64,
+    pub cs: u64,
+    pub rflags: u64,
+    pub rsp: u64,
+    pub ss: u64,
 }
 
 pub fn init() {
@@ -23,7 +39,7 @@ pub fn init() {
 
         LStar::write(VirtAddr::new(syscall_entry as *const () as u64));
         SFMask::write(x86_64::registers::rflags::RFlags::INTERRUPT_FLAG);
-        
+
         let mut efer = Msr::new(0xC0000080);
         efer.write(efer.read() | 1);
     }

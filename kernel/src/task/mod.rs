@@ -1,6 +1,8 @@
-use x86_64::VirtAddr;
-use x86_64::structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB, PageTable, OffsetPageTable};
 use crate::process::Process;
+use x86_64::VirtAddr;
+use x86_64::structures::paging::{
+    FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, Size4KiB,
+};
 
 pub mod scheduler;
 
@@ -50,8 +52,7 @@ impl Task {
         const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
 
         let id = TaskId::new();
-        let stack_region_base =
-            VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * STACK_STRIDE);
+        let stack_region_base = VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * STACK_STRIDE);
         let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
         let stack_top_virt = usable_stack_start + STACK_SIZE;
 
@@ -62,7 +63,9 @@ impl Task {
             );
 
             for page in pages {
-                let frame = frame_allocator.allocate_frame().expect("out of memory for kernel stack");
+                let frame = frame_allocator
+                    .allocate_frame()
+                    .expect("out of memory for kernel stack");
                 mapper
                     .map_to(
                         page,
@@ -79,7 +82,7 @@ impl Task {
 
         unsafe {
             // THE NEWOS CONTEXT FRAME
-            // 
+            //
             // When a task is NOT running, its stack looks like this (from high to low address):
             // 1. [CPU FRAME] SS
             // 2. [CPU FRAME] RSP
@@ -120,16 +123,17 @@ impl Task {
 
     pub fn new_user(
         process: Process,
-        mapper: &mut impl Mapper<Size4KiB>,
+        _mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: x86_64::VirtAddr,
     ) -> Self {
         const STACK_PAGES: u64 = 4;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
-        
+
         let id = TaskId::new();
         // Use a unique higher-half address for the kernel stack
-        let kernel_stack_virt = x86_64::VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * 0x1000_0000);
+        let kernel_stack_virt =
+            x86_64::VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * 0x1000_0000);
         let stack_top_virt = kernel_stack_virt + STACK_SIZE;
 
         unsafe {
@@ -139,20 +143,28 @@ impl Task {
             );
 
             for page in pages {
-                let frame = frame_allocator.allocate_frame().expect("out of memory for user-task kernel stack");
-                
+                let frame = frame_allocator
+                    .allocate_frame()
+                    .expect("out of memory for user-task kernel stack");
+
                 // Map the kernel stack into the NEW process address space.
                 // We need to switch to the process PML4 temporarily or map it directly.
                 // For simplicity, we'll map it into the process address space using its mapper.
-                let pml4_ptr = (physical_memory_offset + process.pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
-                let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
-                
-                process_mapper.map_to(
-                    page, 
-                    frame, 
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE, 
-                    frame_allocator
-                ).expect("failed to map kernel stack in process space").ignore();
+                let pml4_ptr = (physical_memory_offset
+                    + process.pml4_frame.start_address().as_u64())
+                .as_mut_ptr::<PageTable>();
+                let mut process_mapper =
+                    OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+
+                process_mapper
+                    .map_to(
+                        page,
+                        frame,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        frame_allocator,
+                    )
+                    .expect("failed to map kernel stack in process space")
+                    .ignore();
             }
         }
 
@@ -167,7 +179,7 @@ impl Task {
             stack_ptr.write(process.stack_top.as_u64() as usize);
             // RFLAGS
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(0x202); 
+            stack_ptr.write(0x202);
             // CS (User Code 0x2b)
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(0x2b);
@@ -197,7 +209,10 @@ impl Task {
         let (current_pml4, _) = x86_64::registers::control::Cr3::read();
         if current_pml4 != self.process.pml4_frame {
             unsafe {
-                x86_64::registers::control::Cr3::write(self.process.pml4_frame, x86_64::registers::control::Cr3Flags::empty());
+                x86_64::registers::control::Cr3::write(
+                    self.process.pml4_frame,
+                    x86_64::registers::control::Cr3Flags::empty(),
+                );
             }
         }
     }

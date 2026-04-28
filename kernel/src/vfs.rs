@@ -23,6 +23,22 @@ pub struct FileStat {
     pub file_type: FileType,
 }
 
+impl FileStat {
+    pub fn to_abi(&self) -> newos_abi::syscall::Stat {
+        use newos_abi::syscall::*;
+        let abi_type = match self.file_type {
+            FileType::Regular => FILE_TYPE_REGULAR,
+            FileType::Directory => FILE_TYPE_DIRECTORY,
+            FileType::Device => FILE_TYPE_DEVICE,
+            FileType::Pipe => FILE_TYPE_PIPE,
+        };
+        newos_abi::syscall::Stat {
+            size: self.size,
+            file_type: abi_type,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FileDescriptor {
     pub name: String,
@@ -52,26 +68,26 @@ impl Vfs {
 
     pub fn init_from_ramdisk(&mut self, addr: u64, size: u64) {
         self.init_defaults();
-        
+
         if addr != 0 && size > 0 {
             let data = unsafe { core::slice::from_raw_parts(addr as *const u8, size as usize) };
-            
+
             let mut offset = 0;
             while offset + 72 <= data.len() {
                 // Read 64-byte filename
-                let name_bytes = &data[offset..offset+64];
+                let name_bytes = &data[offset..offset + 64];
                 let name_len = name_bytes.iter().position(|&b| b == 0).unwrap_or(64);
                 let name = core::str::from_utf8(&name_bytes[..name_len]).unwrap_or("unknown");
-                
+
                 // Read 8-byte size
                 let mut size_bytes = [0u8; 8];
-                size_bytes.copy_from_slice(&data[offset+64..offset+72]);
+                size_bytes.copy_from_slice(&data[offset + 64..offset + 72]);
                 let file_size = u64::from_le_bytes(size_bytes) as usize;
-                
+
                 offset += 72;
-                
+
                 if offset + file_size <= data.len() {
-                    let file_data = &data[offset..offset+file_size];
+                    let file_data = &data[offset..offset + file_size];
                     self.entries.push(VfsEntry {
                         name: String::from(name),
                         file_type: FileType::Regular,
@@ -142,6 +158,12 @@ impl Vfs {
             size: entry.data.map(|d| d.len() as u64).unwrap_or(0),
             file_type: entry.file_type,
         })
+    }
+
+    pub fn close(&mut self, fd_index: usize) {
+        if fd_index < self.open_files.len() {
+            self.open_files[fd_index] = None;
+        }
     }
 
     pub fn list_dir(&self) -> Vec<String> {

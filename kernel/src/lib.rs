@@ -13,12 +13,12 @@ pub mod elf;
 pub mod gdt;
 pub mod interrupts;
 pub mod memory;
+pub mod process;
 pub mod serial;
 pub mod shell;
 pub mod syscall;
 pub mod task;
 pub mod vfs;
-pub mod process;
 
 use newos_abi::version::{ABI_VERSION, PROJECT_NAME};
 

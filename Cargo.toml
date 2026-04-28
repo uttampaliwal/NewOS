@@ -12,6 +12,13 @@ default-members = [
     "shared/abi",
     "tools/xtask",
 ]
+exclude = [
+    "kernel",
+    "userland/init",
+    "userland/libnewos",
+    "shared/abi",
+    "shared/serial",
+]
 resolver = "2"
 
 [workspace.package]

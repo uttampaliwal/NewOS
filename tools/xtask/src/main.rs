@@ -89,7 +89,9 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some("build-uefi") => Command::BuildUefi,
         Some("run-uefi") => Command::RunUefi,
         Some("uefi-loader") => {
-            println!("`cargo xtask uefi-loader` is kept as a compatibility alias for `cargo xtask run-uefi`.");
+            println!(
+                "`cargo xtask uefi-loader` is kept as a compatibility alias for `cargo xtask run-uefi`."
+            );
             Command::RunUefi
         }
         Some("status") | None => Command::Status,
@@ -152,9 +154,9 @@ fn build_uefi(workspace_root: &Path) -> PathBuf {
 }
 
 fn build_userland(workspace_root: &Path) -> PathBuf {
-    run_or_die(
+    run_or_die_with_env(
         "cargo",
-        [
+        &[
             "+nightly",
             "build",
             "-p",
@@ -164,6 +166,7 @@ fn build_userland(workspace_root: &Path) -> PathBuf {
             "--release",
         ],
         workspace_root,
+        &[("RUSTFLAGS", "-C link-arg=-Tuserland/init/linker.ld")],
     );
 
     let built_bin = workspace_root
@@ -183,9 +186,9 @@ fn build_userland(workspace_root: &Path) -> PathBuf {
 }
 
 fn build_kernel_image(workspace_root: &Path) -> PathBuf {
-    run_or_die(
+    run_or_die_with_env(
         "cargo",
-        [
+        &[
             "+nightly",
             "build",
             "-p",
@@ -196,6 +199,10 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
             "x86_64-unknown-none",
         ],
         workspace_root,
+        &[(
+            "RUSTFLAGS",
+            "-C link-arg=-Tkernel/linker.ld -C link-arg=-z -C link-arg=max-page-size=0x1000",
+        )],
     );
 
     let built_image = workspace_root
@@ -221,9 +228,9 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     // Package initramfs
     let init_bin = build_userland(workspace_root);
     let init_data = fs::read(&init_bin).expect("failed to read init binary");
-    
+
     let mut ramdisk = Vec::new();
-    
+
     // Helper to add a "file" to our simple ramdisk
     let mut add_file = |name: &str, data: &[u8]| {
         let mut header = [0u8; 64];
@@ -235,12 +242,19 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
         ramdisk.extend_from_slice(data);
     };
 
-    add_file("initramfs.txt", b"Hello from Initramfs!\nThis is a kernel experiment.\n");
+    add_file(
+        "initramfs.txt",
+        b"Hello from Initramfs!\nThis is a kernel experiment.\n",
+    );
     add_file("init", &init_data);
 
     let initramfs_path = staged_dir.join("initramfs.img");
     fs::write(&initramfs_path, &ramdisk).expect("creating initramfs should succeed");
-    println!("Initramfs created at {} ({} bytes, including 'init')", initramfs_path.display(), ramdisk.len());
+    println!(
+        "Initramfs created at {} ({} bytes, including 'init')",
+        initramfs_path.display(),
+        ramdisk.len()
+    );
 
     staged_image
 }
@@ -451,6 +465,30 @@ where
         .current_dir(workspace_root)
         .status()
         .expect("subprocess should start");
+
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+}
+
+fn run_or_die_with_env<I, S, K, V>(
+    program: &str,
+    args: I,
+    workspace_root: &Path,
+    env_vars: &[(K, V)],
+) where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    let mut cmd = ProcessCommand::new(program);
+    cmd.args(args).current_dir(workspace_root);
+    for (k, v) in env_vars {
+        cmd.env(k, v);
+    }
+
+    let status = cmd.status().expect("subprocess should start");
 
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));

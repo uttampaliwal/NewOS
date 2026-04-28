@@ -3,8 +3,8 @@ use core::arch::global_asm;
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;
 use spin::Mutex;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 use x86_64::VirtAddr;
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 
 pub mod apic;
 
@@ -21,7 +21,6 @@ pub static PICS: Mutex<ChainedPics> =
 lazy_static! {
     pub static ref LAPIC: Mutex<apic::LocalApic> =
         Mutex::new(unsafe { apic::LocalApic::new(apic::get_base_addr()) });
-    
     pub static ref IOAPIC: Mutex<apic::IoApic> =
         Mutex::new(unsafe { apic::IoApic::new(VirtAddr::zero()) });
 }
@@ -61,6 +60,7 @@ pub fn init_idt() {
     IDT.load();
 }
 
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
 global_asm!(
     r#"
     .global timer_interrupt_entry

@@ -1,3 +1,15 @@
+pub const FILE_TYPE_REGULAR: u32 = 0;
+pub const FILE_TYPE_DIRECTORY: u32 = 1;
+pub const FILE_TYPE_DEVICE: u32 = 2;
+pub const FILE_TYPE_PIPE: u32 = 3;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stat {
+    pub size: u64,
+    pub file_type: u32,
+}
+
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Syscall {
@@ -10,6 +22,8 @@ pub enum Syscall {
     Fork = 7,
     Wait = 8,
     Yielder = 9,
+    Stat = 10,
+    Ls = 11,
 }
 
 impl Syscall {
@@ -24,6 +38,8 @@ impl Syscall {
             7 => Some(Self::Fork),
             8 => Some(Self::Wait),
             9 => Some(Self::Yielder),
+            10 => Some(Self::Stat),
+            11 => Some(Self::Ls),
             _ => None,
         }
     }

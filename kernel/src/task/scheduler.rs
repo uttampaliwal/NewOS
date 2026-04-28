@@ -68,7 +68,11 @@ pub fn yield_task() {
 pub fn get_current_kernel_stack_top() -> usize {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let sched = SCHEDULER.lock();
-        sched.current_task.as_ref().map(|t| t.kernel_stack_top).unwrap_or(0)
+        sched
+            .current_task
+            .as_ref()
+            .map(|t| t.kernel_stack_top)
+            .unwrap_or(0)
     })
 }
 
@@ -83,7 +87,7 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 prev_task.stack_ptr = current_stack_ptr;
                 sched.tasks.push_back(prev_task);
                 sched.current_task = Some(next_task);
-                
+
                 return sched.current_task.as_ref().unwrap().stack_ptr;
             } else {
                 sched.current_task = Some(prev_task);
