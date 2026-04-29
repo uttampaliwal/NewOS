@@ -110,6 +110,17 @@ impl<'a> Iterator for BootMemoryMapIter<'a> {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BootFramebuffer {
+    pub addr: u64,
+    pub size: u64,
+    pub width: u32,
+    pub height: u32,
+    pub pitch: u32,
+    pub format: u32, // 0: BGRX8888, 1: RGBX8888
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BootInfo {
     pub abi_version: u32,
     pub environment: BootEnvironment,
@@ -121,6 +132,7 @@ pub struct BootInfo {
     pub ramdisk_addr: u64,
     pub ramdisk_size: u64,
     pub memory_map: BootMemoryMap,
+    pub framebuffer: BootFramebuffer,
 }
 
 impl BootInfo {
@@ -136,6 +148,14 @@ impl BootInfo {
             ramdisk_addr: 0,
             ramdisk_size: 0,
             memory_map: BootMemoryMap::empty(),
+            framebuffer: BootFramebuffer {
+                addr: 0,
+                size: 0,
+                width: 0,
+                height: 0,
+                pitch: 0,
+                format: 0,
+            },
         }
     }
 

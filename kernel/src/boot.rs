@@ -41,6 +41,10 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     crate::syscall::init();
     let _ = writeln!(writer, "[STG: ARCH_INIT]");
 
+    // 3.1 Initialize Video Driver
+    crate::drivers::video::init(&boot_info.framebuffer);
+    let _ = writeln!(writer, "[STG: VIDEO_INIT]");
+
     // 4. Initialize VFS
     crate::vfs::VFS
         .lock()

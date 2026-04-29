@@ -309,7 +309,7 @@ fn run_uefi(workspace_root: &Path) {
         .arg("-monitor")
         .arg("none")
         .arg("-display")
-        .arg("none")
+        .arg("sdl,gl=on")
         .arg("-no-reboot")
         .arg("-device")
         .arg("isa-debug-exit,iobase=0xf4,iosize=0x04")

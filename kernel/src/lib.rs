@@ -9,6 +9,7 @@
 extern crate alloc;
 
 pub mod boot;
+pub mod drivers;
 pub mod elf;
 pub mod gdt;
 pub mod input;
