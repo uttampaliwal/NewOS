@@ -79,20 +79,49 @@ pub fn get_current_kernel_stack_top() -> usize {
 pub fn timer_tick(current_stack_ptr: usize) -> usize {
     if let Some(mut sched) = SCHEDULER.try_lock() {
         if let Some(mut prev_task) = sched.current_task.take() {
+            // Save current stack pointer
+            prev_task.stack_ptr = current_stack_ptr;
+
+            // If the task is running, put it back in the queue as ready.
+            // If it was blocked or zombie, we don't put it back in the ready queue.
+            let was_running = prev_task.state == super::TaskState::Running;
+            let is_zombie = prev_task.state == super::TaskState::Zombie;
+
             if let Some(mut next_task) = sched.tasks.pop_front() {
+                // There is a next task to switch to.
+                if was_running {
+                    prev_task.state = super::TaskState::Ready;
+                    sched.tasks.push_back(prev_task);
+                }
+
                 // Prepare hardware for the next task
                 next_task.switch_to();
                 next_task.state = super::TaskState::Running;
-                prev_task.state = super::TaskState::Ready;
-                prev_task.stack_ptr = current_stack_ptr;
-                sched.tasks.push_back(prev_task);
+                let next_ptr = next_task.stack_ptr;
                 sched.current_task = Some(next_task);
-
-                return sched.current_task.as_ref().unwrap().stack_ptr;
+                return next_ptr;
             } else {
-                sched.current_task = Some(prev_task);
+                // No other tasks.
+                if !is_zombie {
+                    sched.current_task = Some(prev_task);
+                }
             }
         }
     }
-    0
+    current_stack_ptr
+}
+
+pub fn exit_current_task() -> ! {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut sched = SCHEDULER.lock();
+        if let Some(task) = &mut sched.current_task {
+            task.state = super::TaskState::Zombie;
+        }
+    });
+
+    yield_task();
+
+    loop {
+        x86_64::instructions::hlt();
+    }
 }

@@ -75,9 +75,8 @@ fn handle_read(args: SyscallArgs) -> SyscallResult {
 fn handle_exit(args: SyscallArgs) -> SyscallResult {
     let code = args.arg0 as i32;
     crate::serial::print(format_args!("\n[syscall] exit code: {}\n", code));
-    // In a real scheduler we would mark the task as zombie and yield
-    crate::task::scheduler::yield_task();
-    SyscallResult::Success(0)
+    
+    crate::task::scheduler::exit_current_task();
 }
 
 fn handle_open(args: SyscallArgs) -> SyscallResult {

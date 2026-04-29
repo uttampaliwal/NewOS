@@ -10,6 +10,7 @@ const ELF_CLASS_64: u8 = 2;
 const ELF_DATA_LITTLE_ENDIAN: u8 = 1;
 const ELF_VERSION_CURRENT: u8 = 1;
 const ELF_TYPE_EXEC: u16 = 2;
+const ELF_TYPE_DYN: u16 = 3;
 const ELF_MACHINE_X86_64: u16 = 62;
 const PROGRAM_HEADER_LOAD: u32 = 1;
 
@@ -159,7 +160,7 @@ fn parse_header(image: &[u8]) -> Result<ElfHeader, LoadError> {
     }
 
     let elf_type = read_u16(image, 16)?;
-    if elf_type != ELF_TYPE_EXEC {
+    if elf_type != ELF_TYPE_EXEC && elf_type != ELF_TYPE_DYN {
         return Err(LoadError::UnsupportedType(elf_type));
     }
 

@@ -39,23 +39,13 @@ fn print_doctor() {
     );
     print_check(
         "nightly toolchain available",
-        output_contains(
-            "rustup",
-            ["toolchain", "list"],
-            "nightly-x86_64-pc-windows-msvc",
-        ),
+        output_contains("rustup", ["toolchain", "list"], "nightly"),
     );
     print_check(
         "x86_64-unknown-uefi target installed",
         output_contains(
             "rustup",
-            [
-                "target",
-                "list",
-                "--installed",
-                "--toolchain",
-                "nightly-x86_64-pc-windows-msvc",
-            ],
+            ["target", "list", "--installed", "--toolchain", "nightly"],
             "x86_64-unknown-uefi",
         ),
     );
@@ -63,13 +53,7 @@ fn print_doctor() {
         "x86_64-unknown-none target installed",
         output_contains(
             "rustup",
-            [
-                "target",
-                "list",
-                "--installed",
-                "--toolchain",
-                "nightly-x86_64-pc-windows-msvc",
-            ],
+            ["target", "list", "--installed", "--toolchain", "nightly"],
             "x86_64-unknown-none",
         ),
     );
@@ -201,7 +185,7 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
         workspace_root,
         &[(
             "RUSTFLAGS",
-            "-C link-arg=-Tkernel/linker.ld -C link-arg=-z -C link-arg=max-page-size=0x1000",
+            "-C link-arg=-Tkernel/linker.ld -C link-arg=-z -C link-arg=max-page-size=0x1000 -C relocation-model=static",
         )],
     );
 
@@ -279,13 +263,9 @@ fn run_uefi(workspace_root: &Path) {
             .and_then(Path::parent)
             .expect("ESP root should exist"),
     );
-    let acceleration = env::var("NEWOS_QEMU_ACCEL").unwrap_or_else(|_| "whpx".to_string());
-
-    let status = ProcessCommand::new("qemu-system-x86_64")
-        .arg("-machine")
+    let mut qemu = ProcessCommand::new("qemu-system-x86_64");
+    qemu.arg("-machine")
         .arg("q35")
-        .arg("-accel")
-        .arg(acceleration)
         .arg("-m")
         .arg("512M")
         .arg("-serial")
@@ -296,7 +276,22 @@ fn run_uefi(workspace_root: &Path) {
         .arg("none")
         .arg("-no-reboot")
         .arg("-device")
-        .arg("isa-debug-exit,iobase=0xf4,iosize=0x04")
+        .arg("isa-debug-exit,iobase=0xf4,iosize=0x04");
+
+    if let Ok(accel) = env::var("NEWOS_QEMU_ACCEL") {
+        qemu.arg("-accel").arg(accel);
+    } else {
+        if cfg!(target_os = "windows") {
+            qemu.arg("-accel").arg("whpx");
+        } else if cfg!(target_os = "macos") {
+            qemu.arg("-accel").arg("hvf");
+        } else {
+            qemu.arg("-accel").arg("kvm");
+        }
+        qemu.arg("-accel").arg("tcg");
+    }
+
+    let status = qemu
         .arg("-drive")
         .arg(format!(
             "if=pflash,format=raw,readonly=on,file={}",
@@ -342,9 +337,13 @@ fn find_ovmf_code() -> Option<PathBuf> {
     if let Some(qemu_path) = find_command_path("qemu-system-x86_64") {
         if let Some(base) = qemu_path.parent().and_then(Path::parent) {
             candidates.push(base.join("share").join("qemu").join("edk2-x86_64-code.fd"));
+            candidates.push(base.join("share").join("ovmf").join("OVMF.fd"));
         }
     }
 
+    candidates.push(PathBuf::from("/usr/share/ovmf/OVMF.fd"));
+    candidates.push(PathBuf::from("/usr/share/ovmf/x64/OVMF_CODE.fd"));
+    candidates.push(PathBuf::from("/usr/share/OVMF/OVMF_CODE.fd"));
     candidates.push(PathBuf::from(
         r"C:\msys64\ucrt64\share\qemu\edk2-x86_64-code.fd",
     ));
@@ -369,9 +368,14 @@ fn find_ovmf_vars() -> Option<PathBuf> {
             let share = base.join("share").join("qemu");
             candidates.push(share.join("edk2-x86_64-vars.fd"));
             candidates.push(share.join("edk2-i386-vars.fd"));
+            let ovmf = base.join("share").join("ovmf");
+            candidates.push(ovmf.join("OVMF.fd"));
         }
     }
 
+    candidates.push(PathBuf::from("/usr/share/ovmf/OVMF.fd"));
+    candidates.push(PathBuf::from("/usr/share/ovmf/x64/OVMF_VARS.fd"));
+    candidates.push(PathBuf::from("/usr/share/OVMF/OVMF_VARS.fd"));
     candidates.push(PathBuf::from(
         r"C:\msys64\ucrt64\share\qemu\edk2-x86_64-vars.fd",
     ));
@@ -389,7 +393,12 @@ fn find_ovmf_vars() -> Option<PathBuf> {
 }
 
 fn find_command_path(command: &str) -> Option<PathBuf> {
-    let output = ProcessCommand::new("where").arg(command).output().ok()?;
+    let program = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
+    let output = ProcessCommand::new(program).arg(command).output().ok()?;
 
     if !output.status.success() {
         return None;

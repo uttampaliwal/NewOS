@@ -46,7 +46,7 @@ impl Task {
         mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
     ) -> Self {
-        const STACK_PAGES: u64 = 4;
+        const STACK_PAGES: u64 = 8;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
         const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
@@ -123,23 +123,24 @@ impl Task {
 
     pub fn new_user(
         process: Process,
-        _mapper: &mut impl Mapper<Size4KiB>,
+        mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: x86_64::VirtAddr,
     ) -> Self {
-        const STACK_PAGES: u64 = 4;
+        const STACK_PAGES: u64 = 8;
+        const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
+        const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
 
         let id = TaskId::new();
-        // Use a unique higher-half address for the kernel stack
-        let kernel_stack_virt =
-            x86_64::VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * 0x1000_0000);
-        let stack_top_virt = kernel_stack_virt + STACK_SIZE;
+        let stack_region_base = VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * STACK_STRIDE);
+        let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
+        let stack_top_virt = usable_stack_start + STACK_SIZE;
 
         unsafe {
             let pages = Page::<Size4KiB>::range_inclusive(
-                Page::containing_address(kernel_stack_virt),
-                Page::containing_address(kernel_stack_virt + STACK_SIZE - 1u64),
+                Page::containing_address(usable_stack_start),
+                Page::containing_address(stack_top_virt - 1u64),
             );
 
             for page in pages {
@@ -147,9 +148,19 @@ impl Task {
                     .allocate_frame()
                     .expect("out of memory for user-task kernel stack");
 
-                // Map the kernel stack into the NEW process address space.
-                // We need to switch to the process PML4 temporarily or map it directly.
-                // For simplicity, we'll map it into the process address space using its mapper.
+                // 1. Map the kernel stack into the CURRENT (kernel) address space.
+                // This allows us to initialize the stack contents below.
+                mapper
+                    .map_to(
+                        page,
+                        frame,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        frame_allocator,
+                    )
+                    .expect("failed to map kernel stack in current space")
+                    .flush();
+
+                // 2. Map the kernel stack into the NEW process address space.
                 let pml4_ptr = (physical_memory_offset
                     + process.pml4_frame.start_address().as_u64())
                 .as_mut_ptr::<PageTable>();

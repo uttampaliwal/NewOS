@@ -4,51 +4,29 @@ use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector
 use x86_64::structures::tss::TaskStateSegment;
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
-lazy_static! {
-    static ref TSS: TaskStateSegment = {
-        let mut tss = TaskStateSegment::new();
-        tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
-            const STACK_SIZE: usize = 4096 * 2;
-            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
-            let stack_start = VirtAddr::from_ptr(&raw const STACK);
-            stack_start + STACK_SIZE as u64
-        };
-        tss
-    };
-}
+
+#[repr(align(4096))]
+pub struct TssWrapper(TaskStateSegment);
+pub static mut TSS: TssWrapper = TssWrapper(TaskStateSegment::new());
+
 lazy_static! {
     pub static ref GDT: (GlobalDescriptorTable, Selectors) = {
         let mut gdt = GlobalDescriptorTable::new();
 
-        // Use raw descriptors to ensure absolute architectural correctness.
-        // Bit 47: Present
-        // Bit 44: Descriptor Type (1 for code/data)
-        // Bit 43: Executable
-        // Bit 42: Conforming/Direction
-        // Bit 41: Readable/Writable
-        // Bit 53: 64-bit (Long Mode)
-        // Bits 45-46: Privilege Level (DPL)
-
-        // 0x08: Kernel Code (DPL 0, Long Mode)
+        // 1. Kernel Segments
         let kernel_code = gdt.append(Descriptor::kernel_code_segment());
-
-        // 0x10: Kernel Data (DPL 0)
         let kernel_data = gdt.append(Descriptor::kernel_data_segment());
 
-        // 0x18: User Code 32-bit (Compatibility, required as base for SYSRET)
-        // Flags: Present | DescriptorType | Executable | Readable | DPL 3
+        // 2. User Segments
         let user_code_32 = gdt.append(Descriptor::user_code_segment());
-
-        // 0x20: User Data (DPL 3, 64-bit)
-        // Flags: Present | DescriptorType | Writable | DPL 3
         let user_data = gdt.append(Descriptor::user_data_segment());
-
-        // 0x28: User Code 64-bit (DPL 3, Long Mode)
-        // Flags: Present | DescriptorType | Executable | Readable | LongMode | DPL 3
         let user_code_64 = gdt.append(Descriptor::user_code_segment());
 
-        // 0x30: TSS
-        let tss = gdt.append(Descriptor::tss_segment(&TSS));
+        // 3. TSS
+        let tss = unsafe {
+            #[allow(static_mut_refs)]
+            gdt.append(Descriptor::tss_segment(&TSS.0))
+        };
 
         (
             gdt,
@@ -89,8 +67,16 @@ pub fn init() {
     use x86_64::instructions::tables::load_tss;
     use x86_64::registers::model_specific::KernelGsBase;
 
-    GDT.0.load();
     unsafe {
+        // Initialize TSS Double Fault Stack
+        TSS.0.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
+            const STACK_SIZE: usize = 4096 * 2;
+            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+            let stack_start = VirtAddr::from_ptr(&raw const STACK);
+            stack_start + STACK_SIZE as u64
+        };
+
+        GDT.0.load();
         CS::set_reg(GDT.1.kernel_code);
         DS::set_reg(SegmentSelector(0));
         ES::set_reg(SegmentSelector(0));
@@ -108,10 +94,7 @@ pub fn reload_gdt() {
 
 pub fn set_interrupt_stack(stack_top: VirtAddr) {
     unsafe {
-        let tss_ptr = &raw const TSS as *mut TaskStateSegment;
-        (*tss_ptr).privilege_stack_table[0] = stack_top;
-
-        // Also update our PER_CPU structure for swapgs-based syscalls
+        TSS.0.privilege_stack_table[0] = stack_top;
         PER_CPU.kernel_stack_ptr = stack_top.as_u64();
     }
 }

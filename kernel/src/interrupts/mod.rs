@@ -43,16 +43,26 @@ pub fn init(phys_mem_offset: VirtAddr) {
         // Disable legacy PIC
         PICS.lock().disable();
 
-        // Initialize modern APIC
-        let mut lapic = LAPIC.lock();
-        lapic.initialize();
-        // Start timer with a reasonable count for periodic interrupts
-        lapic.start_timer(0x10000);
+        // Initialize modern APIC with correctly mapped virtual addresses
+        let lapic_phys = apic::get_base_addr();
+        let lapic_virt = phys_mem_offset + lapic_phys.as_u64();
+        
+        {
+            let mut lapic = LAPIC.lock();
+            *lapic = apic::LocalApic::new(lapic_virt);
+            lapic.initialize();
+            // Start timer with a reasonable count for periodic interrupts
+            lapic.start_timer(0x10000);
+        }
 
         // Initialize IOAPIC and route Keyboard (IRQ 1)
-        // We use the direct physical map offset
-        let mut ioapic = apic::IoApic::new(phys_mem_offset + 0xFEC00000u64);
-        ioapic.route_irq(1, KEYBOARD_INTERRUPT_VECTOR);
+        // Standard IOAPIC is at 0xFEC00000 physical
+        let ioapic_virt = phys_mem_offset + 0xFEC00000u64;
+        {
+            let mut ioapic = IOAPIC.lock();
+            *ioapic = apic::IoApic::new(ioapic_virt);
+            ioapic.route_irq(1, KEYBOARD_INTERRUPT_VECTOR);
+        }
     }
 }
 
@@ -65,7 +75,23 @@ global_asm!(
     r#"
     .global timer_interrupt_entry
     timer_interrupt_entry:
-        // 1. Save all registers
+        // TRACE: write 'T' to serial port 0x3f8
+        push rax
+        push rdx
+        mov dx, 0x3f8
+        mov al, 84 // 'T'
+        out dx, al
+        pop rdx
+        pop rax
+
+        // 1. Swap GS if we came from Ring 3
+        // Check CS in the IRETQ frame (RSP+120+8)
+        test qword ptr [rsp + 8], 0x3
+        jz .timer_no_swap
+        swapgs
+    .timer_no_swap:
+
+        // 2. Save all registers
         push rax
         push rbx
         push rcx
@@ -82,17 +108,15 @@ global_asm!(
         push r14
         push r15
 
-        // 2. Call the scheduler tick
+        // 3. Call the scheduler tick
         mov rdi, rsp
         call timer_interrupt_handler_inner
         
-        // 3. Handle stack switch
-        cmp rax, 0
-        je .no_switch_timer
+        // 4. Handle stack switch
         mov rsp, rax
 
-    .no_switch_timer:
-        // 4. Restore all registers
+    .timer_restore:
+        // 5. Restore all registers
         pop r15
         pop r14
         pop r13
@@ -109,10 +133,20 @@ global_asm!(
         pop rbx
         pop rax
 
+        // 6. Swap GS back if we came from Ring 3
+        test qword ptr [rsp + 8], 0x3
+        jz .timer_done
+        swapgs
+    .timer_done:
         iretq
 
     .global yield_interrupt_entry
     yield_interrupt_entry:
+        test qword ptr [rsp + 8], 0x3
+        jz .yield_no_swap
+        swapgs
+    .yield_no_swap:
+
         push rax
         push rbx
         push rcx
@@ -132,11 +166,10 @@ global_asm!(
         mov rdi, rsp
         call yield_interrupt_handler_inner
 
-        cmp rax, 0
-        je .no_switch_yield
+        // 4. Handle stack switch
         mov rsp, rax
 
-    .no_switch_yield:
+    .yield_restore:
         pop r15
         pop r14
         pop r13
@@ -152,6 +185,11 @@ global_asm!(
         pop rcx
         pop rbx
         pop rax
+
+        test qword ptr [rsp + 8], 0x3
+        jz .yield_done
+        swapgs
+    .yield_done:
         iretq
     "#
 );
@@ -166,7 +204,12 @@ pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
     unsafe {
         LAPIC.lock().signal_eoi();
     }
-    crate::task::scheduler::timer_tick(stack_ptr)
+    let next_stack = crate::task::scheduler::timer_tick(stack_ptr);
+    if next_stack != 0 {
+        // Optional: add serial log for context switch
+        // crate::serial::print(format_args!("S")); 
+    }
+    next_stack
 }
 
 #[unsafe(no_mangle)]
