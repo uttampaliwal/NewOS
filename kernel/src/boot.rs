@@ -70,6 +70,28 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
                     &mut frame_allocator,
                     phys_mem_offset,
                 ));
+
+                // 5.1 Load shell process
+                if let Some(shell_fd) = vfs.open("shell") {
+                    let shell_stat = vfs.stat("shell").unwrap();
+                    let mut shell_elf_data = alloc::vec![0u8; shell_stat.size as usize];
+                    if let Some(shell_len) = vfs.read(shell_fd, &mut shell_elf_data) {
+                        let shell_proc = crate::process::Process::new_from_elf(
+                            &shell_elf_data[..shell_len],
+                            &mut frame_allocator,
+                            phys_mem_offset,
+                        ).expect("failed to load shell process ELF");
+
+                        crate::task::scheduler::add_task(crate::task::Task::new_user(
+                            shell_proc,
+                            &mut mapper,
+                            &mut frame_allocator,
+                            phys_mem_offset,
+                        ));
+                        let _ = writeln!(writer, "[STG: SHELL_READY]");
+                    }
+                }
+
                 let _ = writeln!(writer, "[STG: INIT_READY]");
             }
         } else {

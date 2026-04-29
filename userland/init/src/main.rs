@@ -7,8 +7,13 @@ use libnewos::{exit, print};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    print("Hello from User Mode init process (using libnewos)!\n");
-    print("This demonstrates a stable SOTA syscall interface.\n");
+    print("NewOS System Init (v3)\n");
+    print("Searching for shell...\n");
+
+    // In a real OS we'd use exec() here. 
+    // Since we don't have fork/exec fully ready, 
+    // we'll let the scheduler handle the task switch if shell is already loaded.
+    // For now, init just exits and the scheduler will run the shell task.
 
     exit(0);
 }

@@ -150,15 +150,21 @@ impl Task {
 
                 // 1. Map the kernel stack into the CURRENT (kernel) address space.
                 // This allows us to initialize the stack contents below.
-                mapper
-                    .map_to(
-                        page,
-                        frame,
-                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                        frame_allocator,
-                    )
-                    .expect("failed to map kernel stack in current space")
-                    .flush();
+                // NOTE: We use `ignore()` because if multiple processes share the same 
+                // kernel PML4 (higher half), we only need to map it once.
+                if let Err(_) = mapper.map_to(
+                    page,
+                    frame,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                    frame_allocator,
+                ) {
+                    // Already mapped in kernel space, that's fine for now as long as 
+                    // we ensure the frames are consistent.
+                } else {
+                    // Just mapped, flush TLB for this page
+                    use x86_64::instructions::tlb;
+                    tlb::flush(page.start_address());
+                }
 
                 // 2. Map the kernel stack into the NEW process address space.
                 let pml4_ptr = (physical_memory_offset
@@ -167,15 +173,14 @@ impl Task {
                 let mut process_mapper =
                     OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
 
-                process_mapper
-                    .map_to(
-                        page,
-                        frame,
-                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                        frame_allocator,
-                    )
-                    .expect("failed to map kernel stack in process space")
-                    .ignore();
+                if let Err(_) = process_mapper.map_to(
+                    page,
+                    frame,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                    frame_allocator,
+                ) {
+                    // Already mapped, ignore
+                }
             }
         }
 

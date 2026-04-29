@@ -245,11 +245,24 @@ lazy_static! {
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    use pc_keyboard::DecodedKey;
     use x86_64::instructions::port::Port;
+    use crate::input::{KEYBOARD, add_char};
 
+    let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
+
     let scancode: u8 = unsafe { port.read() };
-    crate::serial::print(format_args!("[kbd] scancode: 0x{:x}\n", scancode));
+    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+        if let Some(key) = keyboard.process_keyevent(key_event) {
+            match key {
+                DecodedKey::Unicode(character) => {
+                    add_char(character);
+                }
+                DecodedKey::RawKey(_) => {}
+            }
+        }
+    }
 
     unsafe {
         LAPIC.lock().signal_eoi();

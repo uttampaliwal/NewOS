@@ -6,6 +6,7 @@ members = [
     "tools/xtask",
     "kernel",
     "userland/init",
+    "userland/shell",
     "userland/libnewos",
 ]
 default-members = [
@@ -15,6 +16,7 @@ default-members = [
 exclude = [
     "kernel",
     "userland/init",
+    "userland/shell",
     "userland/libnewos",
     "shared/abi",
     "shared/serial",

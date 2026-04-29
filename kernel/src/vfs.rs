@@ -117,6 +117,11 @@ impl Vfs {
             file_type: FileType::Device,
             data: None,
         });
+        self.entries.push(VfsEntry {
+            name: String::from("keyboard"),
+            file_type: FileType::Device,
+            data: None,
+        });
     }
 
     pub fn open(&mut self, path: &str) -> Option<usize> {
@@ -143,6 +148,25 @@ impl Vfs {
             return None;
         }
         let fd = self.open_files[fd_index].as_ref()?;
+
+        if fd.name == "keyboard" {
+            let mut read_count = 0;
+            while read_count < buf.len() {
+                if let Some(c) = crate::input::read_char() {
+                    buf[read_count] = c as u8;
+                    read_count += 1;
+                } else if read_count > 0 {
+                    // Return what we have so far
+                    break;
+                } else {
+                    // Block or yield if we have nothing?
+                    // For now, let's just return 0 to indicate non-blocking empty read
+                    return Some(0);
+                }
+            }
+            return Some(read_count);
+        }
+
         let entry = self.entries.iter().find(|e| e.name == fd.name)?;
         if let Some(data) = entry.data {
             let len = buf.len().min(data.len());

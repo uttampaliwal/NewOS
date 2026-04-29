@@ -1,41 +1,75 @@
 #![no_std]
 #![no_main]
 
-use libnewos::{print, ls, open, read, close, exit};
+use libnewos::{print, open, read, exit};
 
 #[cfg(not(test))]
 use core::panic::PanicInfo;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    print("NewOS User Shell\n");
-    print("NewOS> ");
+    print("NewOS Interactive Shell\n");
+    print("Type something and press enter...\n");
 
-    // 1. Demonstrate 'ls'
-    let mut ls_buf = [0u8; 512];
-    if let Some(len) = ls(&mut ls_buf) {
-        print("Files:\n");
-        let ls_str = core::str::from_utf8(&ls_buf[..len as usize]).unwrap_or("");
-        print(ls_str);
-    }
+    let kbd_fd = open("keyboard").expect("failed to open keyboard device");
+    let mut line_buf = [0u8; 128];
+    let mut cursor = 0;
 
-    // 2. Demonstrate 'cat initramfs.txt'
-    if let Some(fd) = open("initramfs.txt") {
-        let mut file_buf = [0u8; 128];
-        if let Some(len) = read(fd, &mut file_buf) {
-            print("\nContent of initramfs.txt:\n");
-            let file_str = core::str::from_utf8(&file_buf[..len as usize]).unwrap_or("");
-            print(file_str);
+    print("> ");
+
+    loop {
+        let mut char_buf = [0u8; 1];
+        if let Some(read_len) = read(kbd_fd, &mut char_buf) {
+            if read_len > 0 {
+                let c = char_buf[0];
+                
+                if c == b'\n' || c == b'\r' {
+                    print("\n");
+                    if cursor > 0 {
+                        let cmd = core::str::from_utf8(&line_buf[..cursor]).unwrap_or("");
+                        handle_command(cmd);
+                    }
+                    cursor = 0;
+                    print("> ");
+                } else if c == 8 || c == 127 { // Backspace
+                    if cursor > 0 {
+                        cursor -= 1;
+                        print("\x08 \x08"); // Backspace, space, backspace to clear character
+                    }
+                } else if cursor < line_buf.len() {
+                    line_buf[cursor] = c;
+                    cursor += 1;
+                    
+                    // Echo character
+                    let echo = core::str::from_utf8(&char_buf).unwrap_or("");
+                    print(echo);
+                }
+            }
         }
-        close(fd);
+        
+        // Brief spin to prevent 100% CPU usage in a real OS, 
+        // though our current read is non-blocking and scheduler will switch us anyway.
+        for _ in 0..1000 {
+            core::hint::spin_loop();
+        }
     }
-
-    print("\nShell session complete. Exiting.\n");
-    exit(0);
 }
 
-#[cfg(test)]
-fn main() {}
+fn handle_command(cmd: &str) {
+    match cmd {
+        "help" => print("Available commands: help, hello, exit\n"),
+        "hello" => print("Hello from the NewOS interactive shell!\n"),
+        "exit" => {
+            print("Exiting shell...\n");
+            exit(0);
+        },
+        _ => {
+            print("Unknown command: ");
+            print(cmd);
+            print("\n");
+        }
+    }
+}
 
 #[cfg(not(test))]
 #[panic_handler]
