@@ -1,12 +1,14 @@
 use crate::process::Process;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
-    FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, Size4KiB,
+    FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, Size4KiB, Translate,
 };
 
 pub mod scheduler;
 
 pub type TaskEntry = extern "sysv64" fn() -> !;
+
+const KERNEL_STACK_REGION_BASE: u64 = 0xFFFF_FE00_0000_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
@@ -39,6 +41,35 @@ pub struct Task {
 unsafe impl Send for Task {}
 unsafe impl Sync for Task {}
 
+pub fn init_kernel_stack_region(
+    mapper: &mut (impl Mapper<Size4KiB> + Translate),
+    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
+) {
+    let anchor_page = Page::<Size4KiB>::containing_address(VirtAddr::new(KERNEL_STACK_REGION_BASE));
+    if mapper.translate_addr(anchor_page.start_address()).is_some() {
+        return;
+    }
+
+    let frame = frame_allocator
+        .allocate_frame()
+        .expect("out of memory for kernel stack region anchor");
+
+    unsafe {
+        match mapper.map_to(
+            anchor_page,
+            frame,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+            frame_allocator,
+        ) {
+            Ok(flush) => flush.flush(),
+            Err(_) => {
+                // The anchor only exists to force the kernel-stack PML4 branch
+                // to be present before process address spaces are cloned.
+            }
+        }
+    }
+}
+
 impl Task {
     pub fn new(
         entry: TaskEntry,
@@ -51,7 +82,8 @@ impl Task {
         const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
 
         let id = TaskId::new();
-        let stack_region_base = VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * STACK_STRIDE);
+        let stack_region_base =
+            VirtAddr::new(KERNEL_STACK_REGION_BASE + (id.0 as u64) * STACK_STRIDE);
         let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
         let stack_top_virt = usable_stack_start + STACK_SIZE;
 
@@ -135,7 +167,8 @@ impl Task {
         const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
 
         let id = TaskId::new();
-        let stack_region_base = VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * STACK_STRIDE);
+        let stack_region_base =
+            VirtAddr::new(KERNEL_STACK_REGION_BASE + (id.0 as u64) * STACK_STRIDE);
         let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
         let stack_top_virt = usable_stack_start + STACK_SIZE;
 
@@ -152,7 +185,7 @@ impl Task {
 
                 // 1. Map the kernel stack into the CURRENT (kernel) address space.
                 // This allows us to initialize the stack contents below.
-                // NOTE: We use `ignore()` because if multiple processes share the same 
+                // NOTE: We use `ignore()` because if multiple processes share the same
                 // kernel PML4 (higher half), we only need to map it once.
                 if let Err(_) = mapper.map_to(
                     page,
@@ -160,7 +193,7 @@ impl Task {
                     PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
                     frame_allocator,
                 ) {
-                    // Already mapped in kernel space, that's fine for now as long as 
+                    // Already mapped in kernel space, that's fine for now as long as
                     // we ensure the frames are consistent.
                 } else {
                     // Just mapped, flush TLB for this page
@@ -221,8 +254,6 @@ impl Task {
             state: TaskState::Ready,
         }
     }
-
-
 
     pub fn switch_to(&self) {
         crate::gdt::set_interrupt_stack(x86_64::VirtAddr::new(self.kernel_stack_top as u64));

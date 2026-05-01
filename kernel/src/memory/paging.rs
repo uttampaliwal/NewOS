@@ -53,8 +53,8 @@ pub fn clone_user_mappings(
 ) {
     let src_pml4_ptr =
         (physical_memory_offset + src_pml4_frame.start_address().as_u64()).as_ptr::<PageTable>();
-    let dst_pml4_ptr =
-        (physical_memory_offset + dst_pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+    let dst_pml4_ptr = (physical_memory_offset + dst_pml4_frame.start_address().as_u64())
+        .as_mut_ptr::<PageTable>();
 
     unsafe {
         let src_pml4 = &*src_pml4_ptr;
@@ -97,14 +97,15 @@ fn clone_table_level(
     let new_frame = frame_allocator
         .allocate_frame()
         .expect("failed to allocate frame for page table clone");
-    
+
     // Initialize the entry to point to the new frame
     dst_entry.set_frame(new_frame, src_entry.flags());
 
-    let src_next_table_ptr = (physical_memory_offset + src_entry.frame().unwrap().start_address().as_u64())
-        .as_ptr::<PageTable>();
-    let dst_next_table_ptr = (physical_memory_offset + new_frame.start_address().as_u64())
-        .as_mut_ptr::<PageTable>();
+    let src_next_table_ptr = (physical_memory_offset
+        + src_entry.frame().unwrap().start_address().as_u64())
+    .as_ptr::<PageTable>();
+    let dst_next_table_ptr =
+        (physical_memory_offset + new_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
 
     unsafe {
         let src_next_table = &*src_next_table_ptr;

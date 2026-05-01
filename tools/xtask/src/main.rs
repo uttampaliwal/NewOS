@@ -281,7 +281,8 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     let shell_data = fs::read(&shell_bin).expect("failed to read shell binary");
 
     let fault_tester_bin = build_fault_tester(workspace_root);
-    let fault_tester_data = fs::read(&fault_tester_bin).expect("failed to read fault-tester binary");
+    let fault_tester_data =
+        fs::read(&fault_tester_bin).expect("failed to read fault-tester binary");
 
     let mut ramdisk = Vec::new();
 

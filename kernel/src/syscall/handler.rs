@@ -65,7 +65,7 @@ fn handle_read(args: SyscallArgs) -> SyscallResult {
 
     let vfs = VFS.lock();
     let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, len) };
-    
+
     match vfs.read(fd, buf) {
         Some(read_len) => SyscallResult::Success(read_len as u64),
         None => SyscallResult::Error(1),
@@ -75,14 +75,14 @@ fn handle_read(args: SyscallArgs) -> SyscallResult {
 fn handle_exit(args: SyscallArgs) -> SyscallResult {
     let code = args.arg0 as i32;
     crate::serial::print(format_args!("\n[syscall] exit code: {}\n", code));
-    
+
     crate::task::scheduler::exit_current_task();
 }
 
 fn handle_open(args: SyscallArgs) -> SyscallResult {
     let path_ptr = args.arg0 as *const u8;
     let path_len = args.arg1 as usize;
-    
+
     if path_ptr.is_null() || path_len == 0 {
         return SyscallResult::Error(1);
     }
@@ -146,7 +146,9 @@ fn handle_stat(args: SyscallArgs) -> SyscallResult {
     let vfs = VFS.lock();
     match vfs.stat(path) {
         Some(stat) => {
-            unsafe { *stat_ptr = stat.to_abi(); }
+            unsafe {
+                *stat_ptr = stat.to_abi();
+            }
             SyscallResult::Success(0)
         }
         None => SyscallResult::Error(1),

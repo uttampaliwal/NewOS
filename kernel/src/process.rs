@@ -97,8 +97,10 @@ impl Process {
             stack_top,
             threads: Vec::new(),
         };
-        
-        let process = Self { inner: Arc::new(Mutex::new(inner)) };
+
+        let process = Self {
+            inner: Arc::new(Mutex::new(inner)),
+        };
 
         unsafe {
             // Map User Stack
@@ -117,31 +119,62 @@ impl Process {
 
             for i in 0..header.program_header_count {
                 if let Some(ph) = elf::parse_program_header(elf_data, header, i)? {
-                    if ph.memory_size == 0 { continue; }
+                    if ph.memory_size == 0 {
+                        continue;
+                    }
+                    let file_start = ph.file_offset as usize;
+                    let file_size = ph.file_size as usize;
+                    let file_end = file_start
+                        .checked_add(file_size)
+                        .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+                    if file_end > elf_data.len() {
+                        return Err(elf::ParseError::ProgramHeaderOutOfBounds);
+                    }
+
                     let virt_start = VirtAddr::new(ph.virtual_address);
                     let mut flags = PageTableFlags::empty();
-                    if ph.flags & elf::PF_W != 0 { flags |= PageTableFlags::WRITABLE; }
-                    if ph.flags & elf::PF_X == 0 { flags |= PageTableFlags::NO_EXECUTE; }
+                    if ph.flags & elf::PF_W != 0 {
+                        flags |= PageTableFlags::WRITABLE;
+                    }
+                    if ph.flags & elf::PF_X == 0 {
+                        flags |= PageTableFlags::NO_EXECUTE;
+                    }
 
-                    process.map_user_region(virt_start, ph.memory_size, flags, frame_allocator, physical_memory_offset);
+                    process.map_user_region(
+                        virt_start,
+                        ph.memory_size,
+                        flags,
+                        frame_allocator,
+                        physical_memory_offset,
+                    );
 
                     // Copy data
                     use x86_64::structures::paging::Translate;
                     let mut offset = 0u64;
                     while offset < ph.file_size {
                         let chunk_virt = virt_start + offset;
-                        let chunk_phys = process_mapper.translate_addr(chunk_virt).expect("ELF map");
-                        let dest_ptr = (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
-                        let copy_size = (ph.file_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
-                        core::ptr::copy_nonoverlapping(&elf_data[ph.file_offset as usize + offset as usize], dest_ptr, copy_size as usize);
+                        let chunk_phys =
+                            process_mapper.translate_addr(chunk_virt).expect("ELF map");
+                        let dest_ptr =
+                            (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
+                        let copy_size =
+                            (ph.file_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
+                        core::ptr::copy_nonoverlapping(
+                            &elf_data[ph.file_offset as usize + offset as usize],
+                            dest_ptr,
+                            copy_size as usize,
+                        );
                         offset += copy_size;
                     }
                     // BSS
                     while offset < ph.memory_size {
                         let chunk_virt = virt_start + offset;
-                        let chunk_phys = process_mapper.translate_addr(chunk_virt).expect("BSS map");
-                        let dest_ptr = (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
-                        let copy_size = (ph.memory_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
+                        let chunk_phys =
+                            process_mapper.translate_addr(chunk_virt).expect("BSS map");
+                        let dest_ptr =
+                            (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
+                        let copy_size =
+                            (ph.memory_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
                         core::ptr::write_bytes(dest_ptr, 0, copy_size as usize);
                         offset += copy_size;
                     }
@@ -157,7 +190,7 @@ impl Process {
         physical_memory_offset: VirtAddr,
     ) -> Self {
         let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
-        
+
         // Deep copy user-mode address space
         paging::clone_user_mappings(
             self.pml4_frame(),
@@ -191,16 +224,25 @@ impl Process {
         let pml4_frame = self.pml4_frame();
         let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
             .as_mut_ptr::<PageTable>();
-        
+
         unsafe {
             let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
             let flags = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | extra_flags;
-            let pages = Page::<Size4KiB>::range_inclusive(Page::containing_address(virt_start), Page::containing_address(virt_start + size - 1u64));
+            let pages = Page::<Size4KiB>::range_inclusive(
+                Page::containing_address(virt_start),
+                Page::containing_address(virt_start + size - 1u64),
+            );
             for page in pages {
                 use x86_64::structures::paging::Translate;
-                if process_mapper.translate_addr(page.start_address()).is_none() {
+                if process_mapper
+                    .translate_addr(page.start_address())
+                    .is_none()
+                {
                     let frame = frame_allocator.allocate_frame().expect("out of memory");
-                    process_mapper.map_to(page, frame, flags, frame_allocator).expect("map").ignore();
+                    process_mapper
+                        .map_to(page, frame, flags, frame_allocator)
+                        .expect("map")
+                        .ignore();
                 }
             }
         }

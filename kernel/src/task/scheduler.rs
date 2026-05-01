@@ -28,44 +28,53 @@ pub fn add_task(task: Task) {
 }
 
 pub fn start_scheduling() -> ! {
-    let mut next_ptr: usize = 0;
-
-    x86_64::instructions::interrupts::without_interrupts(|| {
-        let mut sched = SCHEDULER.lock();
-
-        if let Some(mut next_task) = sched.tasks.pop_front() {
-            // Prepare hardware for the next task (TSS, CR3, GS Base)
-            next_task.switch_to();
-            next_task.state = super::TaskState::Running;
-            sched.current_task = Some(next_task);
-            next_ptr = sched.current_task.as_ref().unwrap().stack_ptr;
-        }
-    });
-
-    if next_ptr != 0 {
-        unsafe {
-            core::arch::asm!(
-                "mov rsp, {0}",
-                "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
-                "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
-                "pop rbp", "pop rdx", "pop rcx", "pop rbx", "pop rax",
-                
-                // Check if we are returning to user mode (CS is at [RSP + 8])
-                "test qword ptr [rsp + 8], 0x3",
-                "jz 2f",
-                "swapgs",
-                "2:",
-                "iretq",
-                in(reg) next_ptr,
-                options(noreturn)
-            );
-        }
+    #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+    {
+        panic!("scheduler is only available on the freestanding kernel target");
     }
 
-    panic!("No tasks to schedule!");
+    #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+    {
+        let mut next_ptr: usize = 0;
+
+        x86_64::instructions::interrupts::without_interrupts(|| {
+            let mut sched = SCHEDULER.lock();
+
+            if let Some(mut next_task) = sched.tasks.pop_front() {
+                // Prepare hardware for the next task (TSS, CR3, GS Base)
+                next_task.switch_to();
+                next_task.state = super::TaskState::Running;
+                sched.current_task = Some(next_task);
+                next_ptr = sched.current_task.as_ref().unwrap().stack_ptr;
+            }
+        });
+
+        if next_ptr != 0 {
+            unsafe {
+                core::arch::asm!(
+                    "mov rsp, {0}",
+                    "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
+                    "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
+                    "pop rbp", "pop rdx", "pop rcx", "pop rbx", "pop rax",
+
+                    // Check if we are returning to user mode (CS is at [RSP + 8])
+                    "test qword ptr [rsp + 8], 0x3",
+                    "jz 2f",
+                    "swapgs",
+                    "2:",
+                    "iretq",
+                    in(reg) next_ptr,
+                    options(noreturn)
+                );
+            }
+        }
+
+        panic!("No tasks to schedule!");
+    }
 }
 
 pub fn yield_task() {
+    #[cfg(all(target_arch = "x86_64", target_os = "none"))]
     unsafe {
         core::arch::asm!("int {vector}", vector = const crate::interrupts::YIELD_INTERRUPT_VECTOR);
     }

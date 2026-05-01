@@ -1,6 +1,6 @@
+use lazy_static::lazy_static;
 use newos_abi::boot::BootFramebuffer;
 use spin::Mutex;
-use lazy_static::lazy_static;
 
 lazy_static! {
     pub static ref FRAMEBUFFER: Mutex<Option<Framebuffer>> = Mutex::new(None);
@@ -31,9 +31,18 @@ impl Framebuffer {
         }
 
         let pixel_offset = (y * self.pitch + x) as u64 * 4;
+        let encoded = match self.format {
+            1 => color,
+            _ => {
+                let red = (color & 0x00ff_0000) >> 16;
+                let green = color & 0x0000_ff00;
+                let blue = (color & 0x0000_00ff) << 16;
+                blue | green | red
+            }
+        };
         unsafe {
             let ptr = (self.addr + pixel_offset) as *mut u32;
-            ptr.write_volatile(color);
+            ptr.write_volatile(encoded);
         }
     }
 
@@ -60,14 +69,14 @@ pub fn init(fb_info: &BootFramebuffer) {
     if fb_info.addr == 0 {
         return;
     }
-    
+
     let mut fb = FRAMEBUFFER.lock();
     *fb = Some(Framebuffer::new(fb_info));
-    
+
     if let Some(ref mut f) = *fb {
         // Clear screen with a nice dark blue for NewOS
-        f.clear(0x001a2a); 
-        
+        f.clear(0x001a2a);
+
         // Draw a small "logo" placeholder
         f.draw_rect(20, 20, 100, 100, 0x00aaff);
         f.draw_rect(140, 20, 100, 100, 0xffaa00);

@@ -1,10 +1,12 @@
 use crate::gdt;
-use core::arch::global_asm;
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;
 use spin::Mutex;
 use x86_64::VirtAddr;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
+
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+use core::arch::global_asm;
 
 pub mod apic;
 
@@ -46,7 +48,7 @@ pub fn init(phys_mem_offset: VirtAddr) {
         // Initialize modern APIC with correctly mapped virtual addresses
         let lapic_phys = apic::get_base_addr();
         let lapic_virt = phys_mem_offset + lapic_phys.as_u64();
-        
+
         {
             let mut lapic = LAPIC.lock();
             *lapic = apic::LocalApic::new(lapic_virt);
@@ -207,7 +209,7 @@ pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
     let next_stack = crate::task::scheduler::timer_tick(stack_ptr);
     if next_stack != 0 {
         // Optional: add serial log for context switch
-        // crate::serial::print(format_args!("S")); 
+        // crate::serial::print(format_args!("S"));
     }
     next_stack
 }
@@ -245,9 +247,9 @@ lazy_static! {
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    use crate::input::{KEYBOARD, add_char};
     use pc_keyboard::DecodedKey;
     use x86_64::instructions::port::Port;
-    use crate::input::{KEYBOARD, add_char};
 
     let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
@@ -286,12 +288,16 @@ extern "x86-interrupt" fn page_fault_handler(
 ) {
     use x86_64::registers::control::Cr2;
     use x86_64::registers::model_specific::{GsBase, KernelGsBase};
-    
+
     let addr = Cr2::read();
 
     // Check if the fault occurred in user mode (CS segment selector has RPL 3)
     if stack_frame.code_segment.0 & 0x3 == 0x3 {
-        crate::serial::println!("PROCESS FAULT: Page Fault at {:?} with error code {:?}. Terminating process.", addr, error_code);
+        crate::serial::println!(
+            "PROCESS FAULT: Page Fault at {:?} with error code {:?}. Terminating process.",
+            addr,
+            error_code
+        );
         crate::task::scheduler::exit_current_task();
     }
 
@@ -300,11 +306,7 @@ extern "x86-interrupt" fn page_fault_handler(
 
     panic!(
         "EXCEPTION: PAGE FAULT in Kernel\nAccessed Address: {:?}\nError Code: {:?}\nGS_BASE: {:?}, KERNEL_GS_BASE: {:?}\n{:#?}",
-        addr,
-        error_code,
-        gs_base,
-        kernel_gs_base,
-        stack_frame
+        addr, error_code, gs_base, kernel_gs_base, stack_frame
     );
 }
 
@@ -312,7 +314,10 @@ extern "x86-interrupt" fn gpf_handler(stack_frame: InterruptStackFrame, error_co
     use x86_64::registers::model_specific::{GsBase, KernelGsBase};
 
     if stack_frame.code_segment.0 & 0x3 == 0x3 {
-        crate::serial::println!("PROCESS FAULT: General Protection Fault with error code {}. Terminating process.", error_code);
+        crate::serial::println!(
+            "PROCESS FAULT: General Protection Fault with error code {}. Terminating process.",
+            error_code
+        );
         crate::task::scheduler::exit_current_task();
     }
 
@@ -321,7 +326,11 @@ extern "x86-interrupt" fn gpf_handler(stack_frame: InterruptStackFrame, error_co
 
     crate::serial::println!("EXCEPTION: GENERAL PROTECTION FAULT in Kernel");
     crate::serial::println!("Error Code: {:?}", error_code);
-    crate::serial::println!("GS_BASE: {:?}, KERNEL_GS_BASE: {:?}", gs_base, kernel_gs_base);
+    crate::serial::println!(
+        "GS_BASE: {:?}, KERNEL_GS_BASE: {:?}",
+        gs_base,
+        kernel_gs_base
+    );
     crate::serial::println!("Instruction Pointer: {:?}", stack_frame.instruction_pointer);
     crate::serial::println!("Stack Pointer: {:?}", stack_frame.stack_pointer);
     crate::serial::println!("{:#?}", stack_frame);

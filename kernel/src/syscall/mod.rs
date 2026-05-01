@@ -1,7 +1,9 @@
-use core::arch::global_asm;
 use newos_abi::syscall::{Syscall, SyscallArgs};
 use x86_64::VirtAddr;
 use x86_64::registers::model_specific::{LStar, Msr, SFMask};
+
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+use core::arch::global_asm;
 
 pub mod handler;
 
@@ -38,8 +40,8 @@ pub fn init() {
         star.write((user_base << 48) | (kernel_base << 32));
 
         LStar::write(VirtAddr::new(syscall_entry as *const () as u64));
-        
-        // We MUST mask the interrupt flag during syscall entry to prevent 
+
+        // We MUST mask the interrupt flag during syscall entry to prevent
         // interrupts from running on a partially-setup kernel stack.
         SFMask::write(x86_64::registers::rflags::RFlags::INTERRUPT_FLAG);
 
@@ -48,6 +50,7 @@ pub fn init() {
     }
 }
 
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
 global_asm!(
     r#"
     .global syscall_entry
@@ -114,9 +117,13 @@ global_asm!(
     "#
 );
 
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
 unsafe extern "C" {
     fn syscall_entry();
 }
+
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+extern "C" fn syscall_entry() {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn get_current_kernel_stack_top() -> usize {

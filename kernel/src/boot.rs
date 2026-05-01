@@ -19,7 +19,8 @@ pub fn get_frame_allocator() -> &'static Mutex<Option<FrameAllocator<'static>>> 
 }
 
 pub fn get_phys_mem_offset() -> VirtAddr {
-    *PHYS_MEM_OFFSET.lock()
+    *PHYS_MEM_OFFSET
+        .lock()
         .as_ref()
         .expect("phys mem offset not set")
 }
@@ -33,7 +34,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     }
 
     let mut writer = SerialWriter;
-    
+
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
     *PHYS_MEM_OFFSET.lock() = Some(phys_mem_offset);
 
@@ -55,6 +56,9 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         .expect("heap initialization failed");
     let _ = writeln!(writer, "[STG: HEAP_INIT]");
 
+    crate::task::init_kernel_stack_region(&mut mapper, &mut frame_allocator);
+    let _ = writeln!(writer, "[STG: KSTACK_REGION_INIT]");
+
     // Store the frame allocator in the global mutex after heap is ready
     *FRAME_ALLOCATOR.lock() = Some(frame_allocator);
 
@@ -69,7 +73,11 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         use x86_64::structures::paging::Translate;
         let kernel_addr = VirtAddr::new(0xffffffff80000000);
         let result = mapper.translate(kernel_addr);
-        let _ = writeln!(writer, "[DEBUG: KERNEL_ADDR={:?}, RESULT={:?}]", kernel_addr, result);
+        let _ = writeln!(
+            writer,
+            "[DEBUG: KERNEL_ADDR={:?}, RESULT={:?}]",
+            kernel_addr, result
+        );
     }
 
     // 3.1 Initialize Video Driver
@@ -92,7 +100,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
             let mut elf_data = alloc::vec![0u8; stat.size as usize];
             if let Some(len) = vfs.read(fd, &mut elf_data) {
                 let _ = writeln!(writer, "[STG: INIT_READ_DONE]");
-                
+
                 let init_proc = crate::process::Process::new_from_elf(
                     &elf_data[..len],
                     get_frame_allocator().lock().as_mut().unwrap(),
@@ -116,7 +124,8 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                             &shell_elf_data[..shell_len],
                             get_frame_allocator().lock().as_mut().unwrap(),
                             phys_mem_offset,
-                        ).expect("failed to load shell process ELF");
+                        )
+                        .expect("failed to load shell process ELF");
 
                         crate::task::scheduler::add_task(crate::task::Task::new_user(
                             shell_proc,
@@ -137,7 +146,8 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                             &fault_elf_data[..fault_len],
                             get_frame_allocator().lock().as_mut().unwrap(),
                             phys_mem_offset,
-                        ).expect("failed to load fault-tester process ELF");
+                        )
+                        .expect("failed to load fault-tester process ELF");
 
                         crate::task::scheduler::add_task(crate::task::Task::new_user(
                             fault_proc,

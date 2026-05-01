@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
@@ -88,10 +89,11 @@ impl Vfs {
 
                 if offset + file_size <= data.len() {
                     let file_data = &data[offset..offset + file_size];
+                    let static_data = Box::leak(file_data.to_vec().into_boxed_slice());
                     self.entries.push(VfsEntry {
                         name: String::from(name),
                         file_type: FileType::Regular,
-                        data: Some(unsafe { core::mem::transmute(file_data) }),
+                        data: Some(static_data),
                     });
                     offset += file_size;
                 } else {

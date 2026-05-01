@@ -65,7 +65,6 @@ pub static mut PER_CPU: PerCpu = PerCpu {
 pub fn init() {
     use x86_64::instructions::segmentation::{CS, DS, ES, SS, Segment};
     use x86_64::instructions::tables::load_tss;
-    use x86_64::registers::model_specific::KernelGsBase;
 
     unsafe {
         // Initialize TSS Double Fault Stack
@@ -83,13 +82,13 @@ pub fn init() {
         SS::set_reg(SegmentSelector(0));
         load_tss(GDT.1.tss);
 
-        // Initialize GS bases: 
-        // - GsBase (user) = 0
-        // - KernelGsBase (kernel) = PER_CPU
+        // Kernel mode runs with GS pointing at PER_CPU. On every transition
+        // to user mode, swapgs restores the user GS base (currently zero) and
+        // leaves KernelGsBase ready for the next syscall/interrupt entry.
         use x86_64::registers::model_specific::{GsBase, KernelGsBase};
         let per_cpu_ptr = VirtAddr::from_ptr(&raw const PER_CPU);
-        GsBase::write(VirtAddr::zero());
-        KernelGsBase::write(per_cpu_ptr);
+        GsBase::write(per_cpu_ptr);
+        KernelGsBase::write(VirtAddr::zero());
     }
 }
 

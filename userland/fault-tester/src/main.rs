@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use libnewos::{print, exit};
+use libnewos::{exit, print};
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {

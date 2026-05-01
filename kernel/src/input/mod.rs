@@ -1,13 +1,17 @@
-use lazy_static::lazy_static;
-use pc_keyboard::{layouts, HandleControl, Keyboard, ScancodeSet1};
-use spin::Mutex;
 use alloc::collections::VecDeque;
+use lazy_static::lazy_static;
+use pc_keyboard::{HandleControl, Keyboard, ScancodeSet1, layouts};
+use spin::Mutex;
 
 lazy_static! {
-    pub static ref KEYBOARD_BUFFER: Mutex<VecDeque<char>> = Mutex::new(VecDeque::with_capacity(128));
-    pub static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = Mutex::new(
-        Keyboard::new(ScancodeSet1::new(), layouts::Us104Key, HandleControl::Ignore)
-    );
+    pub static ref KEYBOARD_BUFFER: Mutex<VecDeque<char>> =
+        Mutex::new(VecDeque::with_capacity(128));
+    pub static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> =
+        Mutex::new(Keyboard::new(
+            ScancodeSet1::new(),
+            layouts::Us104Key,
+            HandleControl::Ignore
+        ));
 }
 
 pub fn add_char(c: char) {

@@ -7,6 +7,8 @@
 //! bootloader integration, low-level entry, logging, and hardware bring-up.
 
 extern crate alloc;
+#[cfg(test)]
+extern crate std;
 
 pub mod boot;
 pub mod drivers;

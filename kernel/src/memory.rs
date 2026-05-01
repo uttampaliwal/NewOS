@@ -34,17 +34,13 @@ impl<'a> FrameAllocator<'a> {
     }
 
     pub fn allocate_physical_frame(&mut self) -> Option<PhysFrame> {
-        use newos_abi::boot::{
-            MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA, MEMORY_TYPE_LOADER_DATA,
-        };
+        use newos_abi::boot::{MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA};
 
         for descriptor in self.boot_info.memory_map.iter() {
             let is_usable = match descriptor.ty {
                 MEMORY_TYPE_CONVENTIONAL => true,
-                MEMORY_TYPE_LOADER_DATA => true,
                 MEMORY_TYPE_BOOT_SERVICES_CODE => true,
                 MEMORY_TYPE_BOOT_SERVICES_DATA => true,
-                1 => true, // LoaderCode
                 _ => false,
             };
 
@@ -119,23 +115,36 @@ mod tests {
     }
 
     fn boot_info(descriptors: &[BootMemoryDescriptor]) -> BootInfo {
-        BootInfo {
-            abi_version: 2,
-            environment: BootEnvironment::Uefi,
-            loader: BootLoaderKind::UefiLoader,
-            flags: 0,
-            kernel_image_base: 0,
-            kernel_image_size: 0,
-            physical_memory_offset: 0,
-            ramdisk_addr: 0,
-            ramdisk_size: 0,
-            memory_map: BootMemoryMap {
-                descriptors: descriptors.as_ptr(),
-                map_size: descriptors.len() * size_of::<BootMemoryDescriptor>(),
-                desc_size: size_of::<BootMemoryDescriptor>(),
-                desc_version: 1,
-            },
-        }
+        let mut boot_info = BootInfo::uefi(3);
+        boot_info.environment = BootEnvironment::Uefi;
+        boot_info.loader = BootLoaderKind::UefiLoader;
+        boot_info.memory_map = BootMemoryMap {
+            descriptors: descriptors.as_ptr(),
+            map_size: descriptors.len() * size_of::<BootMemoryDescriptor>(),
+            desc_size: size_of::<BootMemoryDescriptor>(),
+            desc_version: 1,
+        };
+        boot_info
+    }
+
+    #[test]
+    fn frame_allocator_keeps_loader_data_reserved() {
+        use newos_abi::boot::MEMORY_TYPE_LOADER_DATA;
+
+        let descriptors = [
+            descriptor(MEMORY_TYPE_LOADER_DATA, 0x100000, 2),
+            descriptor(MEMORY_TYPE_CONVENTIONAL, 0x200000, 2),
+        ];
+
+        let boot_info = boot_info(&descriptors);
+        let mut allocator = FrameAllocator::new(&boot_info);
+
+        assert_eq!(
+            allocator
+                .allocate_physical_frame()
+                .map(|frame| frame.start_address),
+            Some(0x200000)
+        );
     }
 
     #[test]

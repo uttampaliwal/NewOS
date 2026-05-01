@@ -10,8 +10,8 @@ pub extern "C" fn _start() -> ! {
     print("NewOS System Init (v3)\n");
     print("Searching for shell...\n");
 
-    // In a real OS we'd use exec() here. 
-    // Since we don't have fork/exec fully ready, 
+    // In a real OS we'd use exec() here.
+    // Since we don't have fork/exec fully ready,
     // we'll let the scheduler handle the task switch if shell is already loaded.
     // For now, init just exits and the scheduler will run the shell task.
 
