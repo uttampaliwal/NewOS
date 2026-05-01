@@ -40,6 +40,7 @@ pub struct VfsEntry {
 pub struct Vfs {
     entries: Vec<VfsEntry>,
     open_files: [Option<FileDescriptor>; MAX_OPEN_FILES],
+    cwd: alloc::string::String,
 }
 
 impl Vfs {
@@ -47,6 +48,7 @@ impl Vfs {
         Self {
             entries: Vec::new(),
             open_files: [const { None }; MAX_OPEN_FILES],
+            cwd: alloc::string::String::from("/"),
         }
     }
 
@@ -196,6 +198,20 @@ impl Vfs {
 
     pub fn list_dir(&self) -> Vec<String> {
         self.entries.iter().map(|e| e.name.clone()).collect()
+    }
+
+    pub fn getcwd(&self) -> &str {
+        &self.cwd
+    }
+
+    pub fn chdir(&mut self, path: &str) -> bool {
+        // Check if path exists and is a directory
+        if self.entries.iter().any(|e| e.name == path && e.file_type == FileType::Directory) {
+            self.cwd = alloc::string::String::from(path);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn mkdir(&mut self, path: &str) -> bool {
