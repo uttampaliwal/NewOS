@@ -69,6 +69,16 @@ pub fn getgid() -> u64 {
     syscall0(Syscall::GetGid as u64)
 }
 
+pub fn mkdir(path: &str) -> bool {
+    let res = syscall2(Syscall::Mkdir as u64, path.as_ptr() as u64, path.len() as u64);
+    (res as i64) >= 0
+}
+
+pub fn unlink(path: &str) -> bool {
+    let res = syscall2(Syscall::Unlink as u64, path.as_ptr() as u64, path.len() as u64);
+    (res as i64) >= 0
+}
+
 fn syscall0(num: u64) -> u64 {
     let res: u64;
     unsafe {

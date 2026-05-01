@@ -19,6 +19,8 @@ pub enum Syscall {
     GetUid = 16,
     GetGid = 17,
     Brk = 18,
+    Mkdir = 19,
+    Unlink = 20,
 }
 
 impl Syscall {
@@ -42,6 +44,8 @@ impl Syscall {
             16 => Some(Self::GetUid),
             17 => Some(Self::GetGid),
             18 => Some(Self::Brk),
+            19 => Some(Self::Mkdir),
+            20 => Some(Self::Unlink),
             _ => None,
         }
     }
@@ -168,5 +172,15 @@ mod tests {
     #[test]
     fn brk_syscall_id_is_eightteen() {
         assert_eq!(Syscall::Brk as u16, 18);
+    }
+
+    #[test]
+    fn mkdir_syscall_id_is_nineteen() {
+        assert_eq!(Syscall::Mkdir as u16, 19);
+    }
+
+    #[test]
+    fn unlink_syscall_id_is_twenty() {
+        assert_eq!(Syscall::Unlink as u16, 20);
     }
 }

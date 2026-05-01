@@ -41,7 +41,21 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::GetUid => handle_getuid(args),
         Syscall::GetGid => handle_getgid(args),
         Syscall::Brk => handle_brk(args),
+        Syscall::Mkdir => handle_mkdir(args),
+        Syscall::Unlink => handle_unlink(args),
     }
+}
+
+fn handle_mkdir(_args: SyscallArgs) -> SyscallResult {
+    // Mkdir syscall - create directory
+    // For now, return error as VFS doesn't support mkdir yet
+    SyscallResult::Error(1)
+}
+
+fn handle_unlink(_args: SyscallArgs) -> SyscallResult {
+    // Unlink syscall - remove file or directory
+    // For now, return error as VFS doesn't support unlink yet
+    SyscallResult::Error(1)
 }
 
 fn handle_brk(args: SyscallArgs) -> SyscallResult {
