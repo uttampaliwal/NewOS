@@ -1,0 +1,29 @@
+[workspace]
+members = [
+    "boot/uefi-loader",
+    "shared/abi",
+    "shared/serial",
+    "tools/xtask",
+    "kernel",
+    "userland/init",
+    "userland/shell",
+    "userland/libturnix",
+    "userland/fault-tester",
+]
+default-members = [
+    "shared/abi",
+    "tools/xtask",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Uttam", "Codex", "Antigravity"]
+repository = "https://github.com/uttampaliwal/Turnix"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

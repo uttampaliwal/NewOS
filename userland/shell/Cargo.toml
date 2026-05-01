@@ -1,0 +1,17 @@
+[package]
+name = "shell"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "shell"
+test = false
+
+[dependencies]
+turnix-abi = { path = "../../shared/abi" }
+libturnix = { path = "../libturnix" }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

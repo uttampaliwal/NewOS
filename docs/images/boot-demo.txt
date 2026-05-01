@@ -1,0 +1,50 @@
+# QEMU Boot Demo
+
+```
+$ cargo xtask run-uefi
+UEFI image staged at out\esp\EFI\BOOT\BOOTX64.EFI
+Kernel image staged at out\esp\turnix\kernel.elf
+
+QEMU running...
+```
+
+## Boot Output
+
+```
+UEFI turnix Loader v0.0.4
+========================
+Memory Map:
+  - Conventional: 513792 KB available
+  - Reserved: 184 KB
+  - ACPI: 0 KB
+Loading kernel from EFI file system... OK
+Jumping to kernel at 0x100000...
+```
+
+## Kernel Output
+
+```
+turnix Kernel v0.0.4
+====================
+Memory: 513792 KB conventional
+Physical frames: 127948 (0 - 128 MB)
+Heap: bump allocator initialized at 0x200000
+GDT: code=0x08, data=0x10, user=0x18
+IDT: 256 entries
+TSS: 0x28
+PIC: IRQ0-IRQ15 remapped
+Timer: 100 Hz configured
+Interrupts enabled
+Kernel ready!
+```
+
+## Timer Interrupt Demo
+
+```
+Timer tick #1 @ 10ms
+Timer tick #2 @ 20ms
+Timer tick #3 @ 30ms
+...
+```
+
+See [docs/phase-4-interrupts.md](phase-4-interrupts.md) for interrupt handling details.

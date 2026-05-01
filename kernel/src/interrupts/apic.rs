@@ -1,0 +1,106 @@
+use x86_64::VirtAddr;
+use x86_64::registers::model_specific::Msr;
+
+/// The Local APIC (LAPIC) is responsible for handling interrupts for a single CPU.
+pub struct LocalApic {
+    base_addr: VirtAddr,
+}
+
+impl LocalApic {
+    /// Create a new Local APIC instance.
+    ///
+    /// SAFETY: The caller must ensure that the base address is valid and mapped.
+    pub unsafe fn new(base_addr: VirtAddr) -> Self {
+        Self { base_addr }
+    }
+
+    /// Read a register from the Local APIC.
+    unsafe fn read(&self, offset: u32) -> u32 {
+        unsafe {
+            let ptr = (self.base_addr.as_u64() + offset as u64) as *const u32;
+            ptr.read_volatile()
+        }
+    }
+
+    /// Write a register to the Local APIC.
+    unsafe fn write(&mut self, offset: u32, value: u32) {
+        unsafe {
+            let ptr = (self.base_addr.as_u64() + offset as u64) as *mut u32;
+            ptr.write_volatile(value);
+        }
+    }
+
+    /// Initialize the Local APIC.
+    pub unsafe fn initialize(&mut self) {
+        // Enable the Local APIC by setting bit 8 of the Spurious Interrupt Vector Register.
+        // We also set the spurious vector to 0xFF.
+        unsafe {
+            let spurious_vector = 0xFF;
+            self.write(0xF0, self.read(0xF0) | 0x100 | spurious_vector);
+        }
+    }
+
+    /// Set the APIC timer to fire every `count` ticks.
+    pub unsafe fn start_timer(&mut self, count: u32) {
+        unsafe {
+            // Divide by 16
+            self.write(0x3E0, 0x3);
+            // Periodic mode, vector 32
+            self.write(0x320, 0x20000 | 32);
+            // Initial count
+            self.write(0x380, count);
+        }
+    }
+
+    /// Signal End of Interrupt (EOI) to the Local APIC.
+    pub unsafe fn signal_eoi(&mut self) {
+        unsafe {
+            self.write(0xB0, 0);
+        }
+    }
+}
+
+pub struct IoApic {
+    base_addr: VirtAddr,
+}
+
+impl IoApic {
+    pub unsafe fn new(base_addr: VirtAddr) -> Self {
+        Self { base_addr }
+    }
+
+    unsafe fn write(&mut self, reg: u32, value: u32) {
+        unsafe {
+            let ioapic_ptr = self.base_addr.as_u64() as *mut u32;
+            ioapic_ptr.write_volatile(reg);
+            ioapic_ptr.add(4).write_volatile(value);
+        }
+    }
+
+    pub unsafe fn route_irq(&mut self, irq: u8, vector: u8) {
+        let low_reg = 0x10 + (irq as u32) * 2;
+        let high_reg = low_reg + 1;
+
+        // Low 32 bits: vector, delivery mode (fixed), destination mode (physical), polarity (high), trigger (edge), mask (0)
+        unsafe {
+            self.write(low_reg, vector as u32);
+            // High 32 bits: destination (APIC ID 0)
+            self.write(high_reg, 0);
+        }
+    }
+}
+
+/// Get the physical base address of the Local APIC from the IA32_APIC_BASE MSR.
+pub fn get_base_addr() -> VirtAddr {
+    let mut apic_base_msr = Msr::new(0x1B);
+    unsafe {
+        let base = apic_base_msr.read();
+        // Set bit 11 (APIC Global Enable) if not already set
+        if (base & 0x800) == 0 {
+            apic_base_msr.write(base | 0x800);
+        }
+        // The base address is in bits 12-51 (for x86_64)
+        let addr = base & 0xFFFFFFFFFF000;
+        VirtAddr::new(addr)
+    }
+}
