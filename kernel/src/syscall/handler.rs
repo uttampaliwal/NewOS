@@ -176,10 +176,21 @@ fn handle_exec(_args: SyscallArgs) -> SyscallResult {
 }
 
 fn handle_fork(_args: SyscallArgs) -> SyscallResult {
+    // Basic fork implementation
+    // In a real fork, we would:
+    // 1. Create a new process with a copy of parent's address space
+    // 2. Set up child task with proper state
+    // 3. Return 0 to child, PID to parent
+    // For now, return error as this is complex to implement correctly
     SyscallResult::Error(1)
 }
 
 fn handle_wait(_args: SyscallArgs) -> SyscallResult {
+    // Basic wait implementation
+    // In a real wait, we would:
+    // 1. Wait for a child process to exit
+    // 2. Return the PID and exit status
+    // For now, return error
     SyscallResult::Error(1)
 }
 
