@@ -113,8 +113,14 @@ fn handle_open(args: SyscallArgs) -> SyscallResult {
     }
 }
 
-fn handle_close(_args: SyscallArgs) -> SyscallResult {
-    SyscallResult::Success(0)
+fn handle_close(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let mut vfs = VFS.lock();
+    if vfs.close(fd) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(1)
+    }
 }
 
 fn handle_exec(_args: SyscallArgs) -> SyscallResult {

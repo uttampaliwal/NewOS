@@ -122,6 +122,18 @@ impl Vfs {
         None
     }
 
+    pub fn close(&mut self, fd_index: usize) -> bool {
+        if fd_index >= self.open_files.len() {
+            return false;
+        }
+        if self.open_files[fd_index].is_some() {
+            self.open_files[fd_index] = None;
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn read(&mut self, fd_index: usize, buf: &mut [u8]) -> Option<usize> {
         if fd_index >= self.open_files.len() {
             return None;
