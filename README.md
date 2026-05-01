@@ -38,6 +38,40 @@ graph TD
     Memory --> |Page Tables| UEFI
 ```
 
+## Architecture
+
+```mermaid
+graph TD
+    subgraph UserSpace [User Space - Ring 3]
+        Init[init process]
+        Shell[shell]
+        App[user apps]
+    end
+
+    subgraph Kernel [Kernel - Ring 0]
+        subgraph Subsystems
+            Sched[Preemptive Scheduler]
+            VFS[Virtual File System]
+            Memory[Paging & Frame Allocator]
+        end
+        subgraph Arch [Arch-Specific x86_64]
+            IDT[Interrupts / IDT]
+            GDT[Segmentation / GDT]
+            Sys[Syscall Handler]
+        end
+    end
+
+    subgraph Boot [Boot Chain]
+        UEFI[UEFI Firmware] --> Loader[UEFI Loader]
+        Loader --> |Handoff| Kernel
+    end
+
+    Init --> |SYSCALL| Sys
+    Sys --> VFS
+    Sched --> |Context Switch| Arch
+    Memory --> |Page Tables| UEFI
+```
+
 ## Current Status
 
 | Phase | Status | Milestone |
@@ -66,7 +100,11 @@ The system's stability is verified through automated boot tests in QEMU.
 
 **Successful Boot & User Mode Transition:**
 ```text
+<<<<<<< HEAD
 turnix UEFI loader
+=======
+NewOS UEFI loader
+>>>>>>> unstable
 kernel loaded: entry=0xffffffff80000000
 exiting boot services
 Switching CR3...
@@ -80,7 +118,11 @@ Jumping to kernel...
 [STG: INIT_READY]
 [STG: INTR_ENABLED]
 [STG: SCHED_START]
+<<<<<<< HEAD
 Hello from User Mode init process (using libturnix)!
+=======
+Hello from User Mode init process (using libnewos)!
+>>>>>>> unstable
 This demonstrates a stable SOTA syscall interface.
 [syscall] exit code: 0
 ```

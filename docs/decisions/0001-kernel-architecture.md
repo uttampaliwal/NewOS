@@ -4,7 +4,11 @@
 Accepted
 
 ## Context
+<<<<<<< HEAD
 turnix needs a robust foundation for a modern desktop operating system. We need to decide on the fundamental kernel model and memory layout to ensure scalability and security.
+=======
+NewOS needs a robust foundation for a modern desktop operating system. We need to decide on the fundamental kernel model and memory layout to ensure scalability and security.
+>>>>>>> unstable
 
 ## Decision
 1. **Higher-Half Kernel**: The kernel is mapped to the higher half of the virtual address space (starting at `0xffffffff80000000`). 
