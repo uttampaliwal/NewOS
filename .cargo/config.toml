@@ -10,10 +10,4 @@ rustflags = [
     "panic=abort",
     "-C",
     "relocation-model=static",
-    "-C",
-    "link-arg=-Tkernel/linker.ld",
-    "-C",
-    "link-arg=-z",
-    "-C",
-    "link-arg=max-page-size=0x1000",
 ]

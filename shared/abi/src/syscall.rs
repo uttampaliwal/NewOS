@@ -1,3 +1,15 @@
+pub const FILE_TYPE_REGULAR: u32 = 0;
+pub const FILE_TYPE_DIRECTORY: u32 = 1;
+pub const FILE_TYPE_DEVICE: u32 = 2;
+pub const FILE_TYPE_PIPE: u32 = 3;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stat {
+    pub size: u64,
+    pub file_type: u32,
+}
+
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Syscall {
@@ -80,13 +92,6 @@ pub struct SyscallArgs {
     pub arg1: u64,
     pub arg2: u64,
     pub arg3: u64,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Stat {
-    pub size: u64,
-    pub file_type: u32,
 }
 
 impl SyscallArgs {

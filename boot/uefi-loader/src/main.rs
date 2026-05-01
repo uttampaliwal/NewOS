@@ -124,6 +124,16 @@ fn main() -> Status {
         );
     }
 
+    // 4. Get GOP info before exiting boot services
+    let gop = boot::get_handle_for_protocol::<uefi::proto::console::gop::GraphicsOutput>()
+        .and_then(|h| boot::open_protocol_exclusive::<uefi::proto::console::gop::GraphicsOutput>(h))
+        .expect("GOP should be available");
+
+    let mut gop = gop;
+    let fb_info = gop.current_mode_info();
+    let fb_addr = gop.frame_buffer().as_mut_ptr() as u64;
+    let fb_size = gop.frame_buffer().size() as u64;
+
     // 5. Exit Boot Services
     serial_println!("exiting boot services");
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
@@ -153,6 +163,18 @@ fn main() -> Status {
             map_size: memory_map.meta().map_size,
             desc_size: memory_map.meta().desc_size,
             desc_version: memory_map.meta().desc_version as u32,
+        };
+        boot_info.framebuffer = newos_abi::boot::BootFramebuffer {
+            addr: fb_addr,
+            size: fb_size,
+            width: fb_info.resolution().0 as u32,
+            height: fb_info.resolution().1 as u32,
+            pitch: fb_info.stride() as u32,
+            format: match fb_info.pixel_format() {
+                uefi::proto::console::gop::PixelFormat::Bgr => 0,
+                uefi::proto::console::gop::PixelFormat::Rgb => 1,
+                _ => 0,
+            },
         };
 
         // 7. Final Transition

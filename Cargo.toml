@@ -6,12 +6,26 @@ members = [
     "tools/xtask",
     "kernel",
     "userland/init",
+<<<<<<< HEAD
     "userland/libnewos",
     "userland/shell",
+=======
+    "userland/shell",
+    "userland/libnewos",
+    "userland/fault-tester",
+>>>>>>> 0f397571af62411c068ff843edb220926589e735
 ]
 default-members = [
     "shared/abi",
     "tools/xtask",
+]
+exclude = [
+    "kernel",
+    "userland/init",
+    "userland/shell",
+    "userland/libnewos",
+    "shared/abi",
+    "shared/serial",
 ]
 resolver = "2"
 

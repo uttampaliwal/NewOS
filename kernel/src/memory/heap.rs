@@ -8,10 +8,10 @@ use x86_64::{
 use crate::memory::allocator::Locked;
 use crate::memory::allocator::fixed_size_block::FixedSizeBlockAllocator;
 
-pub const HEAP_START: usize = 0x_4444_4444_0000;
+pub const HEAP_START: usize = 0xFFFF_A000_0000_0000;
 pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 
-#[global_allocator]
+#[cfg_attr(not(test), global_allocator)]
 pub static ALLOCATOR: Locked<FixedSizeBlockAllocator> = Locked::new(FixedSizeBlockAllocator::new());
 
 pub fn init_heap(

@@ -10,3 +10,8 @@ test = false
 [dependencies]
 newos-abi = { path = "../../shared/abi" }
 libnewos = { path = "../libnewos" }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

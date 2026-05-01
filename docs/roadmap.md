@@ -50,20 +50,22 @@ See [Phase 3 Physical Memory Bring-Up](phase-3-memory-bringup.md).
 
 See [Phase 4 Stable Kernel Tasks](phase-4-stable-kernel-tasks.md).
 
-## Phase 5: Execution
+## Phase 5: Execution (Complete)
 
-- user-mode task model
-- syscall entry
-- user ELF loading
-- init process
+- [x] User-mode task model (Ring 3 transition)
+- [x] Preemptive scheduler supporting user processes
+- [x] `SYSCALL`/`SYSRET` interface (ABI v3)
+- [x] ELF loader for user executables
+- [x] `init` process loading and execution
+- [x] Basic `VFS` and `initramfs` integration
 
-## Phase 6: Terminal-first usability
+## Phase 6: Terminal-first Usability (In Progress)
 
-- VFS
-- initramfs
-- shell
-- files, pipes, and process lifecycle
-- basic networking
+- [ ] Interactive `shell`
+- [ ] Process lifecycle management (`fork`/`exec`)
+- [ ] Pipes and IPC
+- [ ] Basic networking stack
+- [ ] Keyboard input via IOAPIC
 
 ## Phase 7: Modern desktop path
 
