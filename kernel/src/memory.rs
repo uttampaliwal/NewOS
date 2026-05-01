@@ -32,8 +32,7 @@ impl<'a> FrameAllocator<'a> {
 
     pub fn allocate_physical_frame(&mut self) -> Option<PhysFrame> {
         use newos_abi::boot::{
-            MEMORY_TYPE_LOADER_DATA, 
-            MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA
+            MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA, MEMORY_TYPE_LOADER_DATA,
         };
 
         for descriptor in self.boot_info.memory_map.iter() {
@@ -101,9 +100,9 @@ fn align_up(value: u64, alignment: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use core::mem::size_of;
     use newos_abi::boot::{BootEnvironment, BootInfo, BootLoaderKind, BootMemoryMap};
-    use super::*;
 
     fn descriptor(ty: u32, phys_start: u64, page_count: u64) -> BootMemoryDescriptor {
         BootMemoryDescriptor {
@@ -125,6 +124,8 @@ mod tests {
             kernel_image_base: 0,
             kernel_image_size: 0,
             physical_memory_offset: 0,
+            ramdisk_addr: 0,
+            ramdisk_size: 0,
             memory_map: BootMemoryMap {
                 descriptors: descriptors.as_ptr(),
                 map_size: descriptors.len() * size_of::<BootMemoryDescriptor>(),

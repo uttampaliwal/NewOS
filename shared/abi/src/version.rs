@@ -10,4 +10,3 @@ mod tests {
         assert_eq!(ABI_VERSION, 3);
     }
 }
-

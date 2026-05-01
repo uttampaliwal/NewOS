@@ -89,7 +89,9 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some("build-uefi") => Command::BuildUefi,
         Some("run-uefi") => Command::RunUefi,
         Some("uefi-loader") => {
-            println!("`cargo xtask uefi-loader` is kept as a compatibility alias for `cargo xtask run-uefi`.");
+            println!(
+                "`cargo xtask uefi-loader` is kept as a compatibility alias for `cargo xtask run-uefi`."
+            );
             Command::RunUefi
         }
         Some("status") | None => Command::Status,
@@ -221,9 +223,9 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     // Package initramfs
     let init_bin = build_userland(workspace_root);
     let init_data = fs::read(&init_bin).expect("failed to read init binary");
-    
+
     let mut ramdisk = Vec::new();
-    
+
     // Helper to add a "file" to our simple ramdisk
     let mut add_file = |name: &str, data: &[u8]| {
         let mut header = [0u8; 64];
@@ -235,12 +237,19 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
         ramdisk.extend_from_slice(data);
     };
 
-    add_file("initramfs.txt", b"Hello from Initramfs!\nThis is a kernel experiment.\n");
+    add_file(
+        "initramfs.txt",
+        b"Hello from Initramfs!\nThis is a kernel experiment.\n",
+    );
     add_file("init", &init_data);
 
     let initramfs_path = staged_dir.join("initramfs.img");
     fs::write(&initramfs_path, &ramdisk).expect("creating initramfs should succeed");
-    println!("Initramfs created at {} ({} bytes, including 'init')", initramfs_path.display(), ramdisk.len());
+    println!(
+        "Initramfs created at {} ({} bytes, including 'init')",
+        initramfs_path.display(),
+        ramdisk.len()
+    );
 
     staged_image
 }
@@ -325,10 +334,10 @@ fn find_ovmf_code() -> Option<PathBuf> {
     }
 
     let mut candidates = Vec::new();
-    if let Some(qemu_path) = find_command_path("qemu-system-x86_64") {
-        if let Some(base) = qemu_path.parent().and_then(Path::parent) {
-            candidates.push(base.join("share").join("qemu").join("edk2-x86_64-code.fd"));
-        }
+    if let Some(qemu_path) = find_command_path("qemu-system-x86_64")
+        && let Some(base) = qemu_path.parent().and_then(Path::parent)
+    {
+        candidates.push(base.join("share").join("qemu").join("edk2-x86_64-code.fd"));
     }
 
     candidates.push(PathBuf::from(
@@ -350,12 +359,12 @@ fn find_ovmf_vars() -> Option<PathBuf> {
     }
 
     let mut candidates = Vec::new();
-    if let Some(qemu_path) = find_command_path("qemu-system-x86_64") {
-        if let Some(base) = qemu_path.parent().and_then(Path::parent) {
-            let share = base.join("share").join("qemu");
-            candidates.push(share.join("edk2-x86_64-vars.fd"));
-            candidates.push(share.join("edk2-i386-vars.fd"));
-        }
+    if let Some(qemu_path) = find_command_path("qemu-system-x86_64")
+        && let Some(base) = qemu_path.parent().and_then(Path::parent)
+    {
+        let share = base.join("share").join("qemu");
+        candidates.push(share.join("edk2-x86_64-vars.fd"));
+        candidates.push(share.join("edk2-i386-vars.fd"));
     }
 
     candidates.push(PathBuf::from(

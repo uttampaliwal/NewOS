@@ -18,8 +18,12 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     let mut frame_allocator = FrameAllocator::new(boot_info);
 
     let _ = writeln!(writer, "[STG: KERNEL_REACHED]");
-    let _ = writeln!(writer, "Ramdisk: addr=0x{:016x}, size={} bytes", boot_info.ramdisk_addr, boot_info.ramdisk_size);
-    
+    let _ = writeln!(
+        writer,
+        "Ramdisk: addr=0x{:016x}, size={} bytes",
+        boot_info.ramdisk_addr, boot_info.ramdisk_size
+    );
+
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
 
     // 1. Initialize Kernel Paging
@@ -38,7 +42,9 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
     let _ = writeln!(writer, "[STG: ARCH_INIT]");
 
     // 4. Initialize VFS
-    crate::vfs::VFS.lock().init_from_ramdisk(boot_info.ramdisk_addr, boot_info.ramdisk_size);
+    crate::vfs::VFS
+        .lock()
+        .init_from_ramdisk(boot_info.ramdisk_addr, boot_info.ramdisk_size);
     let _ = writeln!(writer, "[STG: VFS_INIT]");
 
     // 5. Load and start the init process from ELF
@@ -53,8 +59,9 @@ pub fn early_boot(boot_info: &BootInfo) -> BootOutcome {
                     &elf_data[..len],
                     &mut frame_allocator,
                     phys_mem_offset,
-                ).expect("failed to load init process ELF");
-                
+                )
+                .expect("failed to load init process ELF");
+
                 crate::task::scheduler::add_task(crate::task::Task::new_user(
                     init_proc,
                     &mut mapper,
@@ -144,7 +151,10 @@ extern "sysv64" fn idle_task() -> ! {
 }
 
 fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
-    crate::serial::println!("Validating BootInfo: ABI version = {}, expected = 3", boot_info.abi_version);
+    crate::serial::println!(
+        "Validating BootInfo: ABI version = {}, expected = 3",
+        boot_info.abi_version
+    );
     if boot_info.abi_version != 3 {
         return Err("Unsupported BootInfo ABI version");
     }
@@ -159,7 +169,9 @@ fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
     if boot_info.memory_map.map_size == 0 {
         return Err("Memory map is empty");
     }
-    if boot_info.memory_map.desc_size < core::mem::size_of::<newos_abi::boot::BootMemoryDescriptor>() {
+    if boot_info.memory_map.desc_size
+        < core::mem::size_of::<newos_abi::boot::BootMemoryDescriptor>()
+    {
         return Err("Memory map descriptor size is too small");
     }
 
@@ -186,4 +198,3 @@ fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
 
     Ok(())
 }
-

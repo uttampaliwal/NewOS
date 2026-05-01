@@ -8,9 +8,7 @@ pub struct Repl {
 
 impl Repl {
     pub const fn new() -> Self {
-        Self {
-            prompt: "NewOS> ",
-        }
+        Self { prompt: "NewOS> " }
     }
 
     pub fn handle_byte(&mut self, byte: u8) -> Option<Response> {

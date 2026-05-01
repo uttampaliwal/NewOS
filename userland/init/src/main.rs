@@ -7,9 +7,13 @@ use newos_abi::syscall::Syscall;
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     let message = "Hello from User Mode init process!\n";
-    
+
     // Syscall: Write
-    syscall2(Syscall::Write as u64, message.as_ptr() as u64, message.len() as u64);
+    syscall2(
+        Syscall::Write as u64,
+        message.as_ptr() as u64,
+        message.len() as u64,
+    );
 
     // Syscall: Exit
     syscall1(Syscall::Exit as u64, 0);

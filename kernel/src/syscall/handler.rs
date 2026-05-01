@@ -1,6 +1,6 @@
 use crate::elf;
-use newos_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
 use crate::vfs::VFS;
+use newos_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
 
 #[derive(Debug)]
 pub enum SyscallResult {

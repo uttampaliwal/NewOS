@@ -91,12 +91,9 @@ pub fn load_kernel(image: &[u8]) -> Result<LoadedKernel, LoadError> {
     let page_count = image_size.div_ceil(4096) as usize;
 
     // Allocate physical memory anywhere (AnyPages) for the kernel
-    let physical_ptr = boot::allocate_pages(
-        AllocateType::AnyPages,
-        kernel_memory_type(),
-        page_count,
-    )
-    .map_err(|err| LoadError::AllocationFailed(err.status()))?;
+    let physical_ptr =
+        boot::allocate_pages(AllocateType::AnyPages, kernel_memory_type(), page_count)
+            .map_err(|err| LoadError::AllocationFailed(err.status()))?;
 
     let physical_base = physical_ptr.as_ptr() as u64;
 

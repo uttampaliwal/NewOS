@@ -1,0 +1,17 @@
+[package]
+name = "shell"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "shell"
+test = false
+
+[dependencies]
+newos-abi = { path = "../../shared/abi" }
+libnewos = { path = "../libnewos" }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

@@ -43,12 +43,16 @@ impl Write for SerialWriter {
     }
 }
 
+/// # Safety
+/// The caller must ensure `port` is a valid I/O port and the operation is safe.
 pub unsafe fn out8(port: u16, value: u8) {
     unsafe {
         asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack, preserves_flags));
     }
 }
 
+/// # Safety
+/// The caller must ensure `port` is a valid I/O port and the operation is safe.
 pub unsafe fn in8(port: u16) -> u8 {
     let value: u8;
     unsafe {

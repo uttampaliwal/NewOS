@@ -57,6 +57,7 @@ impl BootMemoryMap {
         }
     }
 
+    #[allow(clippy::manual_checked_ops)]
     pub const fn entry_count(&self) -> usize {
         if self.desc_size == 0 {
             0
