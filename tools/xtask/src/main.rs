@@ -305,6 +305,10 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     add_file("shell", &shell_data);
     add_file("fault-tester", &fault_tester_data);
 
+    // Create and add a minimal PSF2 font for the terminal
+    let font_data = create_minimal_psf2_font();
+    add_file("font.psf", &font_data);
+
     let initramfs_path = staged_dir.join("initramfs.img");
     fs::write(&initramfs_path, &ramdisk).expect("creating initramfs should succeed");
     println!(
@@ -314,6 +318,37 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     );
 
     staged_image
+}
+
+fn create_minimal_psf2_font() -> Vec<u8> {
+    let mut data = Vec::new();
+
+    // PSF2 Header
+    data.extend_from_slice(&[0x72, 0xb5, 0x4a, 0x86]); // Magic
+    data.extend_from_slice(&0u32.to_le_bytes()); // Version
+    data.extend_from_slice(&32u32.to_le_bytes()); // Header size
+    data.extend_from_slice(&0u32.to_le_bytes()); // Flags
+    data.extend_from_slice(&256u32.to_le_bytes()); // Length (number of glyphs)
+    data.extend_from_slice(&16u32.to_le_bytes()); // Char size (bytes per glyph)
+    data.extend_from_slice(&16u32.to_le_bytes()); // Height
+    data.extend_from_slice(&8u32.to_le_bytes()); // Width
+
+    // Glyph data (256 glyphs * 16 bytes each)
+    for i in 0..256 {
+        if i == 32 {
+            // Space (empty)
+            data.extend_from_slice(&[0u8; 16]);
+        } else {
+            // A simple box border for every other character
+            data.push(0xFF); // Top bar
+            for _ in 0..14 {
+                data.push(0x81); // Side bars
+            }
+            data.push(0xFF); // Bottom bar
+        }
+    }
+
+    data
 }
 
 fn run_uefi(workspace_root: &Path) {

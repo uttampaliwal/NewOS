@@ -19,10 +19,11 @@ pub mod interrupts;
 pub mod memory;
 pub mod process;
 pub mod serial;
-pub mod shell;
 pub mod syscall;
 pub mod task;
+pub mod tty;
 pub mod vfs;
+
 
 use turnix_abi::version::{ABI_VERSION, PROJECT_NAME};
 

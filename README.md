@@ -53,9 +53,10 @@ graph TD
 | **2** | **Memory** | Physical Allocator, Higher-Half Paging, Kernel Heap | ✅ Done |
 | **3** | **Multitasking** | Tasks, Preemptive RR Scheduler, Context Switching | ✅ Done |
 | **4** | **Ring 3** | User Mode, ELF Loader, Syscall ABI | ✅ Done |
-| **5** | **Usability** | Keyboard Driver, VFS, Interactive Shell | 🛠️ Active |
-| **6** | **Storage** | AHCI/NVMe Drivers, Ext2/FAT32 File Systems | 📅 Planned |
-| **7** | **Graphics** | Framebuffer, Window Compositor (Wayland-like) | 📅 Planned |
+| **5** | **Usability** | Keyboard Driver, VFS, Interactive Shell | ✅ Done |
+| **6** | **Terminal** | TTY Abstraction, PSF Fonts, Text Console | 🛠️ Active |
+| **7** | **Storage** | AHCI/NVMe Drivers, Ext2/FAT32 File Systems | 📅 Planned |
+| **8** | **Graphics** | Framebuffer, Window Compositor (Wayland-like) | 📅 Planned |
 
 ## 🤝 Contributing
 

@@ -90,6 +90,19 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         .init_from_ramdisk(boot_info.ramdisk_addr, boot_info.ramdisk_size);
     let _ = writeln!(writer, "[STG: VFS_INIT]");
 
+    // 4.1 Initialize Text Console with PSF font from VFS
+    {
+        let mut vfs = crate::vfs::VFS.lock();
+        if let Some(fd) = vfs.open("font.psf") {
+            let stat = vfs.stat("font.psf").unwrap();
+            let mut font_data = alloc::vec![0u8; stat.size as usize];
+            if let Some(len) = vfs.read(fd, &mut font_data) {
+                crate::drivers::video::init_console(font_data[..len].to_vec());
+                let _ = writeln!(writer, "[STG: CONSOLE_INIT]");
+            }
+        }
+    }
+
     // 5. Load and start the init process from ELF
     let _ = writeln!(writer, "[STG: INIT_LOAD]");
     {

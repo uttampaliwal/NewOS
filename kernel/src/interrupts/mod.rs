@@ -259,7 +259,8 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
         if let Some(key) = keyboard.process_keyevent(key_event) {
             match key {
                 DecodedKey::Unicode(character) => {
-                    add_char(character);
+                    crate::tty::TTY.lock().handle_input(character);
+                    crate::input::add_char(character); // Keep for compatibility for now
                 }
                 DecodedKey::RawKey(_) => {}
             }

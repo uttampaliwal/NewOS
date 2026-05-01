@@ -121,7 +121,7 @@ impl Vfs {
             data: None,
         });
         self.entries.push(VfsEntry {
-            name: String::from("keyboard"),
+            name: String::from("tty"),
             file_type: FileType::Device,
             data: None,
         });
@@ -164,22 +164,16 @@ impl Vfs {
         }
         let fd = self.open_files[fd_index].as_mut()?;
 
-        if fd.name == "keyboard" {
-            let mut read_count = 0;
-            while read_count < buf.len() {
-                if let Some(c) = crate::input::read_char() {
-                    buf[read_count] = c as u8;
-                    read_count += 1;
-                } else if read_count > 0 {
-                    // Return what we have so far
-                    break;
-                } else {
-                    // Block or yield if we have nothing?
-                    // For now, let's just return 0 to indicate non-blocking empty read
-                    return Some(0);
-                }
+        if fd.name == "tty" {
+            let mut tty = crate::tty::TTY.lock();
+            if let Some(line) = tty.read_line() {
+                let bytes = line.as_bytes();
+                let len = buf.len().min(bytes.len());
+                buf[..len].copy_from_slice(&bytes[..len]);
+                return Some(len);
+            } else {
+                return Some(0);
             }
-            return Some(read_count);
         }
 
         let entry = self.entries.iter().find(|e| e.name == fd.name)?;
@@ -202,6 +196,14 @@ impl Vfs {
             return None;
         }
         let fd = self.open_files[fd_index].as_mut()?;
+        if fd.name == "tty" {
+            if let Ok(s) = core::str::from_utf8(buf) {
+                crate::tty::TTY.lock().write(s);
+                return Some(buf.len());
+            }
+            return None;
+        }
+
         let entry = self.entries.iter_mut().find(|e| e.name == fd.name)?;
         if let Some(data) = &mut entry.data {
             let start = fd.offset as usize;

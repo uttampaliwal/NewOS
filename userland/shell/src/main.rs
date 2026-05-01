@@ -1,142 +1,83 @@
 #![no_std]
 #![no_main]
 
-use libturnix::{close, exit, getpid, ls, open, print, read, uptime};
+use libturnix::{close, exit, getpid, ls, open, read, uptime, write};
 
 #[cfg(not(test))]
 use core::panic::PanicInfo;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    print("turnix User Shell\n");
+    let tty_fd = open("tty").expect("failed to open /dev/tty");
+    
+    // Helper to print to tty
+    let tty_print = |s: &str| {
+        write(tty_fd, s.as_bytes());
+    };
 
-    // Show system status
-    let pid = getpid();
-    print("PID: ");
-    print_u64(pid);
-    print("\n");
+    tty_print("Turnix Interactive Shell (Phase 6)\n");
+    tty_print("System PID: ");
+    print_u64(getpid(), tty_print);
+    tty_print("\nType 'help' for commands.\n\n");
 
-    let ticks = uptime();
-    print("Uptime ticks: ");
-    print_u64(ticks);
-    print("\n");
-
-    // List files
-    let mut ls_buf = [0u8; 512];
-    if let Some(len) = ls(&mut ls_buf) {
-        print("\nFiles:\n");
-        let ls_str = core::str::from_utf8(&ls_buf[..len as usize]).unwrap_or("");
-        print(ls_str);
-    }
-
-    print("\nEntering interactive mode...\n");
-    print("Type 'help' for available commands.\n");
-
-    let kbd_fd = open("keyboard").expect("failed to open keyboard device");
-    let mut line_buf = [0u8; 128];
-    let mut cursor = 0;
-
-    print("> ");
+    let mut line_buf = [0u8; 256];
 
     loop {
-        let mut char_buf = [0u8; 1];
-        if let Some(read_len) = read(kbd_fd, &mut char_buf) {
-            if read_len > 0 {
-                let c = char_buf[0];
-
-                if c == b'\n' || c == b'\r' {
-                    print("\n");
-                    if cursor > 0 {
-                        let cmd = core::str::from_utf8(&line_buf[..cursor]).unwrap_or("");
-                        handle_command(cmd);
-                    }
-                    cursor = 0;
-                    print("> ");
-                } else if c == 8 || c == 127 {
-                    // Backspace
-                    if cursor > 0 {
-                        cursor -= 1;
-                        print("\x08 \x08"); // Backspace, space, backspace to clear character
-                    }
-                } else if cursor < line_buf.len() {
-                    line_buf[cursor] = c;
-                    cursor += 1;
-
-                    // Echo character
-                    let echo = core::str::from_utf8(&char_buf).unwrap_or("");
-                    print(echo);
+        tty_print("> ");
+        if let Some(len) = read(tty_fd, &mut line_buf) {
+            if len > 0 {
+                let line = core::str::from_utf8(&line_buf[..len as usize]).unwrap_or("").trim();
+                if !line.is_empty() {
+                    handle_command(line, tty_fd, tty_print);
                 }
             }
         }
-
-        for _ in 0..1000 {
-            core::hint::spin_loop();
-        }
     }
 }
 
-fn handle_command(cmd: &str) {
+fn handle_command(cmd: &str, _tty_fd: u64, tty_print: impl Fn(&str)) {
     match cmd {
-        "help" => print("Available commands: help, hello, fork, uptime, ls, exit\n"),
-        "hello" => print("Hello from the turnix interactive shell!\n"),
-        "uptime" => {
-            print("Uptime ticks: ");
-            print_u64(uptime());
-            print("\n");
-        }
+        "help" => tty_print("Available: help, hello, ls, uptime, exit\n"),
+        "hello" => tty_print("Hello from the clean Turnix shell!\n"),
         "ls" => {
-            let mut ls_buf = [0u8; 512];
-            if let Some(len) = ls(&mut ls_buf) {
-                let ls_str = core::str::from_utf8(&ls_buf[..len as usize]).unwrap_or("");
-                print(ls_str);
+            let mut buf = [0u8; 1024];
+            if let Some(len) = ls(&mut buf) {
+                let s = core::str::from_utf8(&buf[..len as usize]).unwrap_or("");
+                tty_print(s);
             }
         }
-        "fork" => {
-            let pid = libturnix::fork();
-            if pid == 0 {
-                print("Child: I am born!\n");
-                exit(0);
-            } else {
-                print("Parent: Spawned child with PID ");
-                print_u64(pid);
-                print("\n");
-            }
+        "uptime" => {
+            tty_print("Uptime ticks: ");
+            print_u64(uptime(), tty_print);
+            tty_print("\n");
         }
         "exit" => {
-            print("Exiting shell...\n");
+            tty_print("Goodbye!\n");
             exit(0);
         }
         _ => {
-            print("Unknown command: ");
-            print(cmd);
-            print("\n");
+            tty_print("Unknown command: ");
+            tty_print(cmd);
+            tty_print("\n");
         }
     }
 }
 
-fn print_u64(mut n: u64) {
+fn print_u64(mut n: u64, tty_print: impl Fn(&str)) {
     if n == 0 {
-        print("0");
+        tty_print("0");
         return;
     }
     let mut buf = [0u8; 20];
-    let mut idx = 19;
+    let mut idx = 20;
     while n > 0 {
+        idx -= 1;
         buf[idx] = b'0' + (n % 10) as u8;
         n /= 10;
-        if idx == 0 {
-            break;
-        }
-        idx -= 1;
     }
-    if let Ok(s) = core::str::from_utf8(&buf[idx + 1..]) {
-        if idx == 19 && buf[19] != 0 {
-             // Special case for single digit handled by idx+1 logic
-        }
+    if let Ok(s) = core::str::from_utf8(&buf[idx..]) {
+        tty_print(s);
     }
-    // Corrected print_u64 logic
-    let s = core::str::from_utf8(&buf[idx + 1..]).unwrap_or("?");
-    print(s);
 }
 
 #[cfg(not(test))]
