@@ -122,15 +122,21 @@ impl Vfs {
         None
     }
 
-    pub fn read(&self, fd_index: usize, buf: &mut [u8]) -> Option<usize> {
+    pub fn read(&mut self, fd_index: usize, buf: &mut [u8]) -> Option<usize> {
         if fd_index >= self.open_files.len() {
             return None;
         }
-        let fd = self.open_files[fd_index].as_ref()?;
+        let fd = self.open_files[fd_index].as_mut()?;
         let entry = self.entries.iter().find(|e| e.name == fd.name)?;
         if let Some(data) = entry.data {
-            let len = buf.len().min(data.len());
-            buf[..len].copy_from_slice(&data[..len]);
+            let start = fd.offset as usize;
+            if start >= data.len() {
+                return Some(0); // EOF
+            }
+            let available = data.len() - start;
+            let len = buf.len().min(available);
+            buf[..len].copy_from_slice(&data[start..start + len]);
+            fd.offset += len as u64;
             return Some(len);
         }
         None

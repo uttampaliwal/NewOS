@@ -75,8 +75,21 @@ fn handle_write(args: SyscallArgs) -> SyscallResult {
     SyscallResult::Success(len as u64)
 }
 
-fn handle_read(_args: SyscallArgs) -> SyscallResult {
-    SyscallResult::Error(1)
+fn handle_read(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let buf_ptr = args.arg1 as *mut u8;
+    let buf_len = args.arg2 as usize;
+
+    if buf_ptr.is_null() || buf_len == 0 {
+        return SyscallResult::Error(1);
+    }
+
+    let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
+    let mut vfs = VFS.lock();
+    match vfs.read(fd, buf) {
+        Some(len) => SyscallResult::Success(len as u64),
+        None => SyscallResult::Error(1),
+    }
 }
 
 fn handle_exit(args: SyscallArgs) -> SyscallResult {
