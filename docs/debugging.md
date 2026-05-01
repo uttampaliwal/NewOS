@@ -1,35 +1,46 @@
-# turnix Debugging Guide
+# Debugging Guide
 
-This guide covers common techniques for debugging the turnix kernel and user-mode processes.
+Developing a kernel is challenging because you don't have access to standard debuggers or `printf` during early bring-up. This guide outlines the tools and techniques used in `turnix`.
 
-## 1. QEMU Logging
-We use the `isa-debug-exit` device and serial output for basic logging.
-- **Serial Output**: The kernel writes to COM1 (`0x3f8`). `xtask` redirects this to your terminal.
-- **Port 0xe9**: Standard QEMU "hack" for debug output.
-- **Exit Codes**: Code `33` indicates a successful kernel exit path.
+## 1. Serial Output (The "Printf" of Kernels)
 
-## 2. GDB Debugging
-To debug with GDB:
-1. Start QEMU in "wait for debugger" mode:
-   ```bash
-   turnix_QEMU_ARGS="-s -S" cargo xtask run-uefi
-   ```
-2. In another terminal, connect with GDB:
-   ```bash
-   gdb target/x86_64-unknown-none/debug/turnix-kernel
-   (gdb) target remote :1234
-   ```
+We use the serial port (COM1) as our primary diagnostic tool.
+- **Usage**: Use `crate::serial::print!` and `println!` macros.
+- **Viewing**: When running via `cargo xtask run-uefi`, the serial output is redirected to your terminal.
+- **Stage Tracking**: We use `[STG: ...]` tags to mark successful completion of boot phases.
 
-## 3. Interpreting Faults
-When a Page Fault or Double Fault occurs, the kernel prints an `InterruptStackFrame`.
-- **IP (Instruction Pointer)**: Use `nm` or `objdump` on the kernel ELF to find the failing function.
-  ```bash
-  nm kernel/target/x86_64-unknown-none/debug/turnix-kernel | sort
-  ```
-- **Accessed Address**: For Page Faults, this is the address that caused the fault (from `CR2`).
+## 2. QEMU and GDB
 
-## 4. Common Issues
-- **Double Fault**: Usually caused by a kernel stack overflow or a fault inside a fault handler. Check `TSS` and IST configuration.
-- **Page Fault (0x0)**: Read from non-present page.
-- **Page Fault (0x2)**: Write to read-only page (check `CR0.WP` bit).
-- **Page Fault (0x4)**: User-mode tried to access supervisor-only page.
+QEMU has a built-in GDB stub that allows you to debug the kernel as if it were a normal program.
+
+1.  **Start QEMU with GDB stub**:
+    ```powershell
+    # Manually run QEMU with -s -S flags
+    qemu-system-x86_64 -drive format=raw,file=fat:rw:out/esp -serial stdio -s -S
+    ```
+2.  **Attach GDB**:
+    ```bash
+    gdb target/x86_64-unknown-none/debug/newos-kernel-image
+    (gdb) target remote :1234
+    (gdb) continue
+    ```
+
+## 3. Panic Handling
+
+When the kernel panics, it stops execution and prints the panic location and message to the serial port.
+- **Freestanding Panic**: See `kernel/src/lib.rs`. It attempts to print to serial before halting the CPU with `hlt`.
+
+## 4. Common Boot Issues
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| Immediate QEMU crash | Invalid GDT or IDT setup | Check `gdt.rs` and `interrupts/mod.rs` for entry sizes. |
+| Triple Fault | Exception during exception handling | Ensure the Double Fault handler is correctly mapped in the GDT. |
+| Hanging at `PAGING_INIT` | Invalid physical memory offset | Verify `PHYS_MEM_OFFSET` matches the UEFI boot info. |
+| Page Fault in User Mode | Accessing kernel memory | Check `USER_ACCESSIBLE` bit in page table entries. |
+
+## 5. ISA Debug Exit
+
+We use the `isa-debug-exit` device in QEMU to allow the kernel to shut down the VM. This is used for automated testing.
+- **Success Code**: `33` (exits with code 1 in shell)
+- **Failure Code**: Any other value.

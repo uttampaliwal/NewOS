@@ -34,5 +34,6 @@ turnix uses the `syscall` and `sysret` instructions for system calls on x86-64.
 
 ## Error Handling
 Syscalls return a 64-bit value in `rax`.
-- Values `>= 0` typically indicate success (e.g., number of bytes read/written).
-- Negative values indicate an error (e.g., `-1` for general error).
+
+## Related Decisions
+For the architectural rationale behind the syscall interface, see [ADR 0002: User Mode and Syscall Interface (ABI)](decisions/0002-user-mode-syscalls.md).

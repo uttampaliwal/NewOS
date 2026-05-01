@@ -32,4 +32,6 @@ turnix uses 4-level paging (`PML4` -> `PDPT` -> `PD` -> `PT`).
 
 ## Safety and Isolation
 
-Even though the kernel is mapped into the user address space, it is protected by the `Supervisor` bit in the page tables. Any attempt by Ring 3 code to access the higher-half will trigger a **Page Fault**, which the turnix kernel handles by terminating the offending process.
+Even though the kernel is mapped into the user address space, it is protected by the `Supervisor` bit in the page tables. 
+## Related Decisions
+For the high-level rationale and architectural implications, see [ADR 0001: Kernel Architecture and Memory Model](decisions/0001-kernel-architecture.md).

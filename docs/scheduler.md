@@ -36,5 +36,6 @@ A task can voluntarily give up its time slice by calling the `Yielder` syscall, 
 ### 5. Task States
 - `Ready`: Waiting to be scheduled.
 - `Running`: Currently executing on the CPU.
-- `Blocked`: Waiting for an event (e.g., I/O). (Currently not fully implemented)
-- `Zombie`: Task has finished execution but its resources haven't been fully reclaimed.
+
+## Related Decisions
+For the scheduling algorithm rationale and future plans, see [ADR 0003: Preemptive Scheduler Design](decisions/0003-scheduler-design.md).

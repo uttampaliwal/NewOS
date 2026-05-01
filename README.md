@@ -1,28 +1,35 @@
 # turnix
 
-**A Rust-first operating system built step by step for learning and long-term usability.**
+**A SOTA, Rust-first operating system built for learning, performance, and long-term daily usability.**
 
-turnix aims to feel familiar to Linux users while keeping a cleaner internal design. It is not a Linux clone and not a distro. It is a new operating system with Linux-like workability and a modern desktop roadmap.
+`turnix` is a modern, x86_64 hobbyist operating system. It aims to combine the familiarity of Unix-like environments with a clean, type-safe internal design leveraging Rust's unique safety guarantees. It is not a Linux clone, but a new system designed from the ground up to be a viable environment for developers and power users.
 
-## Architecture
+## 🎯 Project Goals
+
+- **Extreme Safety**: Leverage Rust to eliminate entire classes of memory and concurrency bugs.
+- **Architectural Clarity**: Maintain a clean, documented codebase where every decision is recorded in [Architecture Decision Records (ADRs)](docs/decisions/).
+- **Practicality**: Build toward a functional desktop environment with modern hardware support (Wayland, UEFI, NVMe).
+- **Learning & Growth**: Serve as a high-quality educational resource for system-level programming.
+
+## 🏗️ High-Level Architecture
 
 ```mermaid
 graph TD
-    subgraph UserSpace [User Space - Ring 3]
+    subgraph Userland [User Space - Ring 3]
         Init[init process]
-        Shell[shell]
-        App[user apps]
+        Shell[interactive shell]
+        App[user apps / libturnix]
     end
 
     subgraph Kernel [Kernel - Ring 0]
         subgraph Subsystems
             Sched[Preemptive Scheduler]
             VFS[Virtual File System]
-            Memory[Paging & Frame Allocator]
+            Mem[HHDM Paging & Allocator]
         end
         subgraph Arch [Arch-Specific x86_64]
-            IDT[Interrupts / IDT]
-            GDT[Segmentation / GDT]
+            IDT[Interrupts]
+            GDT[Segmentation]
             Sys[Syscall Handler]
         end
     end
@@ -35,79 +42,46 @@ graph TD
     Init --> |SYSCALL| Sys
     Sys --> VFS
     Sched --> |Context Switch| Arch
-    Memory --> |Page Tables| UEFI
+    Mem --> |Page Tables| UEFI
 ```
 
-## Current Status
+## 🗺️ Roadmap Visuals
 
-| Phase | Status | Milestone |
-|-------|--------|-----------|
-| 0 | Complete | Foundation and scaffold |
-| 1 | Complete | First boot and UEFI loader |
-| 2 | Complete | Freestanding kernel handoff |
-| 3 | Complete | Physical memory bring-up |
-| 4 | Complete | Stable kernel scheduler baseline |
-| 5 | Complete | User mode and ELF runtime |
-| 6 | In progress | Terminal-first usability |
-| 7 | Pending | Wayland desktop path |
+| Phase | Milestone | Features | Status |
+|-------|-----------|----------|--------|
+| **1** | **The Spark** | UEFI Boot, Serial Output, GDT/IDT | ✅ Done |
+| **2** | **Memory** | Physical Allocator, Higher-Half Paging, Kernel Heap | ✅ Done |
+| **3** | **Multitasking** | Tasks, Preemptive RR Scheduler, Context Switching | ✅ Done |
+| **4** | **Ring 3** | User Mode, ELF Loader, Syscall ABI | ✅ Done |
+| **5** | **Usability** | Keyboard Driver, VFS, Interactive Shell | 🛠️ Active |
+| **6** | **Storage** | AHCI/NVMe Drivers, Ext2/FAT32 File Systems | 📅 Planned |
+| **7** | **Graphics** | Framebuffer, Window Compositor (Wayland-like) | 📅 Planned |
 
-## What Works
+## 🤝 Contributing
 
-- **UEFI Loader**: Secure handoff to freestanding kernel with `BootInfo` ABI v3.
-- **Memory Management**: Physical frame allocator, higher-half paging, and kernel heap.
-- **Multitasking**: Preemptive scheduler with kernel threads and user processes.
-- **User Mode**: Ring 3 transition, `SYSCALL` interface, and ELF loading.
-- **VFS**: Initramfs-backed virtual file system.
-- **Portability**: Verified on Linux (KVM/TCG) and Windows (WHPX).
+We welcome collaborators! Whether you are a seasoned OS developer or just starting with Rust, there are many ways to help.
 
-## Verification & Proof
+1.  **Read the Docs**: Check out our [Architecture](docs/architecture.md) and [Debugging Guide](docs/debugging.md).
+2.  **Pick an Issue**: Look for [Good First Issues](docs/good-first-issues.md).
+3.  **Follow the Workflow**: We use a structured [Git Workflow](docs/git-workflow.md).
+4.  **Join the Discussion**: Submit an ADR or open a feature request.
 
-The system's stability is verified through automated boot tests in QEMU. 
+### Contribution Rules
+- All code must be idiomatically safe (minimize `unsafe` blocks).
+- Every major architectural change requires an ADR update.
+- Respect the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-**Successful Boot & User Mode Transition:**
-```text
-turnix UEFI loader
-kernel loaded: entry=0xffffffff80000000
-exiting boot services
-Switching CR3...
-Jumping to kernel...
-[STG: KERNEL_REACHED]
-[STG: PAGING_INIT]
-[STG: HEAP_INIT]
-[STG: ARCH_INIT]
-[STG: VFS_INIT]
-[STG: INIT_LOAD]
-[STG: INIT_READY]
-[STG: INTR_ENABLED]
-[STG: SCHED_START]
-Hello from User Mode init process (using libturnix)!
-This demonstrates a stable SOTA syscall interface.
-[syscall] exit code: 0
+## 🚀 Getting Started
+
+Quickly run `turnix` in QEMU:
+
+```powershell
+# Prerequisites: Rust nightly, QEMU
+cargo xtask doctor
+cargo xtask run-uefi
 ```
 
-## Documentation
+See [Quickstart](docs/quickstart.md) for more details.
 
-- [Design Decisions (ADRs)](docs/decisions/)
-- [Debugging Guide](docs/debugging.md)
-- [Architecture](docs/architecture.md)
-- [Roadmap](docs/roadmap.md)
-- [Phase 1-5 Milestone Details](docs/)
-- [Windows Host Setup](docs/windows-host-setup.md)
-## Repository Layout
-
-```text
-docs/          project documentation, ADRs, and guides
-boot/          UEFI firmware-facing entry points
-kernel/        freestanding kernel core
-shared/abi     shared types for kernel or future userland boundaries
-shared/serial  low-level serial output support
-tools/xtask    developer automation
-```
-
-## Principles
-
-- Learn deeply while building something real
-- Prefer clean interfaces over milestone shortcuts
-- Use open standards where compatibility matters
-- Keep unsafe Rust small and justified
-- Write docs as we go so the architecture stays replaceable
+---
+**Principles**: *Build step-by-step. Document every decision. Safety first.*
