@@ -25,6 +25,10 @@ impl TaskId {
         static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
         TaskId(NEXT_ID.fetch_add(1, Ordering::Relaxed))
     }
+
+    pub fn as_usize(&self) -> usize {
+        self.0
+    }
 }
 
 pub struct Task {

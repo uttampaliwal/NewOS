@@ -35,6 +35,14 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Uptime => handle_uptime(args),
         Syscall::Ls => handle_ls(args),
         Syscall::Stat => handle_stat(args),
+        Syscall::GetPid => handle_getpid(args),
+    }
+}
+
+fn handle_getpid(_args: SyscallArgs) -> SyscallResult {
+    match crate::task::scheduler::get_current_task_id() {
+        Some(tid) => SyscallResult::Success(tid.as_usize() as u64),
+        None => SyscallResult::Error(1),
     }
 }
 
@@ -79,11 +87,14 @@ fn handle_exit(args: SyscallArgs) -> SyscallResult {
 
 fn handle_open(args: SyscallArgs) -> SyscallResult {
     let path_ptr = args.arg0 as *const u8;
-    if path_ptr.is_null() {
+    let path_len = args.arg1 as usize;
+    if path_ptr.is_null() || path_len == 0 {
         return SyscallResult::Error(1);
     }
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path_str = core::str::from_utf8(path_slice).unwrap_or("");
     let mut vfs = VFS.lock();
-    match vfs.open("hello.txt") {
+    match vfs.open(path_str) {
         Some(fd) => SyscallResult::Success(fd as u64),
         None => SyscallResult::Error(1),
     }

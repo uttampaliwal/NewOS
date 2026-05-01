@@ -13,6 +13,7 @@ pub enum Syscall {
     Uptime = 10,
     Ls = 11,
     Stat = 12,
+    GetPid = 13,
 }
 
 impl Syscall {
@@ -30,6 +31,7 @@ impl Syscall {
             10 => Some(Self::Uptime),
             11 => Some(Self::Ls),
             12 => Some(Self::Stat),
+            13 => Some(Self::GetPid),
             _ => None,
         }
     }
@@ -126,5 +128,10 @@ mod tests {
     #[test]
     fn uptime_syscall_id_is_ten() {
         assert_eq!(Syscall::Uptime as u16, 10);
+    }
+
+    #[test]
+    fn getpid_syscall_id_is_thirteen() {
+        assert_eq!(Syscall::GetPid as u16, 13);
     }
 }

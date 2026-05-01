@@ -47,6 +47,10 @@ pub fn uptime() -> u64 {
     syscall0(Syscall::Uptime as u64)
 }
 
+pub fn getpid() -> u64 {
+    syscall0(Syscall::GetPid as u64)
+}
+
 fn syscall0(num: u64) -> u64 {
     let res: u64;
     unsafe {
