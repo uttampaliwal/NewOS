@@ -471,11 +471,17 @@ fn find_ovmf_vars() -> Option<PathBuf> {
 
 fn find_command_path(command: &str) -> Option<PathBuf> {
     let program = if cfg!(target_os = "windows") {
-        "where"
+        "where.exe"
     } else {
         "which"
     };
-    let output = ProcessCommand::new(program).arg(command).output().ok()?;
+    let mut cmd = ProcessCommand::new(program);
+    cmd.arg(command);
+
+    let output = match cmd.output_safe() {
+        Ok(o) => o,
+        Err(_) => return None,
+    };
 
     if !output.status.success() {
         return None;
@@ -512,16 +518,47 @@ fn stage_ovmf_vars(workspace_root: &Path, source: &Path) -> PathBuf {
     destination
 }
 
+trait CommandExt {
+    fn output_safe(&mut self) -> std::io::Result<std::process::Output>;
+}
+
+impl CommandExt for ProcessCommand {
+    fn output_safe(&mut self) -> std::io::Result<std::process::Output> {
+        use std::io::Read;
+        use std::process::Stdio;
+
+        self.stdout(Stdio::piped());
+        self.stderr(Stdio::piped());
+
+        let mut child = self.spawn()?;
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        if let Some(mut out) = child.stdout.take() {
+            out.read_to_end(&mut stdout).ok();
+        }
+        if let Some(mut err) = child.stderr.take() {
+            err.read_to_end(&mut stderr).ok();
+        }
+
+        let status = child.wait()?;
+        Ok(std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
+    }
+}
+
 fn command_works<I, S>(program: &str, args: I) -> bool
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    ProcessCommand::new(program)
-        .args(args)
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    let mut cmd = ProcessCommand::new(program);
+    cmd.args(args);
+    cmd.status().map(|s| s.success()).unwrap_or(false)
 }
 
 fn output_contains<I, S>(program: &str, args: I, expected: &str) -> bool
@@ -529,11 +566,12 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    ProcessCommand::new(program)
-        .args(args)
-        .output()
-        .map(|output| String::from_utf8_lossy(&output.stdout).contains(expected))
-        .unwrap_or(false)
+    let mut cmd = ProcessCommand::new(program);
+    cmd.args(args);
+    match cmd.output_safe() {
+        Ok(output) => String::from_utf8_lossy(&output.stdout).contains(expected),
+        Err(_) => false,
+    }
 }
 
 fn print_check(label: &str, ok: bool) {
