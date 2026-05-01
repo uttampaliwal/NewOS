@@ -22,6 +22,9 @@ pub struct FrameAllocator<'a> {
     next_address: u64,
 }
 
+unsafe impl Sync for FrameAllocator<'static> {}
+unsafe impl Send for FrameAllocator<'static> {}
+
 impl<'a> FrameAllocator<'a> {
     pub fn new(boot_info: &'a BootInfo) -> Self {
         Self {

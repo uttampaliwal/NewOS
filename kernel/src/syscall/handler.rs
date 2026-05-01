@@ -194,6 +194,8 @@ fn handle_exec(_args: SyscallArgs) -> SyscallResult {
 }
 
 fn handle_fork(_args: SyscallArgs) -> SyscallResult {
+    // let child_pid = crate::task::scheduler::fork_current_task();
+    // SyscallResult::Success(child_pid as u64)
     SyscallResult::Error(1)
 }
 

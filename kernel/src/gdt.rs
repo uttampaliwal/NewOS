@@ -83,8 +83,13 @@ pub fn init() {
         SS::set_reg(SegmentSelector(0));
         load_tss(GDT.1.tss);
 
-        // Point KernelGsBase to our PER_CPU structure
-        KernelGsBase::write(VirtAddr::from_ptr(&raw const PER_CPU));
+        // Initialize GS bases: 
+        // - GsBase (user) = 0
+        // - KernelGsBase (kernel) = PER_CPU
+        use x86_64::registers::model_specific::{GsBase, KernelGsBase};
+        let per_cpu_ptr = VirtAddr::from_ptr(&raw const PER_CPU);
+        GsBase::write(VirtAddr::zero());
+        KernelGsBase::write(per_cpu_ptr);
     }
 }
 

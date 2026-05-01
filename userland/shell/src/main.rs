@@ -57,8 +57,32 @@ pub extern "C" fn _start() -> ! {
 
 fn handle_command(cmd: &str) {
     match cmd {
-        "help" => print("Available commands: help, hello, exit\n"),
+        "help" => print("Available commands: help, hello, fork, exit\n"),
         "hello" => print("Hello from the NewOS interactive shell!\n"),
+        "fork" => {
+            let pid = libnewos::fork();
+            if pid == 0 {
+                print("Child: I am born!\n");
+                exit(0);
+            } else {
+                print("Parent: Spawned child with PID ");
+                // Simple number to string for debug
+                let mut buf = [0u8; 20];
+                let mut n = pid;
+                let mut i = 19;
+                if n == 0 {
+                    print("0");
+                } else {
+                    while n > 0 {
+                        buf[i] = (n % 10) as u8 + b'0';
+                        n /= 10;
+                        i -= 1;
+                    }
+                    print(core::str::from_utf8(&buf[i+1..]).unwrap_or("?"));
+                }
+                print("\n");
+            }
+        }
         "exit" => {
             print("Exiting shell...\n");
             exit(0);

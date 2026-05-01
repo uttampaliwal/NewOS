@@ -1,0 +1,17 @@
+[package]
+name = "fault-tester"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "fault-tester"
+test = false
+
+[dependencies]
+newos-abi = { path = "../../shared/abi" }
+libnewos = { path = "../libnewos" }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

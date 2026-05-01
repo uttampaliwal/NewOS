@@ -8,6 +8,7 @@ members = [
     "userland/init",
     "userland/shell",
     "userland/libnewos",
+    "userland/fault-tester",
 ]
 default-members = [
     "shared/abi",

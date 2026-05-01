@@ -285,17 +285,43 @@ extern "x86-interrupt" fn page_fault_handler(
     error_code: PageFaultErrorCode,
 ) {
     use x86_64::registers::control::Cr2;
+    use x86_64::registers::model_specific::{GsBase, KernelGsBase};
+    
+    let addr = Cr2::read();
+
+    // Check if the fault occurred in user mode (CS segment selector has RPL 3)
+    if stack_frame.code_segment.0 & 0x3 == 0x3 {
+        crate::serial::println!("PROCESS FAULT: Page Fault at {:?} with error code {:?}. Terminating process.", addr, error_code);
+        crate::task::scheduler::exit_current_task();
+    }
+
+    let gs_base = GsBase::read();
+    let kernel_gs_base = KernelGsBase::read();
+
     panic!(
-        "EXCEPTION: PAGE FAULT\nAccessed Address: {:?}\nError Code: {:?}\n{:#?}",
-        Cr2::read(),
+        "EXCEPTION: PAGE FAULT in Kernel\nAccessed Address: {:?}\nError Code: {:?}\nGS_BASE: {:?}, KERNEL_GS_BASE: {:?}\n{:#?}",
+        addr,
         error_code,
+        gs_base,
+        kernel_gs_base,
         stack_frame
     );
 }
 
 extern "x86-interrupt" fn gpf_handler(stack_frame: InterruptStackFrame, error_code: u64) {
-    crate::serial::println!("EXCEPTION: GENERAL PROTECTION FAULT");
+    use x86_64::registers::model_specific::{GsBase, KernelGsBase};
+
+    if stack_frame.code_segment.0 & 0x3 == 0x3 {
+        crate::serial::println!("PROCESS FAULT: General Protection Fault with error code {}. Terminating process.", error_code);
+        crate::task::scheduler::exit_current_task();
+    }
+
+    let gs_base = GsBase::read();
+    let kernel_gs_base = KernelGsBase::read();
+
+    crate::serial::println!("EXCEPTION: GENERAL PROTECTION FAULT in Kernel");
     crate::serial::println!("Error Code: {:?}", error_code);
+    crate::serial::println!("GS_BASE: {:?}, KERNEL_GS_BASE: {:?}", gs_base, kernel_gs_base);
     crate::serial::println!("Instruction Pointer: {:?}", stack_frame.instruction_pointer);
     crate::serial::println!("Stack Pointer: {:?}", stack_frame.stack_pointer);
     crate::serial::println!("{:#?}", stack_frame);

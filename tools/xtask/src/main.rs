@@ -201,6 +201,38 @@ fn build_shell(workspace_root: &Path) -> PathBuf {
     built_bin
 }
 
+fn build_fault_tester(workspace_root: &Path) -> PathBuf {
+    run_or_die_with_env(
+        "cargo",
+        &[
+            "+nightly",
+            "build",
+            "-p",
+            "fault-tester",
+            "--target",
+            "x86_64-unknown-none",
+            "--release",
+        ],
+        workspace_root,
+        &[("RUSTFLAGS", "-C link-arg=-Tuserland/init/linker.ld")],
+    );
+
+    let built_bin = workspace_root
+        .join("target")
+        .join("x86_64-unknown-none")
+        .join("release")
+        .join("fault-tester");
+
+    if !built_bin.exists() {
+        eprintln!(
+            "Expected userland fault-tester binary was not produced: {}",
+            built_bin.display()
+        );
+        std::process::exit(1);
+    }
+    built_bin
+}
+
 fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
@@ -248,6 +280,9 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     let shell_bin = build_shell(workspace_root);
     let shell_data = fs::read(&shell_bin).expect("failed to read shell binary");
 
+    let fault_tester_bin = build_fault_tester(workspace_root);
+    let fault_tester_data = fs::read(&fault_tester_bin).expect("failed to read fault-tester binary");
+
     let mut ramdisk = Vec::new();
 
     // Helper to add a "file" to our simple ramdisk
@@ -267,6 +302,7 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     );
     add_file("init", &init_data);
     add_file("shell", &shell_data);
+    add_file("fault-tester", &fault_tester_data);
 
     let initramfs_path = staged_dir.join("initramfs.img");
     fs::write(&initramfs_path, &ramdisk).expect("creating initramfs should succeed");

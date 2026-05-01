@@ -17,7 +17,7 @@ pub enum TaskState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TaskId(usize);
+pub struct TaskId(pub usize);
 
 impl TaskId {
     pub fn new() -> Self {
@@ -28,12 +28,11 @@ impl TaskId {
 }
 
 pub struct Task {
-    #[allow(dead_code)]
-    id: TaskId,
+    pub id: TaskId,
     pub(crate) stack_ptr: usize,
     pub(crate) kernel_stack_top: usize,
     pub(crate) process: Process,
-    state: TaskState,
+    pub state: TaskState,
 }
 
 // SAFETY: Task owns its stack and contains no borrowed state.
@@ -112,13 +111,16 @@ impl Task {
             }
         }
 
-        Self {
+        let process = Process::kernel_process();
+        let task = Self {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
-            process: Process::kernel_process(),
+            process: process.clone(),
             state: TaskState::Ready,
-        }
+        };
+        process.add_thread(id);
+        task
     }
 
     pub fn new_user(
@@ -168,7 +170,7 @@ impl Task {
 
                 // 2. Map the kernel stack into the NEW process address space.
                 let pml4_ptr = (physical_memory_offset
-                    + process.pml4_frame.start_address().as_u64())
+                    + process.pml4_frame().start_address().as_u64())
                 .as_mut_ptr::<PageTable>();
                 let mut process_mapper =
                     OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
@@ -192,7 +194,7 @@ impl Task {
             stack_ptr.write(0x23);
             // RSP
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(process.stack_top.as_u64() as usize);
+            stack_ptr.write(process.stack_top().as_u64() as usize);
             // RFLAGS
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(0x202);
@@ -201,7 +203,7 @@ impl Task {
             stack_ptr.write(0x2b);
             // RIP
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(process.entry_point.as_u64() as usize);
+            stack_ptr.write(process.entry_point().as_u64() as usize);
 
             // General Purpose Registers (15 zeros)
             for _ in 0..15 {
@@ -210,6 +212,7 @@ impl Task {
             }
         }
 
+        process.add_thread(id);
         Self {
             id,
             stack_ptr: stack_ptr as usize,
@@ -219,14 +222,16 @@ impl Task {
         }
     }
 
+
+
     pub fn switch_to(&self) {
         crate::gdt::set_interrupt_stack(x86_64::VirtAddr::new(self.kernel_stack_top as u64));
 
         let (current_pml4, _) = x86_64::registers::control::Cr3::read();
-        if current_pml4 != self.process.pml4_frame {
+        if current_pml4 != self.process.pml4_frame() {
             unsafe {
                 x86_64::registers::control::Cr3::write(
-                    self.process.pml4_frame,
+                    self.process.pml4_frame(),
                     x86_64::registers::control::Cr3Flags::empty(),
                 );
             }

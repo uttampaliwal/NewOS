@@ -49,6 +49,12 @@ pub fn start_scheduling() -> ! {
                 "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
                 "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
                 "pop rbp", "pop rdx", "pop rcx", "pop rbx", "pop rax",
+                
+                // Check if we are returning to user mode (CS is at [RSP + 8])
+                "test qword ptr [rsp + 8], 0x3",
+                "jz 2f",
+                "swapgs",
+                "2:",
                 "iretq",
                 in(reg) next_ptr,
                 options(noreturn)
@@ -115,6 +121,7 @@ pub fn exit_current_task() -> ! {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
         if let Some(task) = &mut sched.current_task {
+            crate::serial::println!("[scheduler] Task {} exited/terminated.", task.id.0);
             task.state = super::TaskState::Zombie;
         }
     });
