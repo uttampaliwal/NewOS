@@ -38,7 +38,19 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::GetPid => handle_getpid(args),
         Syscall::Seek => handle_seek(args),
         Syscall::WriteFile => handle_write_file(args),
+        Syscall::GetUid => handle_getuid(args),
+        Syscall::GetGid => handle_getgid(args),
     }
+}
+
+fn handle_getuid(_args: SyscallArgs) -> SyscallResult {
+    // Return 0 for root user (no user management yet)
+    SyscallResult::Success(0)
+}
+
+fn handle_getgid(_args: SyscallArgs) -> SyscallResult {
+    // Return 0 for root group (no group management yet)
+    SyscallResult::Success(0)
 }
 
 fn handle_write_file(args: SyscallArgs) -> SyscallResult {

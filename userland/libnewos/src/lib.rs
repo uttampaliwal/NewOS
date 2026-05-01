@@ -61,6 +61,14 @@ pub fn write(fd: u64, buf: &[u8]) -> Option<u64> {
     if (res as i64) < 0 { None } else { Some(res) }
 }
 
+pub fn getuid() -> u64 {
+    syscall0(Syscall::GetUid as u64)
+}
+
+pub fn getgid() -> u64 {
+    syscall0(Syscall::GetGid as u64)
+}
+
 fn syscall0(num: u64) -> u64 {
     let res: u64;
     unsafe {
