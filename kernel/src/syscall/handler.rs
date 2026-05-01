@@ -37,6 +37,24 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Stat => handle_stat(args),
         Syscall::GetPid => handle_getpid(args),
         Syscall::Seek => handle_seek(args),
+        Syscall::WriteFile => handle_write_file(args),
+    }
+}
+
+fn handle_write_file(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let buf_ptr = args.arg1 as *const u8;
+    let buf_len = args.arg2 as usize;
+
+    if buf_ptr.is_null() || buf_len == 0 {
+        return SyscallResult::Error(1);
+    }
+
+    let buf = unsafe { core::slice::from_raw_parts(buf_ptr, buf_len) };
+    let mut vfs = VFS.lock();
+    match vfs.write(fd, buf) {
+        Some(len) => SyscallResult::Success(len as u64),
+        None => SyscallResult::Error(1),
     }
 }
 

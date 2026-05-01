@@ -15,6 +15,7 @@ pub enum Syscall {
     Stat = 12,
     GetPid = 13,
     Seek = 14,
+    WriteFile = 15,
 }
 
 impl Syscall {
@@ -34,6 +35,7 @@ impl Syscall {
             12 => Some(Self::Stat),
             13 => Some(Self::GetPid),
             14 => Some(Self::Seek),
+            15 => Some(Self::WriteFile),
             _ => None,
         }
     }
@@ -140,5 +142,10 @@ mod tests {
     #[test]
     fn seek_syscall_id_is_fourteen() {
         assert_eq!(Syscall::Seek as u16, 14);
+    }
+
+    #[test]
+    fn writefile_syscall_id_is_fifteen() {
+        assert_eq!(Syscall::WriteFile as u16, 15);
     }
 }

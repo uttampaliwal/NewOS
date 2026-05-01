@@ -56,6 +56,11 @@ pub fn seek(fd: u64, offset: u64) -> bool {
     (res as i64) >= 0
 }
 
+pub fn write(fd: u64, buf: &[u8]) -> Option<u64> {
+    let res = syscall3(Syscall::WriteFile as u64, fd, buf.as_ptr() as u64, buf.len() as u64);
+    if (res as i64) < 0 { None } else { Some(res) }
+}
+
 fn syscall0(num: u64) -> u64 {
     let res: u64;
     unsafe {

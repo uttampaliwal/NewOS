@@ -34,7 +34,7 @@ pub struct FileDescriptor {
 pub struct VfsEntry {
     pub name: String,
     pub file_type: FileType,
-    pub data: Option<&'static [u8]>,
+    pub data: Option<Vec<u8>>,
 }
 
 pub struct Vfs {
@@ -75,7 +75,7 @@ impl Vfs {
                     self.entries.push(VfsEntry {
                         name: String::from(name),
                         file_type: FileType::Regular,
-                        data: Some(unsafe { core::mem::transmute(file_data) }),
+                        data: Some(Vec::from(file_data)),
                     });
                     offset += file_size;
                 } else {
@@ -140,7 +140,7 @@ impl Vfs {
         }
         let fd = self.open_files[fd_index].as_mut()?;
         let entry = self.entries.iter().find(|e| e.name == fd.name)?;
-        if let Some(data) = entry.data {
+        if let Some(data) = &entry.data {
             let start = fd.offset as usize;
             if start >= data.len() {
                 return Some(0); // EOF
@@ -150,6 +150,26 @@ impl Vfs {
             buf[..len].copy_from_slice(&data[start..start + len]);
             fd.offset += len as u64;
             return Some(len);
+        }
+        None
+    }
+
+    pub fn write(&mut self, fd_index: usize, buf: &[u8]) -> Option<usize> {
+        if fd_index >= self.open_files.len() {
+            return None;
+        }
+        let fd = self.open_files[fd_index].as_mut()?;
+        let entry = self.entries.iter_mut().find(|e| e.name == fd.name)?;
+        if let Some(data) = &mut entry.data {
+            let start = fd.offset as usize;
+            if start > data.len() {
+                // Extend file with zeros if offset is past end
+                data.resize(start, 0);
+            }
+            data.extend_from_slice(buf);
+            let written = buf.len();
+            fd.offset += written as u64;
+            return Some(written);
         }
         None
     }
@@ -169,7 +189,7 @@ impl Vfs {
     pub fn stat(&self, path: &str) -> Option<FileStat> {
         let entry = self.entries.iter().find(|e| e.name == path)?;
         Some(FileStat {
-            size: entry.data.map(|d| d.len() as u64).unwrap_or(0),
+            size: entry.data.as_ref().map(|d| d.len() as u64).unwrap_or(0),
             file_type: entry.file_type,
         })
     }
