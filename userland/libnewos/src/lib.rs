@@ -51,6 +51,11 @@ pub fn getpid() -> u64 {
     syscall0(Syscall::GetPid as u64)
 }
 
+pub fn seek(fd: u64, offset: u64) -> bool {
+    let res = syscall2(Syscall::Seek as u64, fd, offset);
+    (res as i64) >= 0
+}
+
 fn syscall0(num: u64) -> u64 {
     let res: u64;
     unsafe {

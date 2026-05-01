@@ -154,6 +154,18 @@ impl Vfs {
         None
     }
 
+    pub fn seek(&mut self, fd_index: usize, offset: u64) -> bool {
+        if fd_index >= self.open_files.len() {
+            return false;
+        }
+        if let Some(fd) = &mut self.open_files[fd_index] {
+            fd.offset = offset;
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn stat(&self, path: &str) -> Option<FileStat> {
         let entry = self.entries.iter().find(|e| e.name == path)?;
         Some(FileStat {

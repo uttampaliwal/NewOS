@@ -36,6 +36,18 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Ls => handle_ls(args),
         Syscall::Stat => handle_stat(args),
         Syscall::GetPid => handle_getpid(args),
+        Syscall::Seek => handle_seek(args),
+    }
+}
+
+fn handle_seek(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let offset = args.arg1;
+    let mut vfs = VFS.lock();
+    if vfs.seek(fd, offset) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(1)
     }
 }
 
