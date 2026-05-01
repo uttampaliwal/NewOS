@@ -4,11 +4,7 @@
 Proposed
 
 ## Context
-<<<<<<< HEAD
 turnix needs a clear distinction between processes and threads to support multi-threaded applications and robust resource management. Currently, `Process` and `Task` structs exist but their relationship is loosely defined.
-=======
-NewOS needs a clear distinction between processes and threads to support multi-threaded applications and robust resource management. Currently, `Process` and `Task` structs exist but their relationship is loosely defined.
->>>>>>> unstable
 
 ## Decision
 We will adopt a model where a **Process** is a container for resources and an **Address Space**, while a **Thread** (represented by `Task`) is the unit of execution.

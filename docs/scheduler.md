@@ -1,14 +1,7 @@
-<<<<<<< HEAD
 # turnix Scheduler
 
 ## Model: Round Robin (RR)
 turnix currently implements a simple Round Robin (RR) scheduler.
-=======
-# NewOS Scheduler
-
-## Model: Round Robin (RR)
-NewOS currently implements a simple Round Robin (RR) scheduler.
->>>>>>> unstable
 
 ### Key Characteristics
 - **Preemptive:** The scheduler can interrupt a running task to give other tasks a chance to run.

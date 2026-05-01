@@ -4,11 +4,7 @@
 Accepted
 
 ## Context
-<<<<<<< HEAD
 Transitioning from kernel-only execution to user-mode processes is a critical milestone for turnix. We need a secure and efficient way for user-mode code to request kernel services.
-=======
-Transitioning from kernel-only execution to user-mode processes is a critical milestone for NewOS. We need a secure and efficient way for user-mode code to request kernel services.
->>>>>>> unstable
 
 ## Decision
 1. **x86_64 SYSCALL/SYSRET**: We use the architectural `SYSCALL` instruction for Ring 3 to Ring 0 transitions.

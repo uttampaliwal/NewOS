@@ -30,26 +30,16 @@ checksum = "413d67b29ef1021b4d60f4aa1e925ca031751e213832b4b1d588fae623c05c60"
 name = "fault-tester"
 version = "0.1.0"
 dependencies = [
-<<<<<<< HEAD
  "libturnix",
  "turnix-abi",
-=======
- "libnewos",
- "newos-abi",
->>>>>>> unstable
 ]
 
 [[package]]
 name = "init"
 version = "0.1.0"
 dependencies = [
-<<<<<<< HEAD
  "libturnix",
  "turnix-abi",
-=======
- "libnewos",
- "newos-abi",
->>>>>>> unstable
 ]
 
 [[package]]
@@ -91,44 +81,6 @@ name = "log"
 version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
-
-[[package]]
-<<<<<<< HEAD
-name = "pc-keyboard"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed089a1fbffe3337a1a345501c981f1eb1e47e69de5a40e852433e12953c3174"
-=======
-name = "newos-abi"
-version = "0.1.0"
-
-[[package]]
-name = "newos-kernel"
-version = "0.1.0"
-dependencies = [
- "lazy_static",
- "newos-abi",
- "newos-serial",
- "pc-keyboard",
- "pic8259",
- "spin 0.10.0",
- "x86_64",
-]
-
-[[package]]
-name = "newos-serial"
-version = "0.1.0"
-
-[[package]]
-name = "newos-uefi-loader"
-version = "0.1.0"
-dependencies = [
- "newos-abi",
- "newos-serial",
- "uefi",
- "x86_64",
-]
->>>>>>> unstable
 
 [[package]]
 name = "pc-keyboard"

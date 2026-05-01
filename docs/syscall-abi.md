@@ -1,14 +1,7 @@
-<<<<<<< HEAD
 # turnix Syscall ABI
 
 ## Calling Convention
 turnix uses the `syscall` and `sysret` instructions for system calls on x86-64.
-=======
-# NewOS Syscall ABI
-
-## Calling Convention
-NewOS uses the `syscall` and `sysret` instructions for system calls on x86-64.
->>>>>>> unstable
 
 ### Register Usage
 | Register | Purpose |

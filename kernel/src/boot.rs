@@ -46,11 +46,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         "Ramdisk: addr=0x{:016x}, size={} bytes",
         boot_info.ramdisk_addr, boot_info.ramdisk_size
     );
-<<<<<<< HEAD
-
-    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
-=======
->>>>>>> 0f397571af62411c068ff843edb220926589e735
 
     // 1. Initialize Kernel Paging
     let mut mapper = unsafe { crate::memory::paging::init(phys_mem_offset) };

@@ -1,9 +1,5 @@
 use lazy_static::lazy_static;
-<<<<<<< HEAD
 use turnix_abi::boot::BootFramebuffer;
-=======
-use newos_abi::boot::BootFramebuffer;
->>>>>>> unstable
 use spin::Mutex;
 
 lazy_static! {
@@ -78,11 +74,7 @@ pub fn init(fb_info: &BootFramebuffer) {
     *fb = Some(Framebuffer::new(fb_info));
 
     if let Some(ref mut f) = *fb {
-<<<<<<< HEAD
         // Clear screen with a nice dark blue for turnix
-=======
-        // Clear screen with a nice dark blue for NewOS
->>>>>>> unstable
         f.clear(0x001a2a);
 
         // Draw a small "logo" placeholder
