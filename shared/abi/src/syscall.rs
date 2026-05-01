@@ -18,6 +18,7 @@ pub enum Syscall {
     WriteFile = 15,
     GetUid = 16,
     GetGid = 17,
+    Brk = 18,
 }
 
 impl Syscall {
@@ -40,6 +41,7 @@ impl Syscall {
             15 => Some(Self::WriteFile),
             16 => Some(Self::GetUid),
             17 => Some(Self::GetGid),
+            18 => Some(Self::Brk),
             _ => None,
         }
     }
@@ -161,5 +163,10 @@ mod tests {
     #[test]
     fn getgid_syscall_id_is_seventeen() {
         assert_eq!(Syscall::GetGid as u16, 17);
+    }
+
+    #[test]
+    fn brk_syscall_id_is_eightteen() {
+        assert_eq!(Syscall::Brk as u16, 18);
     }
 }

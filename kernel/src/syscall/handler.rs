@@ -40,7 +40,16 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::WriteFile => handle_write_file(args),
         Syscall::GetUid => handle_getuid(args),
         Syscall::GetGid => handle_getgid(args),
+        Syscall::Brk => handle_brk(args),
     }
+}
+
+fn handle_brk(args: SyscallArgs) -> SyscallResult {
+    // Brk syscall for user space memory allocation
+    // arg0: new break address (0 to get current)
+    // Returns the new break address or 0 on error
+    // For now, return error as this requires proper memory management
+    SyscallResult::Error(1)
 }
 
 fn handle_getuid(_args: SyscallArgs) -> SyscallResult {
