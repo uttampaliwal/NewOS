@@ -197,6 +197,36 @@ impl Vfs {
     pub fn list_dir(&self) -> Vec<String> {
         self.entries.iter().map(|e| e.name.clone()).collect()
     }
+
+    pub fn mkdir(&mut self, path: &str) -> bool {
+        // Check if already exists
+        if self.entries.iter().any(|e| e.name == path) {
+            return false;
+        }
+        self.entries.push(VfsEntry {
+            name: String::from(path),
+            file_type: FileType::Directory,
+            data: None,
+        });
+        true
+    }
+
+    pub fn unlink(&mut self, path: &str) -> bool {
+        if let Some(index) = self.entries.iter().position(|e| e.name == path) {
+            self.entries.remove(index);
+            // Also close any open file descriptors for this path
+            for fd in &mut self.open_files {
+                if let Some(f) = fd {
+                    if f.name == path {
+                        *fd = None;
+                    }
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl Default for Vfs {

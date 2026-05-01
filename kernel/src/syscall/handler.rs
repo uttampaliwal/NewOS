@@ -46,16 +46,36 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
     }
 }
 
-fn handle_mkdir(_args: SyscallArgs) -> SyscallResult {
-    // Mkdir syscall - create directory
-    // For now, return error as VFS doesn't support mkdir yet
-    SyscallResult::Error(1)
+fn handle_mkdir(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(1);
+    }
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path_str = core::str::from_utf8(path_slice).unwrap_or("");
+    let mut vfs = VFS.lock();
+    if vfs.mkdir(path_str) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(1)
+    }
 }
 
-fn handle_unlink(_args: SyscallArgs) -> SyscallResult {
-    // Unlink syscall - remove file or directory
-    // For now, return error as VFS doesn't support unlink yet
-    SyscallResult::Error(1)
+fn handle_unlink(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(1);
+    }
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path_str = core::str::from_utf8(path_slice).unwrap_or("");
+    let mut vfs = VFS.lock();
+    if vfs.unlink(path_str) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(1)
+    }
 }
 
 fn handle_brk(args: SyscallArgs) -> SyscallResult {
