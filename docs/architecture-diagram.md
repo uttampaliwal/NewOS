@@ -1,4 +1,4 @@
-# NewOS Architecture
+# turnix Architecture
 
 ## High-Level System Design
 

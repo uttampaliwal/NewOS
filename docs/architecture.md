@@ -2,7 +2,7 @@
 
 ## Product direction
 
-NewOS aims to feel familiar to Linux users while keeping a cleaner internal design. It is not a Linux clone and not a distro. It is a new operating system with Linux-like workability.
+turnix aims to feel familiar to Linux users while keeping a cleaner internal design. It is not a Linux clone and not a distro. It is a new operating system with Linux-like workability.
 
 ## Core architectural choices
 
@@ -54,3 +54,11 @@ Userland begins with an `init` process, a shell, basic utilities, and a native l
 - Make subsystems observable with logs, metrics, and error enums.
 - Prefer standards over custom formats unless we have a strong reason otherwise.
 - Document the reason for each non-obvious architectural choice.
+
+## Detailed Documentation
+
+- [Process and Thread Model](adr-0005-process-thread-model.md)
+- [Syscall ABI](syscall-abi.md)
+- [Scheduler Model](scheduler.md)
+- [Interrupts and GDT](adr-0004-interrupts-and-gdt.md)
+- [Virtual Memory and Heap](adr-0003-virtual-memory-and-heap.md)

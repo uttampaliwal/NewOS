@@ -3,7 +3,7 @@
 ```
 $ cargo xtask run-uefi
 UEFI image staged at out\esp\EFI\BOOT\BOOTX64.EFI
-Kernel image staged at out\esp\newos\kernel.elf
+Kernel image staged at out\esp\turnix\kernel.elf
 
 QEMU running...
 ```
@@ -11,7 +11,7 @@ QEMU running...
 ## Boot Output
 
 ```
-UEFI NewOS Loader v0.0.4
+UEFI turnix Loader v0.0.4
 ========================
 Memory Map:
   - Conventional: 513792 KB available
@@ -24,7 +24,7 @@ Jumping to kernel at 0x100000...
 ## Kernel Output
 
 ```
-NewOS Kernel v0.0.4
+turnix Kernel v0.0.4
 ====================
 Memory: 513792 KB conventional
 Physical frames: 127948 (0 - 128 MB)

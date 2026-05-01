@@ -1,4 +1,4 @@
-pub const PROJECT_NAME: &str = "NewOS";
+pub const PROJECT_NAME: &str = "turnix";
 pub const ABI_VERSION: u32 = 3;
 
 #[cfg(test)]

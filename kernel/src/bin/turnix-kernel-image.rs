@@ -4,7 +4,7 @@
 use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
 
-use newos_abi::boot::{BootInfo, BootOutcome};
+use turnix_abi::boot::{BootInfo, BootOutcome};
 
 global_asm!(
     r#"
@@ -32,7 +32,7 @@ const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
 extern "sysv64" fn kernel_image_main(boot_info: *const BootInfo) -> ! {
     let boot_info = unsafe { &*boot_info };
 
-    match newos_kernel::boot::early_boot(boot_info) {
+    match turnix_kernel::boot::early_boot(boot_info) {
         BootOutcome::ExitSuccess => qemu_exit_success(),
         BootOutcome::ExitFailure => qemu_exit_failure(),
     }
@@ -40,8 +40,8 @@ extern "sysv64" fn kernel_image_main(boot_info: *const BootInfo) -> ! {
 
 #[panic_handler]
 fn panic(info: &PanicInfo<'_>) -> ! {
-    newos_kernel::serial::init();
-    newos_kernel::serial::print(format_args!("panic: {}\n", info));
+    turnix_kernel::serial::init();
+    turnix_kernel::serial::print(format_args!("panic: {}\n", info));
     qemu_exit_failure();
 }
 

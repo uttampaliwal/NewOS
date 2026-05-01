@@ -1,3 +1,15 @@
+pub const FILE_TYPE_REGULAR: u32 = 0;
+pub const FILE_TYPE_DIRECTORY: u32 = 1;
+pub const FILE_TYPE_DEVICE: u32 = 2;
+pub const FILE_TYPE_PIPE: u32 = 3;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stat {
+    pub size: u64,
+    pub file_type: u32,
+}
+
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Syscall {
@@ -13,6 +25,14 @@ pub enum Syscall {
     Uptime = 10,
     Ls = 11,
     Stat = 12,
+    GetPid = 13,
+    Seek = 14,
+    WriteFile = 15,
+    GetUid = 16,
+    GetGid = 17,
+    Brk = 18,
+    Mkdir = 19,
+    Unlink = 20,
 }
 
 impl Syscall {
@@ -30,6 +50,14 @@ impl Syscall {
             10 => Some(Self::Uptime),
             11 => Some(Self::Ls),
             12 => Some(Self::Stat),
+            13 => Some(Self::GetPid),
+            14 => Some(Self::Seek),
+            15 => Some(Self::WriteFile),
+            16 => Some(Self::GetUid),
+            17 => Some(Self::GetGid),
+            18 => Some(Self::Brk),
+            19 => Some(Self::Mkdir),
+            20 => Some(Self::Unlink),
             _ => None,
         }
     }
@@ -64,13 +92,6 @@ pub struct SyscallArgs {
     pub arg1: u64,
     pub arg2: u64,
     pub arg3: u64,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Stat {
-    pub size: u64,
-    pub file_type: u32,
 }
 
 impl SyscallArgs {
@@ -126,5 +147,45 @@ mod tests {
     #[test]
     fn uptime_syscall_id_is_ten() {
         assert_eq!(Syscall::Uptime as u16, 10);
+    }
+
+    #[test]
+    fn getpid_syscall_id_is_thirteen() {
+        assert_eq!(Syscall::GetPid as u16, 13);
+    }
+
+    #[test]
+    fn seek_syscall_id_is_fourteen() {
+        assert_eq!(Syscall::Seek as u16, 14);
+    }
+
+    #[test]
+    fn writefile_syscall_id_is_fifteen() {
+        assert_eq!(Syscall::WriteFile as u16, 15);
+    }
+
+    #[test]
+    fn getuid_syscall_id_is_sixteen() {
+        assert_eq!(Syscall::GetUid as u16, 16);
+    }
+
+    #[test]
+    fn getgid_syscall_id_is_seventeen() {
+        assert_eq!(Syscall::GetGid as u16, 17);
+    }
+
+    #[test]
+    fn brk_syscall_id_is_eightteen() {
+        assert_eq!(Syscall::Brk as u16, 18);
+    }
+
+    #[test]
+    fn mkdir_syscall_id_is_nineteen() {
+        assert_eq!(Syscall::Mkdir as u16, 19);
+    }
+
+    #[test]
+    fn unlink_syscall_id_is_twenty() {
+        assert_eq!(Syscall::Unlink as u16, 20);
     }
 }

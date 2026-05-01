@@ -35,7 +35,7 @@ Phase 0 is complete when:
 
 - `cargo test` passes for the host-buildable workspace members
 - `cargo xtask status` runs successfully
-- `cargo check -p newos-kernel --lib` succeeds
+- `cargo check -p turnix-kernel --lib` succeeds
 - QEMU 11 is installed and on the path
 - nightly Rust is installed and updated
 - the `x86_64-unknown-uefi` and `x86_64-unknown-none` targets are installed for nightly
@@ -54,6 +54,6 @@ Start with:
 
 If your firmware files live somewhere unusual, set:
 
-- `NEWOS_OVMF_CODE`
-- `NEWOS_OVMF_VARS`
-- `NEWOS_QEMU_ACCEL`
+- `turnix_OVMF_CODE`
+- `turnix_OVMF_VARS`
+- `turnix_QEMU_ACCEL`

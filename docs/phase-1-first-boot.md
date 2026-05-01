@@ -4,7 +4,7 @@ This is the next concrete milestone after the current repository scaffold.
 
 ## Goal
 
-Boot a tiny NewOS UEFI loader in QEMU and print a reliable message over serial output.
+Boot a tiny turnix UEFI loader in QEMU and print a reliable message over serial output.
 
 ## Why this matters
 

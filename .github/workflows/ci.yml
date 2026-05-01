@@ -43,10 +43,10 @@ jobs:
           key: ${{ runner.os }}-cargo-build-${{ hashFiles('Cargo.lock') }}
 
       - name: Build UEFI loader
-        run: cargo +nightly build -p newos-uefi-loader --target x86_64-unknown-uefi
+        run: cargo +nightly build -p turnix-uefi-loader --target x86_64-unknown-uefi
 
       - name: Build freestanding kernel
-        run: cargo +nightly build -p newos-kernel --target x86_64-unknown-none
+        run: cargo +nightly build -p turnix-kernel --target x86_64-unknown-none
 
   qemu-smoke-test:
     runs-on: windows-latest

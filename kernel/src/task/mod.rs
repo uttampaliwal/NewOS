@@ -1,12 +1,14 @@
 use crate::process::Process;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
-    FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, Size4KiB,
+    FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, Size4KiB, Translate,
 };
 
 pub mod scheduler;
 
 pub type TaskEntry = extern "sysv64" fn() -> !;
+
+const KERNEL_STACK_REGION_BASE: u64 = 0xFFFF_FE00_0000_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
@@ -17,7 +19,7 @@ pub enum TaskState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TaskId(usize);
+pub struct TaskId(pub usize);
 
 impl TaskId {
     pub fn new() -> Self {
@@ -25,20 +27,52 @@ impl TaskId {
         static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
         TaskId(NEXT_ID.fetch_add(1, Ordering::Relaxed))
     }
+
+    pub fn as_usize(&self) -> usize {
+        self.0
+    }
 }
 
 pub struct Task {
-    #[allow(dead_code)]
-    id: TaskId,
+    pub id: TaskId,
     pub(crate) stack_ptr: usize,
     pub(crate) kernel_stack_top: usize,
     pub(crate) process: Process,
-    state: TaskState,
+    pub state: TaskState,
 }
 
 // SAFETY: Task owns its stack and contains no borrowed state.
 unsafe impl Send for Task {}
 unsafe impl Sync for Task {}
+
+pub fn init_kernel_stack_region(
+    mapper: &mut (impl Mapper<Size4KiB> + Translate),
+    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
+) {
+    let anchor_page = Page::<Size4KiB>::containing_address(VirtAddr::new(KERNEL_STACK_REGION_BASE));
+    if mapper.translate_addr(anchor_page.start_address()).is_some() {
+        return;
+    }
+
+    let frame = frame_allocator
+        .allocate_frame()
+        .expect("out of memory for kernel stack region anchor");
+
+    unsafe {
+        match mapper.map_to(
+            anchor_page,
+            frame,
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+            frame_allocator,
+        ) {
+            Ok(flush) => flush.flush(),
+            Err(_) => {
+                // The anchor only exists to force the kernel-stack PML4 branch
+                // to be present before process address spaces are cloned.
+            }
+        }
+    }
+}
 
 impl Task {
     pub fn new(
@@ -46,13 +80,14 @@ impl Task {
         mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
     ) -> Self {
-        const STACK_PAGES: u64 = 4;
+        const STACK_PAGES: u64 = 8;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
         const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
 
         let id = TaskId::new();
-        let stack_region_base = VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * STACK_STRIDE);
+        let stack_region_base =
+            VirtAddr::new(KERNEL_STACK_REGION_BASE + (id.0 as u64) * STACK_STRIDE);
         let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
         let stack_top_virt = usable_stack_start + STACK_SIZE;
 
@@ -81,7 +116,7 @@ impl Task {
         let mut stack_ptr = stack_top_virt.as_mut_ptr::<usize>();
 
         unsafe {
-            // THE NEWOS CONTEXT FRAME
+            // THE turnix CONTEXT FRAME
             //
             // When a task is NOT running, its stack looks like this (from high to low address):
             // 1. [CPU FRAME] SS
@@ -112,34 +147,39 @@ impl Task {
             }
         }
 
-        Self {
+        let process = Process::kernel_process();
+        let task = Self {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
-            process: Process::kernel_process(),
+            process: process.clone(),
             state: TaskState::Ready,
-        }
+        };
+        process.add_thread(id);
+        task
     }
 
     pub fn new_user(
         process: Process,
-        _mapper: &mut impl Mapper<Size4KiB>, // Unused but kept for API compatibility
+        mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: x86_64::VirtAddr,
     ) -> Self {
-        const STACK_PAGES: u64 = 4;
+        const STACK_PAGES: u64 = 8;
+        const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
+        const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
 
         let id = TaskId::new();
-        // Use a unique higher-half address for the kernel stack
-        let kernel_stack_virt =
-            x86_64::VirtAddr::new(0xFFFF_FE00_0000_0000 + (id.0 as u64) * 0x1000_0000);
-        let stack_top_virt = kernel_stack_virt + STACK_SIZE;
+        let stack_region_base =
+            VirtAddr::new(KERNEL_STACK_REGION_BASE + (id.0 as u64) * STACK_STRIDE);
+        let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
+        let stack_top_virt = usable_stack_start + STACK_SIZE;
 
         unsafe {
             let pages = Page::<Size4KiB>::range_inclusive(
-                Page::containing_address(kernel_stack_virt),
-                Page::containing_address(kernel_stack_virt + STACK_SIZE - 1u64),
+                Page::containing_address(usable_stack_start),
+                Page::containing_address(stack_top_virt - 1u64),
             );
 
             for page in pages {
@@ -147,24 +187,35 @@ impl Task {
                     .allocate_frame()
                     .expect("out of memory for user-task kernel stack");
 
-                // Map the kernel stack into the NEW process address space.
-                // We need to switch to the process PML4 temporarily or map it directly.
-                // For simplicity, we'll map it into the process address space using its mapper.
+                // 1. Map the kernel stack into the CURRENT (kernel) address space.
+                // This allows us to initialize the stack contents below.
+                if let Err(_) = mapper.map_to(
+                    page,
+                    frame,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                    frame_allocator,
+                ) {
+                    // Already mapped, ignore
+                } else {
+                    use x86_64::instructions::tlb;
+                    tlb::flush(page.start_address());
+                }
+
+                // 2. Map the kernel stack into the NEW process address space.
                 let pml4_ptr = (physical_memory_offset
-                    + process.pml4_frame.start_address().as_u64())
+                    + process.pml4_frame().start_address().as_u64())
                 .as_mut_ptr::<PageTable>();
                 let mut process_mapper =
                     OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
 
-                process_mapper
-                    .map_to(
-                        page,
-                        frame,
-                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                        frame_allocator,
-                    )
-                    .expect("failed to map kernel stack in process space")
-                    .ignore();
+                if let Err(_) = process_mapper.map_to(
+                    page,
+                    frame,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                    frame_allocator,
+                ) {
+                    // Already mapped, ignore
+                }
             }
         }
 
@@ -176,7 +227,7 @@ impl Task {
             stack_ptr.write(0x23);
             // RSP
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(process.stack_top.as_u64() as usize);
+            stack_ptr.write(process.stack_top().as_u64() as usize);
             // RFLAGS
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(0x202);
@@ -185,7 +236,7 @@ impl Task {
             stack_ptr.write(0x2b);
             // RIP
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(process.entry_point.as_u64() as usize);
+            stack_ptr.write(process.entry_point().as_u64() as usize);
 
             // General Purpose Registers (15 zeros)
             for _ in 0..15 {
@@ -194,6 +245,7 @@ impl Task {
             }
         }
 
+        process.add_thread(id);
         Self {
             id,
             stack_ptr: stack_ptr as usize,
@@ -207,10 +259,10 @@ impl Task {
         crate::gdt::set_interrupt_stack(x86_64::VirtAddr::new(self.kernel_stack_top as u64));
 
         let (current_pml4, _) = x86_64::registers::control::Cr3::read();
-        if current_pml4 != self.process.pml4_frame {
+        if current_pml4 != self.process.pml4_frame() {
             unsafe {
                 x86_64::registers::control::Cr3::write(
-                    self.process.pml4_frame,
+                    self.process.pml4_frame(),
                     x86_64::registers::control::Cr3Flags::empty(),
                 );
             }

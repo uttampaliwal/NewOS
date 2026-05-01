@@ -8,7 +8,7 @@ pub struct Repl {
 
 impl Repl {
     pub const fn new() -> Self {
-        Self { prompt: "NewOS> " }
+        Self { prompt: "turnix> " }
     }
 
     pub fn handle_byte(&mut self, byte: u8) -> Option<Response> {
@@ -100,7 +100,7 @@ impl CommandResult {
                 writeln!(writer, "  exit   - Exit (shutdown)")
             }
             CommandResult::Info => {
-                writeln!(writer, "NewOS - A Rust-first operating system")?;
+                writeln!(writer, "turnix - A Rust-first operating system")?;
                 writeln!(writer, "Phase 6: Terminal-first usability")?;
                 writeln!(writer, "Built with Rust (nightly, no_std)")
             }
@@ -122,7 +122,7 @@ impl CommandResult {
                 writeln!(writer, "\x1b[2J\x1b[H")
             }
             CommandResult::Version => {
-                writeln!(writer, "NewOS {}", crate::kernel_info().project_name)?;
+                writeln!(writer, "turnix {}", crate::kernel_info().project_name)?;
                 writeln!(writer, "ABI version: {}", crate::kernel_info().abi_version)
             }
             CommandResult::Memory => {

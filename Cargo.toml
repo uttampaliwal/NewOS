@@ -6,8 +6,9 @@ members = [
     "tools/xtask",
     "kernel",
     "userland/init",
-    "userland/libnewos",
     "userland/shell",
+    "userland/libturnix",
+    "userland/fault-tester",
 ]
 default-members = [
     "shared/abi",
@@ -19,7 +20,7 @@ resolver = "2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Uttam", "Codex", "Antigravity"]
-repository = "https://github.com/uttampaliwal/NewOS"
+repository = "https://github.com/uttampaliwal/Turnix"
 
 [profile.dev]
 panic = "abort"

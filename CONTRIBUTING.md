@@ -1,12 +1,12 @@
-# Contributing to NewOS
+# Contributing to turnix
 
-Thank you for your interest in contributing to NewOS! This document outlines how to set up your development environment, coding standards, and the contribution workflow.
+Thank you for your interest in contributing to turnix! This document outlines how to set up your development environment, coding standards, and the contribution workflow.
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/<your-username>/NewOS.git`
-3. Add the upstream remote: `git remote add upstream https://github.com/uttampaliwal/NewOS.git`
+2. Clone your fork: `git clone https://github.com/<your-username>/turnix.git`
+3. Add the upstream remote: `git remote add upstream https://github.com/uttampaliwal/turnix.git`
 4. Create a feature branch: `git checkout -b feature/my-feature`
 
 ## Development Environment
@@ -111,7 +111,7 @@ cargo xtask run-uefi
 - Kernel code uses `no_std`; do not import `std`
 - Use `alloc` for heap-allocated types
 - Use `core` for primitive operations
-- Test host-buildable crates separately: `cargo test -p newos-abi`
+- Test host-buildable crates separately: `cargo test -p turnix-abi`
 
 ### Commit Messages
 

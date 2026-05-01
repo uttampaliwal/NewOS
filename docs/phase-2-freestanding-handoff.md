@@ -6,7 +6,7 @@ Load a separate `x86_64-unknown-none` kernel image from the UEFI loader, exit bo
 
 ## Why this matters
 
-This is the point where NewOS stops being a firmware-facing demo and becomes a real operating system bring-up effort. The loader still exists, but the kernel now owns execution after the firmware handoff.
+This is the point where turnix stops being a firmware-facing demo and becomes a real operating system bring-up effort. The loader still exists, but the kernel now owns execution after the firmware handoff.
 
 ## What is in place
 

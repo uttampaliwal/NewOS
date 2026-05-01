@@ -1,7 +1,9 @@
-use core::arch::global_asm;
-use newos_abi::syscall::{Syscall, SyscallArgs};
+use turnix_abi::syscall::{Syscall, SyscallArgs};
 use x86_64::VirtAddr;
 use x86_64::registers::model_specific::{LStar, Msr, SFMask};
+
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+use core::arch::global_asm;
 
 pub mod handler;
 
@@ -22,12 +24,12 @@ pub struct SyscallFrame {
     pub rcx: u64,
     pub rbx: u64,
     pub rax: u64,
-    // IRETQ frame
-    pub rip: u64,
-    pub cs: u64,
-    pub rflags: u64,
-    pub rsp: u64,
-    pub ss: u64,
+    // Saved by syscall_entry (IRETQ-compatible frame)
+    pub user_rip: u64,
+    pub user_cs: u64,
+    pub user_rflags: u64,
+    pub user_rsp: u64,
+    pub user_ss: u64,
 }
 
 pub fn init() {
@@ -38,6 +40,9 @@ pub fn init() {
         star.write((user_base << 48) | (kernel_base << 32));
 
         LStar::write(VirtAddr::new(syscall_entry as *const () as u64));
+
+        // We MUST mask the interrupt flag during syscall entry to prevent
+        // interrupts from running on a partially-setup kernel stack.
         SFMask::write(x86_64::registers::rflags::RFlags::INTERRUPT_FLAG);
 
         let mut efer = Msr::new(0xC0000080);
@@ -45,6 +50,7 @@ pub fn init() {
     }
 }
 
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
 global_asm!(
     r#"
     .global syscall_entry
@@ -53,29 +59,28 @@ global_asm!(
         swapgs
         
         // 2. Save user RSP and switch to kernel stack
-        // We use gs:[0] which is PER_CPU.kernel_stack_ptr
-        mov qword ptr gs:[8], rsp // Save User RSP in a temporary slot in PerCpu (need to add it)
+        mov qword ptr gs:[8], rsp 
         mov rsp, qword ptr gs:[0]
 
-        // 3. Build IRETQ Frame (SS, RSP, RFLAGS, CS, RIP)
+        // 3. Build IRETQ-compatible Frame (SS, RSP, RFLAGS, CS, RIP)
         push 0x23 // User SS
         push qword ptr gs:[8]  // User RSP
-        push r11  // User RFLAGS
+        push r11  // User RFLAGS (saved by CPU in r11)
         push 0x2b // User CS
-        push rcx  // User RIP
+        push rcx  // User RIP (saved by CPU in rcx)
 
         // 4. Save all registers (matches SyscallFrame)
         push rax 
         push rbx
-        push rcx // CPU saved RIP
+        push rcx 
         push rdx
-        push qword ptr gs:[8] // User RSP
+        push rbp
         push rsi
         push rdi
         push r8
         push r9
         push r10
-        push r11 // CPU saved RFLAGS
+        push r11 
         push r12
         push r13
         push r14
@@ -105,15 +110,20 @@ global_asm!(
         pop rbx
         pop rax
 
-        // 8. Restore User GS and return
+        // 8. We return using IRETQ because it's more robust than SYSRET for first-bringup.
+        // It correctly handles the full 64-bit stack and flags restoration.
         swapgs
         iretq
     "#
 );
 
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
 unsafe extern "C" {
     fn syscall_entry();
 }
+
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+extern "C" fn syscall_entry() {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn get_current_kernel_stack_top() -> usize {

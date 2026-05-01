@@ -37,7 +37,7 @@ Current tests cover boot info and syscall IDs. Add tests for:
 
 Run tests:
 ```powershell
-cargo test -p newos-abi
+cargo test -p turnix-abi
 ```
 
 ### 3. Document interrupt handlers
@@ -60,6 +60,6 @@ Add serial output showing task count, running task ID.
 
 ## Getting Help
 
-- Open a discussion in [GitHub Discussions](https://github.com/uttampaliwal/NewOS/discussions)
+- Open a discussion in [GitHub Discussions](https://github.com/uttampaliwal/turnix/discussions)
 - Ask in the issue comments
 - Review closed PRs for examples

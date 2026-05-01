@@ -8,5 +8,10 @@ name = "shell"
 test = false
 
 [dependencies]
-newos-abi = { path = "../../shared/abi" }
-libnewos = { path = "../libnewos" }
+turnix-abi = { path = "../../shared/abi" }
+libturnix = { path = "../libturnix" }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

@@ -44,6 +44,88 @@ pub fn create_process_pml4(
     new_frame
 }
 
+/// Clones the lower-half (user) mappings from one address space to another.
+pub fn clone_user_mappings(
+    src_pml4_frame: PhysFrame<Size4KiB>,
+    dst_pml4_frame: PhysFrame<Size4KiB>,
+    frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+    physical_memory_offset: VirtAddr,
+) {
+    let src_pml4_ptr =
+        (physical_memory_offset + src_pml4_frame.start_address().as_u64()).as_ptr::<PageTable>();
+    let dst_pml4_ptr = (physical_memory_offset + dst_pml4_frame.start_address().as_u64())
+        .as_mut_ptr::<PageTable>();
+
+    unsafe {
+        let src_pml4 = &*src_pml4_ptr;
+        let dst_pml4 = &mut *dst_pml4_ptr;
+
+        // Clone lower-half mappings (indices 0 to 255)
+        for i in 0..256 {
+            if !src_pml4[i].is_unused() {
+                clone_table_level(
+                    &src_pml4[i],
+                    &mut dst_pml4[i],
+                    3, // Start at P4 entry (Level 3 in recursion)
+                    frame_allocator,
+                    physical_memory_offset,
+                );
+            }
+        }
+    }
+}
+
+use x86_64::structures::paging::page_table::PageTableEntry;
+
+/// Recursively clones a page table level.
+fn clone_table_level(
+    src_entry: &PageTableEntry,
+    dst_entry: &mut PageTableEntry,
+    level: u8,
+    frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+    physical_memory_offset: VirtAddr,
+) {
+    if level == 0 {
+        // Leaf entry (Level 0 is P1/Page Table)
+        // For now, we just copy the entry, which means we share the physical frame.
+        // This is enough for a basic fork/exec model where we don't have COW yet.
+        *dst_entry = src_entry.clone();
+        return;
+    }
+
+    // Allocate a new frame for the next level table
+    let new_frame = frame_allocator
+        .allocate_frame()
+        .expect("failed to allocate frame for page table clone");
+
+    // Initialize the entry to point to the new frame
+    dst_entry.set_frame(new_frame, src_entry.flags());
+
+    let src_next_table_ptr = (physical_memory_offset
+        + src_entry.frame().unwrap().start_address().as_u64())
+    .as_ptr::<PageTable>();
+    let dst_next_table_ptr =
+        (physical_memory_offset + new_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+
+    unsafe {
+        let src_next_table = &*src_next_table_ptr;
+        let dst_next_table = &mut *dst_next_table_ptr;
+
+        for i in 0..512 {
+            if !src_next_table[i].is_unused() {
+                clone_table_level(
+                    &src_next_table[i],
+                    &mut dst_next_table[i],
+                    level - 1,
+                    frame_allocator,
+                    physical_memory_offset,
+                );
+            } else {
+                dst_next_table[i].set_unused();
+            }
+        }
+    }
+}
 /// Ensure a virtual address range is accessible to user mode (Ring 3).
 /// This sets the USER_ACCESSIBLE bit on all page table levels.
 pub unsafe fn set_user_accessible(virt_addr: VirtAddr, size: u64, physical_mem_offset: VirtAddr) {

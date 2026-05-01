@@ -1,58 +1,28 @@
 #![no_std]
 #![no_main]
 
+#[cfg(not(test))]
 use core::panic::PanicInfo;
-use newos_abi::syscall::Syscall;
+use libturnix::{exit, print};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    let message = "Hello from User Mode init process!\n";
+    print("turnix System Init (v3)\n");
+    print("Searching for shell...\n");
 
-    // Syscall: Write
-    syscall2(
-        Syscall::Write as u64,
-        message.as_ptr() as u64,
-        message.len() as u64,
-    );
+    // In a real OS we'd use exec() here.
+    // Since we don't have fork/exec fully ready,
+    // we'll let the scheduler handle the task switch if shell is already loaded.
+    // For now, init just exits and the scheduler will run the shell task.
 
-    // Syscall: Exit
-    syscall1(Syscall::Exit as u64, 0);
-
-    loop {}
+    exit(0);
 }
 
-fn syscall1(num: u64, arg0: u64) -> u64 {
-    let res: u64;
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            in("rax") num,
-            in("rdi") arg0,
-            out("rcx") _,
-            out("r11") _,
-            lateout("rax") res,
-        );
-    }
-    res
-}
+#[cfg(test)]
+fn main() {}
 
-fn syscall2(num: u64, arg0: u64, arg1: u64) -> u64 {
-    let res: u64;
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            in("rax") num,
-            in("rdi") arg0,
-            in("rsi") arg1,
-            out("rcx") _,
-            out("r11") _,
-            lateout("rax") res,
-        );
-    }
-    res
-}
-
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    loop {}
+    exit(1);
 }

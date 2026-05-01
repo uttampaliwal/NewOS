@@ -1,11 +1,11 @@
 use core::fmt;
-pub use newos_serial::{SerialWriter, init, println};
+pub use turnix_serial::{SerialWriter, init, println};
 
 #[macro_export]
 macro_rules! serial_print {
-    ($($arg:tt)*) => { newos_serial::print!($($arg)*) };
+    ($($arg:tt)*) => { turnix_serial::print!($($arg)*) };
 }
 
 pub fn print(args: fmt::Arguments<'_>) {
-    newos_serial::print!("{}", args);
+    turnix_serial::print!("{}", args);
 }

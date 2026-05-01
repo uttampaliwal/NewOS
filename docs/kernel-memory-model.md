@@ -1,6 +1,6 @@
-# NewOS Memory Model: The Higher-Half Design
+# turnix Memory Model: The Higher-Half Design
 
-NewOS utilizes a "Higher-Half" kernel design, which is a standard pattern in SOTA operating systems like Linux and Windows. This document explains the virtual memory layout and why these decisions were made.
+turnix utilizes a "Higher-Half" kernel design, which is a standard pattern in SOTA operating systems like Linux and Windows. This document explains the virtual memory layout and why these decisions were made.
 
 ## Virtual Address Space Layout (x86_64)
 
@@ -26,10 +26,10 @@ The 64-bit virtual address space is split into two halves:
 
 ## Page Table Implementation
 
-NewOS uses 4-level paging (`PML4` -> `PDPT` -> `PD` -> `PT`). 
+turnix uses 4-level paging (`PML4` -> `PDPT` -> `PD` -> `PT`). 
 - For efficiency, the **Physical Memory Direct Map** uses **2MB Huge Pages**, reducing TLB pressure and improving performance (SOTA optimization).
 - User space and kernel executable regions use standard **4KB pages** for fine-grained protection.
 
 ## Safety and Isolation
 
-Even though the kernel is mapped into the user address space, it is protected by the `Supervisor` bit in the page tables. Any attempt by Ring 3 code to access the higher-half will trigger a **Page Fault**, which the NewOS kernel handles by terminating the offending process.
+Even though the kernel is mapped into the user address space, it is protected by the `Supervisor` bit in the page tables. Any attempt by Ring 3 code to access the higher-half will trigger a **Page Fault**, which the turnix kernel handles by terminating the offending process.

@@ -3,5 +3,18 @@ name = "init"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "init"
+test = false
+
 [dependencies]
-newos-abi = { path = "../../shared/abi" }
+turnix-abi = { path = "../../shared/abi" }
+libturnix = { path = "../libturnix" }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"

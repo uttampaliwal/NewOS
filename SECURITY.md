@@ -8,7 +8,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please send an email to **uttampaliwal@gmail.com** with the subject line: `[NewOS Security]`.
+If you discover a security vulnerability, please send an email to **uttampaliwal@gmail.com** with the subject line: `[turnix Security]`.
 
 Please include the following in your report:
 
@@ -33,4 +33,4 @@ We aim to acknowledge security reports within **48 hours** and provide a more de
 
 ## Security Considerations
 
-As an early-stage OS project, NewOS is not yet suitable for security-sensitive environments. This project is under active development and has not undergone security audits.
+As an early-stage OS project, turnix is not yet suitable for security-sensitive environments. This project is under active development and has not undergone security audits.

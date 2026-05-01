@@ -1,6 +1,6 @@
-# NewOS Demo Gallery
+# turnix Demo Gallery
 
-This directory contains demo screenshots and boot logs for NewOS.
+This directory contains demo screenshots and boot logs for turnix.
 
 ## Adding Demos
 
@@ -25,9 +25,9 @@ qemu-system-x86_64 ... -serial file:serial.log
 
 ```
 +-----------------------------------------------------------+
-|                        NewOS v0.0.4                        |
+|                        turnix v0.0.4                        |
 +-----------------------------------------------------------+
-|  UEFI NewOS Loader                                        |
+|  UEFI turnix Loader                                        |
 |  ------------------------                                 |
 |  Memory Map:                                              |
 |    - Conventional: 513792 KB available                  |
@@ -35,7 +35,7 @@ qemu-system-x86_64 ... -serial file:serial.log
 |  Loading kernel from EFI file system... OK                 |
 |  Jumping to kernel at 0x100000...                         |
 +-----------------------------------------------------------+
-|  NewOS Kernel                                             |
+|  turnix Kernel                                             |
 |  --------------------                                      |
 |  Memory: 513792 KB conventional                          |
 |  Physical frames: 127948 (0 - 128 MB)                     |
@@ -69,5 +69,5 @@ To create animated GIFs of the boot process:
 Example with FFmpeg:
 
 ```bash
-ffmpeg -f lavfi -i color=c=black:s=640x480:d=5 -vf "drawtext=fontfile=mono.ttf:text='NewOS Boot':fontsize=24:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2" boot-frame.gif
+ffmpeg -f lavfi -i color=c=black:s=640x480:d=5 -vf "drawtext=fontfile=mono.ttf:text='turnix Boot':fontsize=24:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2" boot-frame.gif
 ```

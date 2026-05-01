@@ -1,6 +1,6 @@
 use crate::elf;
 use crate::vfs::VFS;
-use newos_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
+use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
 
 #[derive(Debug)]
 pub enum SyscallResult {
@@ -35,15 +35,100 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Uptime => handle_uptime(args),
         Syscall::Ls => handle_ls(args),
         Syscall::Stat => handle_stat(args),
+        Syscall::GetPid => handle_getpid(args),
+        Syscall::Seek => handle_seek(args),
+        Syscall::WriteFile => handle_write_file(args),
+        Syscall::GetUid => handle_getuid(args),
+        Syscall::GetGid => handle_getgid(args),
+        Syscall::Brk => handle_brk(args),
+        Syscall::Mkdir => handle_mkdir(args),
+        Syscall::Unlink => handle_unlink(args),
     }
 }
 
-fn handle_ls(_args: SyscallArgs) -> SyscallResult {
+fn handle_mkdir(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(1);
+    }
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path_str = core::str::from_utf8(path_slice).unwrap_or("");
+    let mut vfs = VFS.lock();
+    if vfs.mkdir(path_str) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(1)
+    }
+}
+
+fn handle_unlink(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(1);
+    }
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path_str = core::str::from_utf8(path_slice).unwrap_or("");
+    let mut vfs = VFS.lock();
+    if vfs.unlink(path_str) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(1)
+    }
+}
+
+fn handle_brk(_args: SyscallArgs) -> SyscallResult {
+    // Brk syscall for user space memory allocation
+    // arg0: new break address (0 to get current)
+    // Returns the new break address or 0 on error
+    // For now, return error as this requires proper memory management
     SyscallResult::Error(1)
 }
 
-fn handle_stat(_args: SyscallArgs) -> SyscallResult {
-    SyscallResult::Error(1)
+fn handle_getuid(_args: SyscallArgs) -> SyscallResult {
+    // Return 0 for root user (no user management yet)
+    SyscallResult::Success(0)
+}
+
+fn handle_getgid(_args: SyscallArgs) -> SyscallResult {
+    // Return 0 for root group (no group management yet)
+    SyscallResult::Success(0)
+}
+
+fn handle_write_file(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let buf_ptr = args.arg1 as *const u8;
+    let buf_len = args.arg2 as usize;
+
+    if buf_ptr.is_null() || buf_len == 0 {
+        return SyscallResult::Error(1);
+    }
+
+    let buf = unsafe { core::slice::from_raw_parts(buf_ptr, buf_len) };
+    let mut vfs = VFS.lock();
+    match vfs.write(fd, buf) {
+        Some(len) => SyscallResult::Success(len as u64),
+        None => SyscallResult::Error(1),
+    }
+}
+
+fn handle_seek(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let offset = args.arg1;
+    let mut vfs = VFS.lock();
+    if vfs.seek(fd, offset) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(1)
+    }
+}
+
+fn handle_getpid(_args: SyscallArgs) -> SyscallResult {
+    match crate::task::scheduler::get_current_task_id() {
+        Some(tid) => SyscallResult::Success(tid.as_usize() as u64),
+        None => SyscallResult::Error(1),
+    }
 }
 
 fn handle_uptime(_args: SyscallArgs) -> SyscallResult {
@@ -59,6 +144,7 @@ fn handle_write(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(1);
     }
 
+    // Safety: In a real OS we'd verify this address belongs to the user
     let slice = unsafe { core::slice::from_raw_parts(addr, len) };
 
     let string = core::str::from_utf8(slice).unwrap_or("");
@@ -67,30 +153,104 @@ fn handle_write(args: SyscallArgs) -> SyscallResult {
     SyscallResult::Success(len as u64)
 }
 
-fn handle_read(_args: SyscallArgs) -> SyscallResult {
-    SyscallResult::Error(1)
+fn handle_read(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let buf_ptr = args.arg1 as *mut u8;
+    let buf_len = args.arg2 as usize;
+
+    if buf_ptr.is_null() || buf_len == 0 {
+        return SyscallResult::Error(1);
+    }
+
+    let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
+    let mut vfs = VFS.lock();
+    match vfs.read(fd, buf) {
+        Some(len) => SyscallResult::Success(len as u64),
+        None => SyscallResult::Error(1),
+    }
 }
 
 fn handle_exit(args: SyscallArgs) -> SyscallResult {
     let code = args.arg0 as i32;
-    crate::serial::print(format_args!("\nexit code: {}\n", code));
+    crate::serial::print(format_args!("\n[syscall] exit code: {}\n", code));
+    crate::task::scheduler::exit_current_task();
     SyscallResult::Success(0)
 }
 
 fn handle_open(args: SyscallArgs) -> SyscallResult {
     let path_ptr = args.arg0 as *const u8;
-    if path_ptr.is_null() {
+    let path_len = args.arg1 as usize;
+
+    if path_ptr.is_null() || path_len == 0 {
         return SyscallResult::Error(1);
     }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path = core::str::from_utf8(path_slice).unwrap_or("");
+
     let mut vfs = VFS.lock();
-    match vfs.open("hello.txt") {
+    match vfs.open(path) {
         Some(fd) => SyscallResult::Success(fd as u64),
         None => SyscallResult::Error(1),
     }
 }
 
-fn handle_close(_args: SyscallArgs) -> SyscallResult {
+fn handle_close(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let mut vfs = VFS.lock();
+    vfs.close(fd);
     SyscallResult::Success(0)
+}
+
+fn handle_ls(args: SyscallArgs) -> SyscallResult {
+    let buf_ptr = args.arg0 as *mut u8;
+    let buf_len = args.arg1 as usize;
+
+    if buf_ptr.is_null() || buf_len == 0 {
+        return SyscallResult::Error(1);
+    }
+
+    let vfs = VFS.lock();
+    let files = vfs.list_dir();
+    let mut offset = 0;
+    let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
+
+    for name in files {
+        let name_bytes = name.as_bytes();
+        if offset + name_bytes.len() + 1 > buf_len {
+            break;
+        }
+        buf[offset..offset + name_bytes.len()].copy_from_slice(name_bytes);
+        offset += name_bytes.len();
+        buf[offset] = b'\n';
+        offset += 1;
+    }
+
+    SyscallResult::Success(offset as u64)
+}
+
+fn handle_stat(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    let stat_ptr = args.arg2 as *mut turnix_abi::syscall::Stat;
+
+    if path_ptr.is_null() || path_len == 0 || stat_ptr.is_null() {
+        return SyscallResult::Error(1);
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path = core::str::from_utf8(path_slice).unwrap_or("");
+
+    let vfs = VFS.lock();
+    match vfs.stat(path) {
+        Some(stat) => {
+            unsafe {
+                *stat_ptr = stat.to_abi();
+            }
+            SyscallResult::Success(0)
+        }
+        None => SyscallResult::Error(1),
+    }
 }
 
 fn handle_exec(_args: SyscallArgs) -> SyscallResult {
@@ -134,10 +294,22 @@ fn handle_exec(_args: SyscallArgs) -> SyscallResult {
 }
 
 fn handle_fork(_args: SyscallArgs) -> SyscallResult {
-    SyscallResult::Error(1)
+    // Basic fork implementation - creates a new kernel task
+    // This is a simplified version that demonstrates the concept
+    // In a real fork, we would copy the parent's address space
+
+    // For now, create a simple new task that will return 0 (child) or PID (parent)
+    // This is a placeholder - full fork requires address space duplication
+    crate::serial::print(format_args!("fork: simplified version - not fully implemented\n"));
+    SyscallResult::Error(1) // Return error until properly implemented
 }
 
 fn handle_wait(_args: SyscallArgs) -> SyscallResult {
+    // Basic wait implementation
+    // In a real wait, we would:
+    // 1. Wait for a child process to exit
+    // 2. Return the PID and exit status
+    // For now, return error
     SyscallResult::Error(1)
 }
 

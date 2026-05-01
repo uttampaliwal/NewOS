@@ -6,7 +6,7 @@ Accepted
 
 ## Decision
 
-NewOS will be developed as a Rust-first, modular monolithic operating system targeting x86_64 on QEMU first. The product goal is a secure, modern, Linux-like general-purpose operating system with a terminal-first early release and a Wayland-oriented desktop later.
+turnix will be developed as a Rust-first, modular monolithic operating system targeting x86_64 on QEMU first. The product goal is a secure, modern, Linux-like general-purpose operating system with a terminal-first early release and a Wayland-oriented desktop later.
 
 ## Why
 

@@ -1,5 +1,5 @@
 [package]
-name = "newos-kernel"
+name = "turnix-kernel"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -7,17 +7,22 @@ publish = false
 
 [lib]
 path = "src/lib.rs"
+doctest = false
 
 [[bin]]
-name = "newos-kernel-image"
-path = "src/bin/newos-kernel-image.rs"
+name = "turnix-kernel-image"
+path = "src/bin/turnix-kernel-image.rs"
 test = false
 bench = false
 
 [dependencies]
-lazy_static = { version = "1.5.0", default-features = false, features = ["spin_no_std"] }
-newos-abi = { path = "../shared/abi" }
-newos-serial = { path = "../shared/serial" }
+turnix-abi = { path = "../shared/abi" }
+turnix-serial = { path = "../shared/serial" }
+x86_64 = "0.15.2"
+spin = "0.9.8"
+lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
+linked_list_allocator = "0.10.5"
+bitflags = "2.8.0"
+log = "0.4.22"
+pc-keyboard = "0.7.0"
 pic8259 = "0.11.0"
-spin = "0.10.0"
-x86_64 = { version = "0.15.4", default-features = false, features = ["abi_x86_interrupt", "instructions"] }

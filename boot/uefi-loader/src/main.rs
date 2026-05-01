@@ -9,8 +9,8 @@ use core::arch::asm;
 use core::panic::PanicInfo;
 
 use elf::LoadedKernel;
-use newos_abi::boot::{BOOT_FLAG_BOOT_SERVICES_EXITED, BootInfo, BootMemoryMap};
-use newos_abi::version::ABI_VERSION;
+use turnix_abi::boot::{BOOT_FLAG_BOOT_SERVICES_EXITED, BootInfo, BootMemoryMap};
+use turnix_abi::version::ABI_VERSION;
 use uefi::boot::{self, AllocateType};
 use uefi::fs::FileSystem;
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
@@ -23,19 +23,19 @@ use x86_64::structures::paging::{
 };
 
 const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
-const KERNEL_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\newos\kernel.elf");
-const RAMDISK_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\newos\initramfs.img");
+const KERNEL_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\turnix\kernel.elf");
+const RAMDISK_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\turnix\initramfs.img");
 const PHYSICAL_MEMORY_OFFSET: u64 = 0xffff_8000_0000_0000;
 const RAMDISK_VIRTUAL_BASE: u64 = 0xffff_9000_0000_0000;
 
-use newos_serial::{self as serial, println as serial_println};
+use turnix_serial::{self as serial, println as serial_println};
 
 #[entry]
 fn main() -> Status {
     serial::init();
     let _ = boot::set_watchdog_timer(0, 0, None);
 
-    serial_println!("NewOS UEFI loader");
+    serial_println!("turnix UEFI loader");
 
     // 1. Load Kernel ELF and Ramdisk
     let (loaded_kernel, ramdisk_phys, ramdisk_size) = {
@@ -124,6 +124,16 @@ fn main() -> Status {
         );
     }
 
+    // 4. Get GOP info before exiting boot services
+    let gop = boot::get_handle_for_protocol::<uefi::proto::console::gop::GraphicsOutput>()
+        .and_then(|h| boot::open_protocol_exclusive::<uefi::proto::console::gop::GraphicsOutput>(h))
+        .expect("GOP should be available");
+
+    let mut gop = gop;
+    let fb_info = gop.current_mode_info();
+    let fb_addr = gop.frame_buffer().as_mut_ptr() as u64;
+    let fb_size = gop.frame_buffer().size() as u64;
+
     // 5. Exit Boot Services
     serial_println!("exiting boot services");
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
@@ -153,6 +163,18 @@ fn main() -> Status {
             map_size: memory_map.meta().map_size,
             desc_size: memory_map.meta().desc_size,
             desc_version: memory_map.meta().desc_version as u32,
+        };
+        boot_info.framebuffer = turnix_abi::boot::BootFramebuffer {
+            addr: fb_addr,
+            size: fb_size,
+            width: fb_info.resolution().0 as u32,
+            height: fb_info.resolution().1 as u32,
+            pitch: fb_info.stride() as u32,
+            format: match fb_info.pixel_format() {
+                uefi::proto::console::gop::PixelFormat::Bgr => 0,
+                uefi::proto::console::gop::PixelFormat::Rgb => 1,
+                _ => 0,
+            },
         };
 
         // 7. Final Transition

@@ -20,7 +20,7 @@ This guide is for the current host machine: Windows 11 with Rust already install
 ## Checked on this machine
 
 - `cargo test` succeeds for the current default workspace members
-- `cargo check -p newos-kernel --lib` succeeds
+- `cargo check -p turnix-kernel --lib` succeeds
 - `qemu-system-x86_64` is on the current PATH
 - QEMU was installed under `C:\msys64\ucrt64\bin`
 - EDK2 firmware was found at `C:\msys64\ucrt64\share\qemu\edk2-x86_64-code.fd`
@@ -52,6 +52,6 @@ This guide is for the current host machine: Windows 11 with Rust already install
 
 ## Useful environment overrides
 
-- `NEWOS_OVMF_CODE` override the firmware code image path
-- `NEWOS_OVMF_VARS` override the firmware vars image path
-- `NEWOS_QEMU_ACCEL` override the accelerator, for example `whpx` or `tcg`
+- `turnix_OVMF_CODE` override the firmware code image path
+- `turnix_OVMF_VARS` override the firmware vars image path
+- `turnix_QEMU_ACCEL` override the accelerator, for example `whpx` or `tcg`

@@ -1,4 +1,4 @@
-use newos_abi::boot::{BootInfo, BootMemoryDescriptor, MEMORY_TYPE_CONVENTIONAL};
+use turnix_abi::boot::{BootInfo, BootMemoryDescriptor, MEMORY_TYPE_CONVENTIONAL};
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{
     FrameAllocator as X86FrameAllocator, PhysFrame as X86PhysFrame, Size4KiB,
@@ -22,6 +22,9 @@ pub struct FrameAllocator<'a> {
     next_address: u64,
 }
 
+unsafe impl Sync for FrameAllocator<'static> {}
+unsafe impl Send for FrameAllocator<'static> {}
+
 impl<'a> FrameAllocator<'a> {
     pub fn new(boot_info: &'a BootInfo) -> Self {
         Self {
@@ -31,17 +34,15 @@ impl<'a> FrameAllocator<'a> {
     }
 
     pub fn allocate_physical_frame(&mut self) -> Option<PhysFrame> {
-        use newos_abi::boot::{
+        use turnix_abi::boot::{
             MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA, MEMORY_TYPE_LOADER_DATA,
         };
 
         for descriptor in self.boot_info.memory_map.iter() {
             let is_usable = match descriptor.ty {
                 MEMORY_TYPE_CONVENTIONAL => true,
-                MEMORY_TYPE_LOADER_DATA => true,
                 MEMORY_TYPE_BOOT_SERVICES_CODE => true,
                 MEMORY_TYPE_BOOT_SERVICES_DATA => true,
-                1 => true, // LoaderCode
                 _ => false,
             };
 
@@ -102,7 +103,7 @@ fn align_up(value: u64, alignment: u64) -> u64 {
 mod tests {
     use super::*;
     use core::mem::size_of;
-    use newos_abi::boot::{BootEnvironment, BootInfo, BootLoaderKind, BootMemoryMap};
+    use turnix_abi::boot::{BootEnvironment, BootInfo, BootLoaderKind, BootMemoryMap};
 
     fn descriptor(ty: u32, phys_start: u64, page_count: u64) -> BootMemoryDescriptor {
         BootMemoryDescriptor {
@@ -153,3 +154,4 @@ mod tests {
         );
     }
 }
+

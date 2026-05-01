@@ -1,7 +1,7 @@
 # Memory Allocator Demo
 
 ```
-NewOS Kernel v0.0.4 - Phase 3: Physical Memory Bring-up
+turnix Kernel v0.0.4 - Phase 3: Physical Memory Bring-up
 =====================================================
 
 === Boot Memory Map ===
