@@ -48,6 +48,7 @@ impl Process {
             // Access the new PML4
             let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
                 .as_mut_ptr::<PageTable>();
+            #[allow(unused_mut)]
             let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
 
             // 5. Map and Copy ELF Segments
@@ -163,6 +164,7 @@ impl Process {
             // Access the new PML4 to copy the code
             let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
                 .as_mut_ptr::<PageTable>();
+            #[allow(unused_mut)]
             let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
 
             use x86_64::structures::paging::Translate;

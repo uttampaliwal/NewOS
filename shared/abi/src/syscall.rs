@@ -10,6 +10,9 @@ pub enum Syscall {
     Fork = 7,
     Wait = 8,
     Yielder = 9,
+    Uptime = 10,
+    Ls = 11,
+    Stat = 12,
 }
 
 impl Syscall {
@@ -24,6 +27,9 @@ impl Syscall {
             7 => Some(Self::Fork),
             8 => Some(Self::Wait),
             9 => Some(Self::Yielder),
+            10 => Some(Self::Uptime),
+            11 => Some(Self::Ls),
+            12 => Some(Self::Stat),
             _ => None,
         }
     }
@@ -58,6 +64,13 @@ pub struct SyscallArgs {
     pub arg1: u64,
     pub arg2: u64,
     pub arg3: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stat {
+    pub size: u64,
+    pub file_type: u32,
 }
 
 impl SyscallArgs {
@@ -108,5 +121,10 @@ mod tests {
     fn syscall_id_method() {
         assert_eq!(Syscall::Write.id(), 1);
         assert_eq!(Syscall::Exit.id(), 2);
+    }
+
+    #[test]
+    fn uptime_syscall_id_is_ten() {
+        assert_eq!(Syscall::Uptime as u16, 10);
     }
 }

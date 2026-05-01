@@ -1,7 +1,10 @@
 use super::{Task, TaskId};
 use alloc::collections::VecDeque;
+use core::sync::atomic::{AtomicU64, Ordering};
 use lazy_static::lazy_static;
 use spin::Mutex;
+
+static UPTIME_TICKS: AtomicU64 = AtomicU64::new(0);
 
 lazy_static! {
     static ref SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler::new());
@@ -84,6 +87,9 @@ pub fn get_current_kernel_stack_top() -> usize {
 }
 
 pub fn timer_tick(current_stack_ptr: usize) -> usize {
+    // Increment uptime counter (each tick represents ~10ms if LAPIC is configured that way)
+    UPTIME_TICKS.fetch_add(1, Ordering::Relaxed);
+
     if let Some(mut sched) = SCHEDULER.try_lock() {
         if let Some(mut prev_task) = sched.current_task.take() {
             if let Some(mut next_task) = sched.tasks.pop_front() {
@@ -103,6 +109,10 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
         }
     }
     0
+}
+
+pub fn get_uptime_ticks() -> u64 {
+    UPTIME_TICKS.load(Ordering::Relaxed)
 }
 
 pub fn get_task_count() -> usize {

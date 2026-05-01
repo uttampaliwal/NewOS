@@ -123,7 +123,7 @@ impl Task {
 
     pub fn new_user(
         process: Process,
-        mapper: &mut impl Mapper<Size4KiB>,
+        _mapper: &mut impl Mapper<Size4KiB>, // Unused but kept for API compatibility
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: x86_64::VirtAddr,
     ) -> Self {

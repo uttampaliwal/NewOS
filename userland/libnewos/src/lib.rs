@@ -43,6 +43,24 @@ pub fn exit(code: i32) -> ! {
     loop {}
 }
 
+pub fn uptime() -> u64 {
+    syscall0(Syscall::Uptime as u64)
+}
+
+fn syscall0(num: u64) -> u64 {
+    let res: u64;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("rax") num,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") res,
+        );
+    }
+    res
+}
+
 fn syscall1(num: u64, arg0: u64) -> u64 {
     let res: u64;
     unsafe {

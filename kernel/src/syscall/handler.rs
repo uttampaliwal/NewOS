@@ -32,7 +32,23 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Fork => handle_fork(args),
         Syscall::Wait => handle_wait(args),
         Syscall::Yielder => handle_yielder(args),
+        Syscall::Uptime => handle_uptime(args),
+        Syscall::Ls => handle_ls(args),
+        Syscall::Stat => handle_stat(args),
     }
+}
+
+fn handle_ls(_args: SyscallArgs) -> SyscallResult {
+    SyscallResult::Error(1)
+}
+
+fn handle_stat(_args: SyscallArgs) -> SyscallResult {
+    SyscallResult::Error(1)
+}
+
+fn handle_uptime(_args: SyscallArgs) -> SyscallResult {
+    let ticks = crate::task::scheduler::get_uptime_ticks();
+    SyscallResult::Success(ticks)
 }
 
 fn handle_write(args: SyscallArgs) -> SyscallResult {
