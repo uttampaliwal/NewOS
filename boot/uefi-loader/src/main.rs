@@ -136,6 +136,21 @@ fn main() -> Status {
 
     // 5. Exit Boot Services
     serial_println!("exiting boot services");
+
+    // Find ACPI RSDP before exiting boot services
+    let mut rsdp_addr = 0;
+    for entry in uefi::system::with_system_table(|st| st.config_table().to_vec()) {
+        // ACPI 2.0 GUID
+        if entry.guid == uefi::table::cfg::ConfigTableEntry::ACPI2_GUID {
+            rsdp_addr = entry.address as u64;
+            break;
+        }
+        // Fallback to ACPI 1.0 GUID
+        if entry.guid == uefi::table::cfg::ConfigTableEntry::ACPI_GUID && rsdp_addr == 0 {
+            rsdp_addr = entry.address as u64;
+        }
+    }
+
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
 
     // 6. Populate Persistent Data
@@ -176,6 +191,7 @@ fn main() -> Status {
                 _ => 0,
             },
         };
+        boot_info.rsdp_addr = rsdp_addr;
 
         // 7. Final Transition
         serial_println!("Switching CR3...");
