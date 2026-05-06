@@ -84,6 +84,14 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     crate::drivers::video::init(&boot_info.framebuffer);
     let _ = writeln!(writer, "[STG: VIDEO_INIT]");
 
+    // 3.2 Initialize PCI Driver
+    crate::drivers::pci::init();
+    let _ = writeln!(writer, "[STG: PCI_INIT]");
+
+    // 3.3 Initialize ACPI
+    crate::acpi::init(boot_info.rsdp_addr, phys_mem_offset);
+    let _ = writeln!(writer, "[STG: ACPI_INIT]");
+
     // 4. Initialize VFS
     crate::vfs::VFS
         .lock()
