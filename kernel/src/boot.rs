@@ -92,6 +92,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     crate::acpi::init(boot_info.rsdp_addr, phys_mem_offset);
     let _ = writeln!(writer, "[STG: ACPI_INIT]");
 
+    // 3.4 Initialize SMP
+    crate::smp::init(phys_mem_offset);
+    let _ = writeln!(writer, "[STG: SMP_INIT]");
+
     // 4. Initialize VFS
     crate::vfs::VFS
         .lock()
