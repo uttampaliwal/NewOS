@@ -104,3 +104,11 @@ pub fn get_base_addr() -> VirtAddr {
         VirtAddr::new(addr)
     }
 }
+
+pub fn init_for_cpu() {
+    let base = get_base_addr();
+    let mut lapic = unsafe { LocalApic::new(base) };
+    unsafe {
+        lapic.initialize();
+    }
+}

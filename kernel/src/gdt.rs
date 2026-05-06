@@ -92,6 +92,28 @@ pub fn init() {
     }
 }
 
+pub fn init_for_cpu(_cpu_id: u32) {
+    use x86_64::instructions::segmentation::{CS, DS, ES, SS, Segment};
+    use x86_64::instructions::tables::load_tss;
+    use x86_64::registers::model_specific::{GsBase, KernelGsBase};
+
+    unsafe {
+        // Load GDT (same GDT used by all CPUs)
+        GDT.0.load();
+        CS::set_reg(GDT.1.kernel_code);
+        DS::set_reg(SegmentSelector(0));
+        ES::set_reg(SegmentSelector(0));
+        SS::set_reg(SegmentSelector(0));
+        load_tss(GDT.1.tss);
+
+        // Each CPU needs its own GS base for per-CPU data
+        // For now, use the same PER_CPU (will be updated later for true SMP)
+        let per_cpu_ptr = VirtAddr::from_ptr(&raw const PER_CPU);
+        GsBase::write(per_cpu_ptr);
+        KernelGsBase::write(VirtAddr::zero());
+    }
+}
+
 pub fn reload_gdt() {
     GDT.0.load();
 }
