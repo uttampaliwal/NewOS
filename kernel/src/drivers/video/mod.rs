@@ -44,7 +44,16 @@ impl<'a> TextConsole<'a> {
             return;
         }
 
-        if let Some(glyph) = self.font.get_glyph(c) {
+        let glyph_data = if let Some(glyph) = self.font.get_glyph(c) {
+            let len = glyph.len();
+            let mut data = alloc::vec::Vec::with_capacity(len);
+            data.extend_from_slice(glyph);
+            Some(data)
+        } else {
+            None
+        };
+
+        if let Some(glyph) = glyph_data {
             let mut fb_lock = FRAMEBUFFER.lock();
             if let Some(ref mut fb) = *fb_lock {
                 let font_width = self.font.header.width;

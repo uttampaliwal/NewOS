@@ -20,6 +20,7 @@ pub mod interrupts;
 pub mod memory;
 pub mod process;
 pub mod serial;
+pub mod smp;
 pub mod syscall;
 pub mod task;
 pub mod tty;
