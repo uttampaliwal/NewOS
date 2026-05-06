@@ -1,11 +1,12 @@
 use x86_64::instructions::port::Port;
+use x86_64::VirtAddr;
 
 const CONFIG_ADDRESS: u16 = 0xCF8;
 const CONFIG_DATA: u16 = 0xCFC;
 
-pub fn init() {
+pub fn init(phys_mem_offset: VirtAddr) {
     crate::serial::println!("[PCI] Initializing PCI driver...");
-    enumerate_pci();
+    enumerate_pci(phys_mem_offset);
 }
 
 fn pci_config_read_word(bus: u8, slot: u8, func: u8, offset: u8) -> u16 {
@@ -32,20 +33,41 @@ fn get_device_id(bus: u8, slot: u8, func: u8) -> u16 {
     pci_config_read_word(bus, slot, func, 2)
 }
 
-fn enumerate_pci() {
+fn get_class_code(bus: u8, slot: u8, func: u8) -> u8 {
+    (pci_config_read_word(bus, slot, func, 0x0A) >> 8) as u8
+}
+
+fn get_subclass(bus: u8, slot: u8, func: u8) -> u8 {
+    (pci_config_read_word(bus, slot, func, 0x0A) & 0xFF) as u8
+}
+
+fn get_bar5(bus: u8, slot: u8, func: u8) -> u64 {
+    let bar5_low = pci_config_read_word(bus, slot, func, 0x24) as u64;
+    let bar5_high = pci_config_read_word(bus, slot, func, 0x26) as u64;
+    ((bar5_high << 16) | bar5_low) & 0xFFFFFFF0
+}
+
+fn enumerate_pci(phys_mem_offset: VirtAddr) {
     crate::serial::println!("[PCI] Scanning buses...");
     for bus in 0..=255 {
         for slot in 0..32 {
-            // Check only the first function to see if a device exists.
             let vendor = get_vendor_id(bus, slot, 0);
             if vendor != 0xFFFF {
-                // Device exists. If it's a multi-function device, we should technically check all 8 functions.
-                // For simplicity now, we check function 0.
                 let device = get_device_id(bus, slot, 0);
+                let class = get_class_code(bus, slot, 0);
+                let subclass = get_subclass(bus, slot, 0);
+                
                 crate::serial::println!(
-                    "[PCI] Found device: Bus {:02X}, Slot {:02X}, Func 00 - Vendor: {:04X}, Device: {:04X}",
-                    bus, slot, vendor, device
+                    "[PCI] Found device: Bus {:02X}, Slot {:02X}, Func 00 - Vendor: {:04X}, Device: {:04X}, Class: {:02X}, Subclass: {:02X}",
+                    bus, slot, vendor, device, class, subclass
                 );
+
+                if class == 0x01 && subclass == 0x06 {
+                    crate::serial::println!("[PCI] AHCI Controller found!");
+                    let bar5 = get_bar5(bus, slot, 0);
+                    crate::serial::println!("[PCI] AHCI BAR5: {:#x}", bar5);
+                    crate::drivers::ahci::init_from_pci(bar5, phys_mem_offset);
+                }
             }
         }
     }

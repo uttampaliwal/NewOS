@@ -20,13 +20,15 @@ impl AcpiHandler for TurnixAcpiHandler {
         size: usize,
     ) -> PhysicalMapping<Self, T> {
         let virtual_address = self.phys_mem_offset + physical_address as u64;
-        PhysicalMapping::new(
-            physical_address,
-            NonNull::new(virtual_address.as_mut_ptr()).unwrap(),
-            size,
-            size,
-            self.clone(),
-        )
+        unsafe {
+            PhysicalMapping::new(
+                physical_address,
+                NonNull::new(virtual_address.as_mut_ptr()).unwrap(),
+                size,
+                size,
+                self.clone(),
+            )
+        }
     }
 
     fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {

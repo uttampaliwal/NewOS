@@ -85,7 +85,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     let _ = writeln!(writer, "[STG: VIDEO_INIT]");
 
     // 3.2 Initialize PCI Driver
-    crate::drivers::pci::init();
+    crate::drivers::pci::init(phys_mem_offset);
     let _ = writeln!(writer, "[STG: PCI_INIT]");
 
     // 3.3 Initialize ACPI
