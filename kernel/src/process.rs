@@ -191,8 +191,8 @@ impl Process {
     ) -> Self {
         let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
 
-        // Deep copy user-mode address space
-        paging::clone_user_mappings(
+        // Clone user address space with Copy-on-Write
+        paging::clone_user_mappings_cow(
             self.pml4_frame(),
             pml4_frame,
             frame_allocator,

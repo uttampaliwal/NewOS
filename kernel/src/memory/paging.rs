@@ -50,6 +50,7 @@ pub fn clone_user_mappings(
     dst_pml4_frame: PhysFrame<Size4KiB>,
     frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
     physical_memory_offset: VirtAddr,
+    cow: bool,
 ) {
     let src_pml4_ptr =
         (physical_memory_offset + src_pml4_frame.start_address().as_u64()).as_ptr::<PageTable>();
@@ -69,6 +70,7 @@ pub fn clone_user_mappings(
                     3, // Start at P4 entry (Level 3 in recursion)
                     frame_allocator,
                     physical_memory_offset,
+                    cow,
                 );
             }
         }
@@ -84,12 +86,20 @@ fn clone_table_level(
     level: u8,
     frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
     physical_memory_offset: VirtAddr,
+    cow: bool,
 ) {
     if level == 0 {
         // Leaf entry (Level 0 is P1/Page Table)
-        // For now, we just copy the entry, which means we share the physical frame.
-        // This is enough for a basic fork/exec model where we don't have COW yet.
-        *dst_entry = src_entry.clone();
+        if cow {
+            // For COW: mark as read-only and set COW flag (bit 9 is available)
+            let mut flags = src_entry.flags();
+            flags.remove(PageTableFlags::WRITABLE);
+            flags.insert(PageTableFlags::BIT_9); // Mark as COW
+            *dst_entry = src_entry.clone();
+            dst_entry.set_flags(flags);
+        } else {
+            *dst_entry = src_entry.clone();
+        }
         return;
     }
 
@@ -119,10 +129,48 @@ fn clone_table_level(
                     level - 1,
                     frame_allocator,
                     physical_memory_offset,
+                    cow,
                 );
             } else {
                 dst_next_table[i].set_unused();
             }
+        }
+    }
+}
+
+/// Clone user address space with Copy-on-Write support
+pub fn clone_user_mappings_cow(
+    src_pml4_frame: PhysFrame<Size4KiB>,
+    dst_pml4_frame: PhysFrame<Size4KiB>,
+    frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+    physical_memory_offset: VirtAddr,
+) {
+    let src_pml4_ptr = (physical_memory_offset + src_pml4_frame.start_address().as_u64())
+        .as_ptr::<PageTable>();
+    let dst_pml4_ptr = (physical_memory_offset + dst_pml4_frame.start_address().as_u64())
+        .as_mut_ptr::<PageTable>();
+
+    unsafe {
+        let src_pml4 = &*src_pml4_ptr;
+        let dst_pml4 = &mut *dst_pml4_ptr;
+
+        // Clone lower-half mappings (indices 0 to 255) with COW
+        for i in 0..256 {
+            if !src_pml4[i].is_unused() {
+                clone_table_level(
+                    &src_pml4[i],
+                    &mut dst_pml4[i],
+                    3, // Start at P4 entry (Level 3 in recursion)
+                    frame_allocator,
+                    physical_memory_offset,
+                    true, // Enable COW
+                );
+            }
+        }
+
+        // Clone higher-half kernel mappings (shared, not COW)
+        for i in 256..512 {
+            dst_pml4[i] = src_pml4[i].clone();
         }
     }
 }
