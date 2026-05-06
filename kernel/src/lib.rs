@@ -14,6 +14,7 @@ pub mod acpi;
 pub mod boot;
 pub mod drivers;
 pub mod elf;
+pub mod fs;
 pub mod gdt;
 pub mod input;
 pub mod interrupts;
