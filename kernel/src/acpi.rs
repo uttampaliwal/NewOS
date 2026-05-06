@@ -78,7 +78,6 @@ pub fn init(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
                 }
                 
                 if let Some(processor_info) = platform_info.processor_info {
-                    // Store boot processor APIC ID
                     *BOOT_APIC_ID.lock() = Some(processor_info.boot_processor.local_apic_id);
                     
                     crate::serial::println!(
