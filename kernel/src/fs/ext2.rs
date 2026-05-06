@@ -2,7 +2,6 @@
 //! Provides persistent storage via ext2 filesystem
 
 use spin::Mutex;
-use core::ptr::read_unaligned;
 
 /// ext2 superblock (offset 1024 in filesystem)
 #[repr(C, packed)]
