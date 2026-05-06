@@ -8,7 +8,7 @@ use psf::Psf2Font;
 lazy_static! {
     pub static ref FRAMEBUFFER: Mutex<Option<Framebuffer>> = Mutex::new(None);
     pub static ref CONSOLE: Mutex<Option<TextConsole<'static>>> = Mutex::new(None);
-    pub static ref FONT_DATA: Mutex<Option<alloc::vec::Vec<u8>>> = Mutex::new(None);
+    pub static ref FONT_DATA: Mutex<Option<alloc::boxed::Box<[u8]>>> = Mutex::new(None);
 }
 
 pub struct Framebuffer {
@@ -33,8 +33,8 @@ impl<'a> TextConsole<'a> {
             font,
             cursor_x: 0,
             cursor_y: 0,
-            foreground: 0xFFFFFF, // White
-            background: 0x001a2a, // Dark blue
+            foreground: 0xFFFFFF,
+            background: 0x001a2a,
         }
     }
 
@@ -44,29 +44,36 @@ impl<'a> TextConsole<'a> {
             return;
         }
 
-        if let Some(glyph) = self.font.get_glyph(c) {
-            let mut fb_lock = FRAMEBUFFER.lock();
-            if let Some(ref mut fb) = *fb_lock {
-                let font_width = self.font.header.width;
-                let font_height = self.font.header.height;
-                let bytes_per_line = (font_width + 7) / 8;
-
-                if self.cursor_x + font_width > fb.width {
-                    self.newline_locked(fb);
-                }
-
-                for row in 0..font_height {
-                    for col in 0..font_width {
-                        let byte_idx = (row * bytes_per_line + (col / 8)) as usize;
-                        let bit_idx = 7 - (col % 8);
-                        let is_set = (glyph[byte_idx] >> bit_idx) & 1 == 1;
-
-                        let color = if is_set { self.foreground } else { self.background };
-                        fb.set_pixel(self.cursor_x + col, self.cursor_y + row, color);
-                    }
-                }
-                self.cursor_x += font_width;
+        let glyph_opt = self.font.get_glyph(c);
+        if glyph_opt.is_none() {
+            return;
+        }
+        let glyph = glyph_opt.unwrap();
+        
+        let font_width = self.font.header.width;
+        let font_height = self.font.header.height;
+        let bytes_per_line = (font_width + 7) / 8;
+        
+        // Extract glyph data to avoid borrow issues
+        let glyph_data: alloc::vec::Vec<u8> = glyph.to_vec();
+        
+        let mut fb_lock = FRAMEBUFFER.lock();
+        if let Some(ref mut fb) = *fb_lock {
+            if self.cursor_x + font_width > fb.width {
+                self.newline_locked(fb);
             }
+
+            for row in 0..font_height {
+                for col in 0..font_width {
+                    let byte_idx = (row * bytes_per_line + (col / 8)) as usize;
+                    let bit_idx = 7 - (col % 8);
+                    let is_set = (glyph_data[byte_idx] >> bit_idx) & 1 == 1;
+
+                    let color = if is_set { self.foreground } else { self.background };
+                    fb.set_pixel(self.cursor_x + col, self.cursor_y + row, color);
+                }
+            }
+            self.cursor_x += font_width;
         }
     }
 
@@ -110,26 +117,18 @@ impl<'a> TextConsole<'a> {
             let src = (fb.addr + line_size as u64) as *const u8;
             core::ptr::copy(src, dest, total_size - line_size);
 
-            // Clear last line
             let last_line_ptr = (fb.addr + (total_size - line_size) as u64) as *mut u32;
             for i in 0..(line_size / 4) {
                 last_line_ptr.add(i).write_volatile(self.background);
             }
         }
+        self.cursor_y = fb.height - font_height;
     }
 
     pub fn write_str(&mut self, s: &str) {
         for c in s.chars() {
             self.write_char(c);
         }
-    }
-}
-
-pub fn init_console(data: alloc::vec::Vec<u8>) {
-    let leaked_data = alloc::boxed::Box::leak(data.into_boxed_slice());
-    if let Some(font) = Psf2Font::new(leaked_data) {
-        let mut console = CONSOLE.lock();
-        *console = Some(TextConsole::new(font));
     }
 }
 
@@ -166,7 +165,6 @@ impl Framebuffer {
     }
 
     pub fn clear(&mut self, color: u32) {
-        // Optimization: clear using raw pointers for speed
         for i in 0..(self.height * self.pitch) {
             unsafe {
                 let ptr = (self.addr + (i as u64 * 4)) as *mut u32;
@@ -193,12 +191,31 @@ pub fn init(fb_info: &BootFramebuffer) {
     *fb = Some(Framebuffer::new(fb_info));
 
     if let Some(ref mut f) = *fb {
-        // Clear screen with a nice dark blue for turnix
         f.clear(0x001a2a);
-
-        // Draw a small "logo" placeholder
         f.draw_rect(20, 20, 100, 100, 0x00aaff);
         f.draw_rect(140, 20, 100, 100, 0xffaa00);
         f.draw_rect(260, 20, 100, 100, 0x00ffaa);
+    }
+}
+
+pub fn init_console(data: alloc::vec::Vec<u8>) {
+    let leaked_data = alloc::boxed::Box::leak(data.into_boxed_slice());
+    if let Some(font) = Psf2Font::new(leaked_data) {
+        let mut console = CONSOLE.lock();
+        *console = Some(TextConsole::new(font));
+    }
+}
+
+pub fn write_str(s: &str) {
+    let mut console_lock = CONSOLE.lock();
+    if let Some(ref mut console) = *console_lock {
+        console.write_str(s);
+    }
+}
+
+pub fn write_char(c: char) {
+    let mut console_lock = CONSOLE.lock();
+    if let Some(ref mut console) = *console_lock {
+        console.write_char(c);
     }
 }
