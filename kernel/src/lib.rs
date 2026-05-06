@@ -10,6 +10,7 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
+pub mod acpi;
 pub mod boot;
 pub mod drivers;
 pub mod elf;
