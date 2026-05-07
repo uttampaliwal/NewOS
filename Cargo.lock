@@ -230,6 +230,14 @@ name = "turnix-serial"
 version = "0.1.0"
 
 [[package]]
+name = "turnix-std"
+version = "0.1.0"
+dependencies = [
+ "libturnix",
+ "turnix-abi",
+]
+
+[[package]]
 name = "turnix-uefi-loader"
 version = "0.1.0"
 dependencies = [

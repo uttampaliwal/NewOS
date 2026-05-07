@@ -1,12 +1,6 @@
 //! Security features for Turnix OS
 //! Implements basic userspace isolation and capabilities
 
-#![no_std]
-
-extern crate alloc;
-
-use alloc::string::String;
-use alloc::vec::Vec;
 use spin::Mutex;
 
 /// Capability rights
@@ -29,7 +23,7 @@ impl Capabilities {
             can_admin: true,
         }
     }
-    
+
     /// Basic user capabilities
     pub fn basic() -> Self {
         Self {
@@ -40,7 +34,7 @@ impl Capabilities {
             can_admin: false,
         }
     }
-    
+
     /// Restricted capabilities
     pub fn restricted() -> Self {
         Self {
@@ -61,72 +55,56 @@ pub struct SecurityContext {
     pub is_privileged: bool,
 }
 
-static mut CURRENT_CONTEXT: Option<SecurityContext> = None;
-static CONTEXT_MUTEX: Mutex<()> = Mutex::new(());
+static CURRENT_CONTEXT: Mutex<Option<SecurityContext>> = Mutex::new(None);
 
 /// Initialize security subsystem
 pub fn init() {
     crate::serial::println!("[SEC] Initializing security subsystem...");
-    let _lock = CONTEXT_MUTEX.lock();
-    
-    unsafe {
-        CURRENT_CONTEXT = Some(SecurityContext {
-            uid: 0,      // Root user
-            gid: 0,
-            caps: Capabilities::full(),
-            is_privileged: true,
-        });
-    }
-    
+
+    *CURRENT_CONTEXT.lock() = Some(SecurityContext {
+        uid: 0,      // Root user
+        gid: 0,
+        caps: Capabilities::full(),
+        is_privileged: true,
+    });
+
     crate::serial::println!("[SEC] Security subsystem initialized");
 }
 
 /// Set security context for a process
 pub fn set_context(uid: u32, gid: u32, caps: Capabilities) {
-    let _lock = CONTEXT_MUTEX.lock();
-    
-    unsafe {
-        CURRENT_CONTEXT = Some(SecurityContext {
-            uid,
-            gid,
-            caps,
-            is_privileged: uid == 0,
-        });
-    }
-    
+    *CURRENT_CONTEXT.lock() = Some(SecurityContext {
+        uid,
+        gid,
+        caps,
+        is_privileged: uid == 0,
+    });
+
     crate::serial::println!("[SEC] Context set: UID={}, GID={}", uid, gid);
 }
 
 /// Check if current process has a capability
 pub fn check_capability(cap: &str) -> bool {
-    let _lock = CONTEXT_MUTEX.lock();
-    
-    unsafe {
-        if let Some(ctx) = &CURRENT_CONTEXT {
-            match cap {
-                "read" => ctx.caps.can_read,
-                "write" => ctx.caps.can_write,
-                "exec" => ctx.caps.can_exec,
-                "network" => ctx.caps.can_network,
-                "admin" => ctx.caps.can_admin,
-                _ => false,
-            }
-        } else {
-            false
-        }
+    let ctx = CURRENT_CONTEXT.lock();
+    match &*ctx {
+        Some(ctx) => match cap {
+            "read" => ctx.caps.can_read,
+            "write" => ctx.caps.can_write,
+            "exec" => ctx.caps.can_exec,
+            "network" => ctx.caps.can_network,
+            "admin" => ctx.caps.can_admin,
+            _ => false,
+        },
+        None => false,
     }
 }
 
 /// Get current user ID
 pub fn get_uid() -> u32 {
-    let _lock = CONTEXT_MUTEX.lock();
-    
-    unsafe {
-        if let Some(ctx) = &CURRENT_CONTEXT {
-            ctx.uid
-        } else {
-            0 // Default to root
-        }
+    let ctx = CURRENT_CONTEXT.lock();
+    match &*ctx {
+        Some(ctx) => ctx.uid,
+        None => 0, // Default to root
     }
 }
 

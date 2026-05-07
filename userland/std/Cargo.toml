@@ -13,4 +13,4 @@ default = []
 
 [dependencies]
 turnix-abi = { path = "../../shared/abi" }
-turnix-serial = { path = "../../shared/serial" }
+libturnix = { path = "../libturnix" }

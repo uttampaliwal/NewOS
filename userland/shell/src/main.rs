@@ -15,9 +15,9 @@ pub extern "C" fn _start() -> ! {
         write(tty_fd, s.as_bytes());
     };
 
-    tty_print("Turnix Interactive Shell (Phase 6)\n");
+        tty_print("Turnix Interactive Shell (Phase 6)\n");
     tty_print("System PID: ");
-    print_u64(getpid(), tty_print);
+    print_u64(getpid(), &tty_print);
     tty_print("\nType 'help' for commands.\n\n");
 
     let mut line_buf = [0u8; 256];
@@ -28,14 +28,14 @@ pub extern "C" fn _start() -> ! {
             if len > 0 {
                 let line = core::str::from_utf8(&line_buf[..len as usize]).unwrap_or("").trim();
                 if !line.is_empty() {
-                    handle_command(line, tty_fd, tty_print);
+                    handle_command(line, tty_fd, &tty_print);
                 }
             }
         }
     }
 }
 
-fn handle_command(cmd: &str, _tty_fd: u64, tty_print: impl Fn(&str)) {
+fn handle_command(cmd: &str, _tty_fd: u64, tty_print: &impl Fn(&str)) {
     match cmd {
         "help" => tty_print("Available: help, hello, ls, uptime, exit\n"),
         "hello" => tty_print("Hello from the clean Turnix shell!\n"),
@@ -63,7 +63,7 @@ fn handle_command(cmd: &str, _tty_fd: u64, tty_print: impl Fn(&str)) {
     }
 }
 
-fn print_u64(mut n: u64, tty_print: impl Fn(&str)) {
+fn print_u64(mut n: u64, tty_print: &impl Fn(&str)) {
     if n == 0 {
         tty_print("0");
         return;

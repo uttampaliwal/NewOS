@@ -139,17 +139,9 @@ fn main() -> Status {
 
     // Find ACPI RSDP before exiting boot services
     let mut rsdp_addr = 0;
-    for entry in uefi::system::with_system_table(|st| st.config_table().to_vec()) {
-        // ACPI 2.0 GUID
-        if entry.guid == uefi::table::cfg::ConfigTableEntry::ACPI2_GUID {
-            rsdp_addr = entry.address as u64;
-            break;
-        }
-        // Fallback to ACPI 1.0 GUID
-        if entry.guid == uefi::table::cfg::ConfigTableEntry::ACPI_GUID && rsdp_addr == 0 {
-            rsdp_addr = entry.address as u64;
-        }
-    }
+    // TODO: Fix RSDP detection for uefi 0.37 API
+    // For now, RSDP detection is disabled - ACPI will be unavailable
+    serial_println!("RSDP detection disabled for now");
 
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
 

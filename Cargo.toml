@@ -9,6 +9,7 @@ members = [
     "userland/shell",
     "userland/libturnix",
     "userland/fault-tester",
+    "userland/std",
 ]
 default-members = [
     "shared/abi",
