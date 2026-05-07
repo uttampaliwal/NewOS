@@ -1,0 +1,16 @@
+[package]
+name = "turnix-std"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+
+[dependencies]
+turnix-abi = { path = "../../shared/abi" }
+turnix-serial = { path = "../../shared/serial" }
