@@ -92,6 +92,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     crate::acpi::init(boot_info.rsdp_addr, phys_mem_offset);
     let _ = writeln!(writer, "[STG: ACPI_INIT]");
 
+    // 3.3.1 Enumerate PCIe devices via ECAM (ACPI MCFG)
+    crate::drivers::pcie::enumerate(boot_info.rsdp_addr, phys_mem_offset);
+    let _ = writeln!(writer, "[STG: PCIE_ENUM]");
+
     // 3.4 Initialize SMP
     crate::smp::init(phys_mem_offset);
     let _ = writeln!(writer, "[STG: SMP_INIT]");

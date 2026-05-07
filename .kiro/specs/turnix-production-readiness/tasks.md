@@ -23,13 +23,13 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Property 1: Device Registry Round-Trip**
     - **Validates: Requirements 1.2, 1.4**
     - Use `proptest` to generate sets of mock drivers where some `probe` succeeds and some fail; assert registry contains exactly the successful ones and lookup returns the same instance
-  - [ ]* 1.3 Write property test for Driver Lifecycle Invariant
+  - [x]* 1.3 Write property test for Driver Lifecycle Invariant
     - **Property 2: Driver Lifecycle Invariant**
     - **Validates: Requirements 1.1, 1.6**
     - Use `proptest` to generate mock driver configs; assert `initialize` succeeds after `probe`, and `suspend` → `resume` restores observable state
 
 - [ ] 2. Implement the PCIe ECAM enumerator in `kernel/src/drivers/pcie.rs`
-  - [ ] 2.1 Create `kernel/src/drivers/pcie.rs` with ECAM MMIO walk across all buses/devices/functions
+  - [x] 2.1 Create `kernel/src/drivers/pcie.rs` with ECAM MMIO walk across all buses/devices/functions
     - Read vendor/device ID, class code, subclass, prog_if, and all 6 BARs for each function
     - Skip slots returning `0xFFFFFFFF` without panicking
     - Map 64-bit memory BARs into the kernel virtual address space via the HHDM offset

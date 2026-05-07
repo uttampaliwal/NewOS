@@ -214,6 +214,7 @@ pub trait DeviceDriver: Send + Sync {
 /// caller. The struct contains no `static mut` fields.
 pub struct DeviceRegistry {
     devices: BTreeMap<DeviceKey, Arc<dyn AnyDriver>>,
+    device_infos: BTreeMap<DeviceKey, DeviceInfo>,
 }
 
 impl DeviceRegistry {
@@ -221,6 +222,7 @@ impl DeviceRegistry {
     pub const fn new() -> Self {
         Self {
             devices: BTreeMap::new(),
+            device_infos: BTreeMap::new(),
         }
     }
 
@@ -253,6 +255,23 @@ impl DeviceRegistry {
     /// Iterate over all registered devices as `(&DeviceKey, &dyn AnyDriver)` pairs.
     pub fn iter(&self) -> impl Iterator<Item = (&DeviceKey, &dyn AnyDriver)> {
         self.devices.iter().map(|(k, v)| (k, v.as_ref()))
+    }
+
+    /// Record discovered [`DeviceInfo`] for a device key.
+    ///
+    /// This is typically called by the PCIe enumerator before any driver is probed.
+    pub fn register_device_info(&mut self, key: DeviceKey, info: DeviceInfo) {
+        self.device_infos.insert(key, info);
+    }
+
+    /// Get the discovered [`DeviceInfo`] for a device key, if present.
+    pub fn get_device_info(&self, key: &DeviceKey) -> Option<&DeviceInfo> {
+        self.device_infos.get(key)
+    }
+
+    /// Iterate over all discovered devices as `(&DeviceKey, &DeviceInfo)` pairs.
+    pub fn iter_device_infos(&self) -> impl Iterator<Item = (&DeviceKey, &DeviceInfo)> {
+        self.device_infos.iter()
     }
 
     /// Returns the number of registered drivers.
