@@ -117,6 +117,7 @@ mod tests {
     }
 
     fn boot_info(descriptors: &[BootMemoryDescriptor]) -> BootInfo {
+        use turnix_abi::boot::BootFramebuffer;
         BootInfo {
             abi_version: 2,
             environment: BootEnvironment::Uefi,
@@ -133,6 +134,15 @@ mod tests {
                 desc_size: size_of::<BootMemoryDescriptor>(),
                 desc_version: 1,
             },
+            framebuffer: BootFramebuffer {
+                addr: 0,
+                size: 0,
+                width: 0,
+                height: 0,
+                pitch: 0,
+                format: 0,
+            },
+            rsdp_addr: 0,
         }
     }
 

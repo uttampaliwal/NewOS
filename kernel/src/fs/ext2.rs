@@ -280,29 +280,27 @@ pub fn mount(device_id: usize) -> bool {
 
 /// Read inode by number
 pub fn read_inode(device_id: usize, ino: u32) -> Option<Ext2Inode> {
-    unsafe {
-        let _lock = EXT2_MUTEX.lock();
-        if let Some(ref fs) = EXT2_FS {
-            if let Some(ref sb) = fs.superblock {
-                let block_size = fs.block_size;
-                let inodes_per_group = sb.get_inodes_per_group();
-                let inode_size = 128usize; // Standard ext2 inode size
+    let guard = EXT2_FS.lock();
+    if let Some(ref fs) = *guard {
+        if let Some(ref sb) = fs.superblock {
+            let block_size = fs.block_size;
+            let inodes_per_group = sb.get_inodes_per_group();
+            let inode_size = 128usize; // Standard ext2 inode size
 
-                let group = (ino - 1) / inodes_per_group;
-                let index = (ino - 1) % inodes_per_group;
+            let group = (ino - 1) / inodes_per_group;
+            let index = (ino - 1) % inodes_per_group;
 
-                if (group as usize) < fs.group_descs.len() {
-                    let gd = &fs.group_descs[group as usize];
-                    let inode_table = gd.get_inode_table();
-                    let inode_table_lba = inode_table as u64 * (block_size / 512) as u64;
-                    let inode_offset = index as u64 * inode_size as u64;
+            if (group as usize) < fs.group_descs.len() {
+                let gd = &fs.group_descs[group as usize];
+                let inode_table = gd.get_inode_table();
+                let inode_table_lba = inode_table as u64 * (block_size / 512) as u64;
+                let inode_offset = index as u64 * inode_size as u64;
 
-                    let mut buffer = vec![0u8; block_size];
-                    if read_blocks(device_id, inode_table_lba, block_size / 512, &mut buffer) {
-                        let inode_ptr = buffer.as_ptr().add(inode_offset as usize) as *const Ext2Inode;
-                        let inode = ptr::read_unaligned(inode_ptr);
-                        return Some(inode);
-                    }
+                let mut buffer = vec![0u8; block_size];
+                if read_blocks(device_id, inode_table_lba, block_size / 512, &mut buffer) {
+                    let inode_ptr = unsafe { buffer.as_ptr().add(inode_offset as usize) as *const Ext2Inode };
+                    let inode = unsafe { ptr::read_unaligned(inode_ptr) };
+                    return Some(inode);
                 }
             }
         }
@@ -314,10 +312,9 @@ pub fn read_inode(device_id: usize, ino: u32) -> Option<Ext2Inode> {
 pub fn list_dir(device_id: usize, ino: u32) -> Vec<(u32, String, u8)> {
     let mut result = Vec::new();
 
-    let block_size = if let Some(fs) = unsafe { &raw const EXT2_FS }.as_ref() {
-        fs.as_ref().map(|fs| fs.block_size).unwrap_or(1024)
-    } else {
-        1024
+    let block_size = {
+        let guard = EXT2_FS.lock();
+        guard.as_ref().map(|fs| fs.block_size).unwrap_or(1024)
     };
 
     if let Some(inode) = read_inode(device_id, ino) {

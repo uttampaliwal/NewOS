@@ -279,6 +279,10 @@ impl Default for DeviceRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
+    use proptest::prelude::*;
+    #[cfg(test)]
+    use std::vec::Vec;
 
     // A minimal mock driver for testing the registry.
     struct MockDriver {
@@ -543,5 +547,214 @@ mod tests {
         let cloned = info.clone();
         assert_eq!(cloned.vendor_id, info.vendor_id);
         assert_eq!(cloned.device_id, info.device_id);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Property-based tests
+    // ---------------------------------------------------------------------------
+
+    // A mock driver whose probe outcome is controlled by a flag.
+    //
+    // When `should_fail` is true, `probe` returns an error (simulating a device
+    // the driver does not recognise). When false, probe succeeds and the driver
+    // records the vendor/device IDs from `DeviceInfo`.
+    struct ControllableMockDriver {
+        vendor: u16,
+        device: u16,
+    }
+
+    #[derive(Debug)]
+    struct ControllableError;
+
+    impl DeviceDriver for ControllableMockDriver {
+        type Config = ();
+        type Error = ControllableError;
+
+        fn probe(info: &DeviceInfo) -> Result<Self, Self::Error> {
+            // Vendor ID 0xFFFF is our sentinel for "probe should fail".
+            if info.vendor_id == 0xFFFF {
+                Err(ControllableError)
+            } else {
+                Ok(ControllableMockDriver {
+                    vendor: info.vendor_id,
+                    device: info.device_id,
+                })
+            }
+        }
+
+        fn initialize(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn suspend(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn resume(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn name(&self) -> &'static str {
+            "controllable-mock"
+        }
+    }
+
+    /// A descriptor for one device in the generated test set.
+    ///
+    /// `fail_probe` drives whether the driver will reject this device.
+    /// We encode "fail" by using vendor_id `0xFFFF`; any other value succeeds.
+    #[derive(Debug, Clone)]
+    struct DeviceSpec {
+        /// bus/device/function triple — kept small to avoid key collisions.
+        bus: u8,
+        device_slot: u8,
+        function: u8,
+        vendor_id: u16,
+        device_id: u16,
+        fail_probe: bool,
+    }
+
+    impl DeviceSpec {
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                // Use 0xFFFF as the sentinel vendor when we want probe to fail.
+                vendor_id: if self.fail_probe { 0xFFFF } else { self.vendor_id },
+                device_id: self.device_id,
+                class_code: 0x01,
+                subclass: 0x00,
+                prog_if: 0x00,
+                bars: [None, None, None, None, None, None],
+                irq: None,
+            }
+        }
+
+        fn device_key(&self) -> DeviceKey {
+            DeviceKey::new(
+                self.bus,
+                self.device_slot,
+                self.function,
+                if self.fail_probe { 0xFFFF } else { self.vendor_id },
+                self.device_id,
+            )
+        }
+    }
+
+    /// Proptest strategy that generates a `Vec<DeviceSpec>` with unique
+    /// (bus, device_slot, function) triples so every key in the registry is
+    /// distinct.
+    fn arb_device_specs() -> impl Strategy<Value = Vec<DeviceSpec>> {
+        // Generate between 1 and 16 devices.
+        proptest::collection::vec(
+            (
+                0u8..=3u8,   // bus
+                0u8..=7u8,   // device_slot (0-31 in real PCI, keep small)
+                0u8..=3u8,   // function
+                1u16..=0xFFFEu16, // vendor_id (exclude 0x0000 and 0xFFFF sentinel)
+                0u16..=0xFFFFu16, // device_id
+                proptest::bool::ANY, // fail_probe
+            ),
+            1..=16,
+        )
+        .prop_map(|raw| {
+            // Deduplicate by (bus, device_slot, function) — keep first occurrence.
+            let mut seen = std::collections::BTreeSet::new();
+            raw.into_iter()
+                .filter_map(|(bus, device_slot, function, vendor_id, device_id, fail_probe)| {
+                    let triple = (bus, device_slot, function);
+                    if seen.insert(triple) {
+                        Some(DeviceSpec {
+                            bus,
+                            device_slot,
+                            function,
+                            vendor_id,
+                            device_id,
+                            fail_probe,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+    }
+
+    /// **Property 1: Device Registry Round-Trip**
+    ///
+    /// **Validates: Requirements 1.2, 1.4**
+    ///
+    /// For any set of mock drivers where some `probe` succeeds and some fail:
+    /// 1. The registry contains *exactly* the drivers whose probe succeeded.
+    /// 2. Drivers whose probe failed are *absent* from the registry.
+    /// 3. Lookup by `DeviceKey` returns the same vendor/device IDs that were
+    ///    passed to `probe` (round-trip identity).
+    /// 4. The total registry size equals the number of successful probes.
+    proptest! {
+        #[test]
+        fn prop_device_registry_round_trip(specs in arb_device_specs()) {
+            let mut registry = DeviceRegistry::new();
+
+            // Track which specs are expected to succeed.
+            let mut expected_success: Vec<&DeviceSpec> = Vec::new();
+            let mut expected_failure: Vec<&DeviceSpec> = Vec::new();
+
+            for spec in &specs {
+                let info = spec.device_info();
+                let key = spec.device_key();
+
+                match ControllableMockDriver::probe(&info) {
+                    Ok(driver) => {
+                        registry.register(key, driver);
+                        expected_success.push(spec);
+                    }
+                    Err(_) => {
+                        // Requirement 1.4: log error and continue — we simply
+                        // do not register the driver and move on.
+                        expected_failure.push(spec);
+                    }
+                }
+            }
+
+            // 1. Registry size equals the number of successful probes.
+            prop_assert_eq!(
+                registry.len(),
+                expected_success.len(),
+                "registry size should equal number of successful probes"
+            );
+
+            // 2. Every successfully probed driver is present and has correct IDs.
+            for spec in &expected_success {
+                let key = spec.device_key();
+                let driver = registry.get::<ControllableMockDriver>(&key);
+                prop_assert!(
+                    driver.is_some(),
+                    "driver for key {:?} should be in registry after successful probe",
+                    key
+                );
+                let driver = driver.unwrap();
+                // Round-trip: vendor/device IDs are preserved.
+                prop_assert_eq!(
+                    driver.vendor,
+                    spec.vendor_id,
+                    "vendor_id round-trip failed for key {:?}",
+                    key
+                );
+                prop_assert_eq!(
+                    driver.device,
+                    spec.device_id,
+                    "device_id round-trip failed for key {:?}",
+                    key
+                );
+            }
+
+            // 3. Every failed probe is absent from the registry.
+            for spec in &expected_failure {
+                let key = spec.device_key();
+                prop_assert!(
+                    registry.get::<ControllableMockDriver>(&key).is_none(),
+                    "driver for key {:?} should NOT be in registry after failed probe",
+                    key
+                );
+            }
+        }
     }
 }

@@ -19,7 +19,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Ensure all driver state is owned by the driver instance — no kernel-global mutable statics
     - Add `pub mod framework;` to `kernel/src/drivers/mod.rs`
     - _Requirements: 1.1, 1.2, 1.3, 1.5, 1.6_
-  - [ ] 1.2 Write property test for Device Registry round-trip
+  - [x] 1.2 Write property test for Device Registry round-trip
     - **Property 1: Device Registry Round-Trip**
     - **Validates: Requirements 1.2, 1.4**
     - Use `proptest` to generate sets of mock drivers where some `probe` succeeds and some fail; assert registry contains exactly the successful ones and lookup returns the same instance
