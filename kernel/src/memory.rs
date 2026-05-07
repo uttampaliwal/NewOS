@@ -35,7 +35,7 @@ impl<'a> FrameAllocator<'a> {
 
     pub fn allocate_physical_frame(&mut self) -> Option<PhysFrame> {
         use turnix_abi::boot::{
-            MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA, MEMORY_TYPE_LOADER_DATA,
+            MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA,
         };
 
         for descriptor in self.boot_info.memory_map.iter() {

@@ -287,7 +287,7 @@ pub fn init_from_pci(bar5_addr: u64, phys_mem_offset: VirtAddr) -> bool {
 }
 
 /// Read blocks from AHCI device
-pub fn read_blocks(device: usize, lba: u64, count: usize, buffer: &mut [u8]) -> bool {
+pub fn read_blocks(_device: usize, lba: u64, count: usize, buffer: &mut [u8]) -> bool {
     let mut guard = AHCI_CONTROLLER.lock();
     if let Some(ref mut ctrl) = guard.as_mut() {
         // For now, assume device 0 = port 0

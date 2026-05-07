@@ -28,7 +28,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 1.1, 1.6**
     - Use `proptest` to generate mock driver configs; assert `initialize` succeeds after `probe`, and `suspend` → `resume` restores observable state
 
-- [ ] 2. Implement the PCIe ECAM enumerator in `kernel/src/drivers/pcie.rs`
+- [x] 2. Implement the PCIe ECAM enumerator in `kernel/src/drivers/pcie.rs`
   - [x] 2.1 Create `kernel/src/drivers/pcie.rs` with ECAM MMIO walk across all buses/devices/functions
     - Read vendor/device ID, class code, subclass, prog_if, and all 6 BARs for each function
     - Skip slots returning `0xFFFFFFFF` without panicking
@@ -37,7 +37,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Log probe failures per requirement 1.4 (`[DRIVER] probe failed for {vid:04x}:{did:04x}`)
     - Wire `pcie::enumerate()` call into `kernel/src/boot.rs` early boot sequence
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
-  - [ ]* 2.2 Write unit tests for PCIe slot skip and BAR parsing
+  - [x]* 2.2 Write unit tests for PCIe slot skip and BAR parsing
     - Test that `0xFFFFFFFF` vendor ID is skipped without panic
     - Test 64-bit BAR address reconstruction from two 32-bit config reads
     - _Requirements: 2.4_

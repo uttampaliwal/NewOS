@@ -247,7 +247,7 @@ lazy_static! {
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    use crate::input::{KEYBOARD, add_char};
+    use crate::input::KEYBOARD;
     use pc_keyboard::DecodedKey;
     use x86_64::instructions::port::Port;
 

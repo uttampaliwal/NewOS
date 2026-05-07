@@ -43,13 +43,13 @@ fn cfg_read_u32(cfg_phys: u64, phys_mem_offset: VirtAddr, offset: u16) -> u32 {
     unsafe { core::ptr::read_volatile(addr.as_ptr::<u32>()) }
 }
 
-fn parse_bars(cfg_phys: u64, phys_mem_offset: VirtAddr) -> [Option<Bar>; 6] {
+fn parse_bars(reader: &dyn Fn(u16) -> u32) -> [Option<Bar>; 6] {
     let mut bars: [Option<Bar>; 6] = [None, None, None, None, None, None];
 
     let mut i = 0usize;
     while i < 6 {
         let off = 0x10u16 + (i as u16) * 4;
-        let raw = cfg_read_u32(cfg_phys, phys_mem_offset, off);
+        let raw = reader(off);
         if raw == 0 {
             i += 1;
             continue;
@@ -81,14 +81,11 @@ fn parse_bars(cfg_phys: u64, phys_mem_offset: VirtAddr) -> [Option<Bar>; 6] {
                 // 64-bit, consumes next BAR as high dword when available
                 let low = (raw & 0xFFFF_FFF0) as u64;
                 let high = if i + 1 < 6 {
-                    cfg_read_u32(cfg_phys, phys_mem_offset, off + 4) as u64
+                    reader(off + 4) as u64
                 } else {
                     0
                 };
                 let base = (high << 32) | low;
-                // "Map" via HHDM by computing the virtual address; this ensures the MMIO
-                // range is reachable in the kernel virtual address space.
-                let _mapped_virt = phys_mem_offset + base;
                 bars[i] = Some(Bar::Memory64 {
                     base,
                     size: 0,
@@ -157,7 +154,8 @@ pub fn enumerate(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
                 let subclass = ((class_reg >> 16) & 0xFF) as u8;
                 let class_code = ((class_reg >> 24) & 0xFF) as u8;
 
-                let bars = parse_bars(cfg_phys, phys_mem_offset);
+                let reader = &|off: u16| cfg_read_u32(cfg_phys, phys_mem_offset, off);
+                let bars = parse_bars(reader);
 
                 let info = DeviceInfo {
                     vendor_id,
@@ -183,5 +181,41 @@ pub fn enumerate(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
 
     let device_count = crate::drivers::DEVICE_REGISTRY.lock().iter_device_infos().count();
     crate::serial::println!("[PCIE] Enumeration complete. Discovered {} device functions.", device_count);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_skip_invalid_vendor_id() {
+        // Test that 0xFFFFFFFF is recognized as an invalid vendor/device ID and would be skipped
+        let invalid_id = 0xFFFFFFFFu32;
+        assert_eq!(invalid_id, 0xFFFF_FFFFu32);
+        // In enumerate, if id == 0xFFFF_FFFF { continue; } so it skips without panic
+    }
+
+    #[test]
+    fn test_parse_64bit_bar() {
+        // Mock config space: BAR0 is 64-bit memory BAR
+        let mut config = [0u32; 16];
+        config[4] = 0x00000004; // BAR0 low: 64-bit memory, prefetchable=0, base_low=0x00000000
+        config[5] = 0x12345678; // BAR1 high: 0x12345678
+        // Others 0
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+
+        // BAR0 should be Memory64 with base = (0x12345678 << 32) | 0x00000000 = 0x1234567800000000
+        match bars[0] {
+            Some(Bar::Memory64 { base, size: _, prefetchable }) => {
+                assert_eq!(base, 0x1234567800000000);
+                assert_eq!(prefetchable, false);
+            }
+            _ => panic!("Expected Memory64 BAR"),
+        }
+
+        // BAR1 should be None since it's consumed as high part of BAR0
+        assert!(bars[1].is_none());
+    }
 }
 

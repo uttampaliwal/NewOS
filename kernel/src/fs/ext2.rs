@@ -226,7 +226,7 @@ pub fn init(device_id: usize) -> bool {
 
     let block_size = superblock.block_size();
     let block_count = superblock.get_block_count();
-    let inodes_per_group = superblock.get_inodes_per_group();
+    let _inodes_per_group = superblock.get_inodes_per_group();
     let group_count = ((block_count + superblock.get_blocks_per_group() - 1) / superblock.get_blocks_per_group()) as usize;
 
     crate::serial::println!("[EXT2] Filesystem: {} blocks, {} inodes, {} groups",
