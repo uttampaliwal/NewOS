@@ -20,6 +20,7 @@ pub mod input;
 pub mod interrupts;
 pub mod memory;
 pub mod process;
+pub mod security;
 pub mod serial;
 pub mod smp;
 pub mod syscall;
