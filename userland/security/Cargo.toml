@@ -1,0 +1,15 @@
+[package]
+name = "turnix-security"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true>
+publish = false>
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+turnix-abi = { path = "../../shared/abi" }
+turnix-serial = { path = "../../shared/serial" }
+spinel = "0.10.10"
+lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
