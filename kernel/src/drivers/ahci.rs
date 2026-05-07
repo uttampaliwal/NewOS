@@ -1,9 +1,12 @@
 //! AHCI (Advanced Host Controller Interface) driver for SATA devices
-//! This provides block device access for storage
+//! Provides block device access using DMA.
 
 use spin::Mutex;
 use x86_64::VirtAddr;
 use lazy_static::lazy_static;
+use core::ptr;
+use alloc::vec::Vec;
+use alloc::vec;
 
 lazy_static! {
     pub static ref AHCI_CONTROLLER: Mutex<Option<AhciController>> = Mutex::new(None);
@@ -45,95 +48,203 @@ struct PortRegs {
     // ... more registers
 }
 
+/// AHCI Command Header
+#[repr(C)]
+struct CommandHeader {
+    flags: u16,       // DW0: Flags and command length
+    prdtl: u16,       // DW0: Physical Region Descriptor Table Length
+    prdbc: u32,       // DW1: Physical Region Descriptor Byte Count
+    ctba: u32,        // DW2: Command Table Base Address
+    ctbau: u32,       // DW3: Command Table Base Address Upper
+    _reserved: [u32; 4], // DW4-7: Reserved
+}
+
+/// AHCI PRD Table Entry
+#[repr(C)]
+struct PrdEntry {
+    dba: u32,         // Data Base Address
+    dbau: u32,        // Data Base Address Upper
+    _reserved: u32,   // Reserved
+    dbc: u32,         // Byte Count (bit 31 = interrupt)
+}
+
 /// AHCI Controller structure
 pub struct AhciController {
     ghc: &'static mut Ghc,
     ports: &'static mut [PortRegs; 32],
     abar: VirtAddr,
+    cmd_list: Vec<u8>,    // Command list memory
+    recv_fis: Vec<u8>,   // Receive FIS memory
+    cmd_table: Vec<u8>,  // Command table memory
+}
+
+impl AhciController {
+    /// Initialize a port for DMA
+    fn init_port_dma(&mut self, port_num: usize) {
+        let port = &mut self.ports[port_num];
+
+        // Stop command engine
+        port.cmd &= !0x00000001; // Clear ST (Start)
+        while port.cmd & 0x00000001 != 0 {
+            core::hint::spin_loop();
+        }
+
+        // Stop FIS reception
+        port.cmd &= !0x00000010; // Clear FRE (FIS Receive Enable)
+        while port.cmd & 0x00000010 != 0 {
+            core::hint::spin_loop();
+        }
+
+        // Allocate and set command list base (1KB aligned)
+        let cmd_list_addr = self.cmd_list.as_ptr() as u64;
+        port.clb = cmd_list_addr as u32;
+        port.clbu = (cmd_list_addr >> 32) as u32;
+
+        // Allocate and set FIS base (256-byte aligned)
+        let recv_fis_addr = self.recv_fis.as_ptr() as u64;
+        port.fb = recv_fis_addr as u32;
+        port.fbu = (recv_fis_addr >> 32) as u32;
+
+        // Clear command list
+        unsafe {
+            ptr::write_bytes(self.cmd_list.as_mut_ptr(), 0, self.cmd_list.len());
+            ptr::write_bytes(self.recv_fis.as_mut_ptr(), 0, self.recv_fis.len());
+            ptr::write_bytes(self.cmd_table.as_mut_ptr(), 0, self.cmd_table.len());
+        }
+
+        // Start FIS reception
+        port.cmd |= 0x00000010; // Set FRE
+
+        // Start command engine
+        port.cmd |= 0x00000001; // Set ST
+
+        crate::serial::println!("[AHCI] Port {} initialized for DMA", port_num);
+    }
+
+    /// Read blocks using DMA
+    pub fn read_blocks(&mut self, port_num: usize, lba: u64, count: usize, buffer: &mut [u8]) -> bool {
+        if port_num >= 32 {
+            return false;
+        }
+
+        let port = &mut self.ports[port_num];
+        let sig = port.sig;
+
+        // Check if this is a SATA device
+        if sig != 0x00000101 {
+            crate::serial::println!("[AHCI] Port {} is not a SATA device (sig: {:#x})", port_num, sig);
+            return false;
+        }
+
+        // Set up command header
+        let cmd_header = unsafe {
+            &mut *(self.cmd_list.as_mut_ptr() as *mut CommandHeader)
+        };
+
+        // Configure command: FIS length = 5 DWORDS, write = 0 (read), prefetchable = 1
+        cmd_header.flags = (5 << 0) | (1 << 7); // FIS length | C (Clear busy)
+        cmd_header.prdtl = 1; // One PRD entry
+        cmd_header.prdbc = 0;
+        cmd_header.ctba = self.cmd_table.as_ptr() as u32;
+        cmd_header.ctbau = (self.cmd_table.as_ptr() as u64 >> 32) as u32;
+
+        // Set up command table - H2D FIS (Register FIS)
+        let cmd_fis = unsafe {
+            &mut *(self.cmd_table.as_mut_ptr() as *mut H2dFis)
+        };
+
+        // Build H2D FIS for READ DMA EXT (25h) or READ SECTOR(S) EXT (24h)
+        // For simplicity, using READ DMA (C8h) for smaller transfers
+        cmd_fis.fis_type = 0x27; // H2D FIS type
+        cmd_fis.flags = 0x80; // Command bit set
+        cmd_fis.command = 0xC8; // READ DMA
+        cmd_fis.lba_low = (lba & 0xFFFFFF) as u32;
+        cmd_fis.lba_mid = ((lba >> 24) & 0xFFFFFF) as u32;
+        cmd_fis.lba_high = ((lba >> 48) & 0xFFFFFF) as u32;
+        cmd_fis.device = 0x40; // LBA mode
+        cmd_fis.count = count as u16;
+        cmd_fis.icc = 0;
+
+        // Set up PRD table (in command table, after FIS)
+        let prd_offset = 0x80; // FIS is 0x40 bytes, PRD table starts after
+        let prd_entry = unsafe {
+            &mut *(self.cmd_table.as_mut_ptr().add(prd_offset) as *mut PrdEntry)
+        };
+
+        prd_entry.dba = buffer.as_ptr() as u32;
+        prd_entry.dbau = (buffer.as_ptr() as u64 >> 32) as u32;
+        prd_entry.dbc = (buffer.len() as u32 - 1) | (1 << 31); // Interrupt on completion
+
+        // Issue command
+        port.ci |= 1; // Set bit 0 in Command Issue
+
+        // Wait for completion
+        let mut timeout = 1000000; // Large timeout
+        while port.ci & 1 != 0 && timeout > 0 {
+            core::hint::spin_loop();
+            timeout -= 1;
+        }
+
+        if timeout == 0 {
+            crate::serial::println!("[AHCI] Timeout reading blocks from port {}", port_num);
+            return false;
+        }
+
+        crate::serial::println!("[AHCI] Read {} blocks from LBA {} on port {}", count, lba, port_num);
+        true
+    }
+}
+
+/// H2D FIS (Host to Device Register FIS)
+#[repr(C)]
+struct H2dFis {
+    fis_type: u8,   // 0x27 for H2D
+    flags: u8,      // Bit 7 = C (Command), Bit 6 = P (Control)
+    command: u8,     // Command register
+    features: u8,    // Features register
+    lba_low: u32,   // LBA 0-23 and 24-31
+    lba_mid: u32,    // LBA 32-47 and 48-55
+    lba_high: u32,   // LBA 48-63 and 64-71
+    device: u8,      // Device register
+    count: u16,      // Sector count
+    icc: u8,        // Isochronous command completion
+    control: u8,     // Control register
+    _reserved: [u8; 4],
 }
 
 /// Initialize AHCI controller
-pub fn init(abar: VirtAddr) -> Option<AhciController> {
+fn init(abar: VirtAddr) -> Option<AhciController> {
     let ghc = unsafe { &mut *(abar.as_mut_ptr::<Ghc>()) };
-    
+
     // Check AHCI version
     let major = (ghc.vs >> 16) & 0xFFFF;
     let minor = ghc.vs & 0xFFFF;
     crate::serial::println!("[AHCI] Version: {}.{}", major, minor);
-    
+
     // Enable AHCI (set AE bit)
     ghc.ghc |= 0x80000000;
-    
+
     // Get implemented ports
     let ports_impl = ghc.pi;
     crate::serial::println!("[AHCI] Implemented ports: {:#x}", ports_impl);
-    
+
     // Calculate port registers base (0x100 from ABAR)
     let ports_base = abar + 0x100;
     let ports = unsafe { &mut *(ports_base.as_mut_ptr::<[PortRegs; 32]>()) };
-    
+
+    // Allocate DMA buffers (must be 1KB aligned for command list, 256-byte for FIS)
+    let cmd_list = vec![0u8; 1024]; // 1KB for command list
+    let recv_fis = vec![0u8; 256];  // 256 bytes for receive FIS
+    let cmd_table = vec![0u8; 8192]; // 8KB for command table
+
     Some(AhciController {
         ghc,
         ports,
         abar,
+        cmd_list,
+        recv_fis,
+        cmd_table,
     })
-}
-
-impl AhciController {
-    /// Probe for SATA devices on all implemented ports
-    pub fn probe_ports(&mut self) {
-        let ports_impl = self.ghc.pi;
-        
-        for port_num in 0..32 {
-            if (ports_impl >> port_num) & 1 == 0 {
-                continue;
-            }
-            
-            let port = &mut self.ports[port_num as usize];
-            
-            // Check port type (SATA = 0x101)
-            let sig = port.sig;
-            if sig == 0x101 {
-                crate::serial::println!("[AHCI] Port {}: SATA device detected", port_num);
-                self.init_port(port_num as usize);
-            } else if sig == 0xEB140101 {
-                crate::serial::println!("[AHCI] Port {}: SATAPI device detected", port_num);
-            } else if sig == 0x96690101 {
-                crate::serial::println!("[AHCI] Port {}: SEMB device detected", port_num);
-            } else if sig == 0x00000101 {
-                crate::serial::println!("[AHCI] Port {}: PMP device detected", port_num);
-            } else {
-                crate::serial::println!("[AHCI] Port {}: No device (sig: {:#x})", port_num, sig);
-            }
-        }
-    }
-    
-    fn init_port(&mut self, port_num: usize) {
-        let port = &mut self.ports[port_num];
-        
-        // Stop command engine
-        port.cmd &= !0x00000001; // Clear ST
-        while port.cmd & 0x00000001 != 0 {
-            core::hint::spin_loop();
-        }
-        
-        // Stop FIS reception
-        port.cmd &= !0x00000010; // Clear FRE
-        while port.cmd & 0x00000010 != 0 {
-            core::hint::spin_loop();
-        }
-        
-        // Set FIS base address (needs to be implemented)
-        // Set command list base address (needs to be implemented)
-        
-        // Start FIS reception
-        port.cmd |= 0x00000010; // Set FRE
-        
-        // Start command engine
-        port.cmd |= 0x00000001; // Set ST
-        
-        crate::serial::println!("[AHCI] Port {} initialized", port_num);
-    }
 }
 
 /// Initialize AHCI from PCI BAR
@@ -142,10 +253,10 @@ pub fn init_from_pci(bar5_addr: u64, phys_mem_offset: VirtAddr) -> bool {
         crate::serial::println!("[AHCI] No ABAR found (BAR5 is 0)");
         return false;
     }
-    
+
     let abar = phys_mem_offset + bar5_addr;
     crate::serial::println!("[AHCI] ABAR at: {:#x}, virt: {:#x}", bar5_addr, abar.as_u64());
-    
+
     let controller = match init(abar) {
         Some(c) => c,
         None => {
@@ -153,22 +264,36 @@ pub fn init_from_pci(bar5_addr: u64, phys_mem_offset: VirtAddr) -> bool {
             return false;
         }
     };
-    
+
     // Store controller and probe ports
     let mut guard = AHCI_CONTROLLER.lock();
     *guard = Some(controller);
-    drop(guard); // Release lock before probing
-    
-    if let Some(ref mut ctrl) = *AHCI_CONTROLLER.lock() {
-        ctrl.probe_ports();
+    drop(guard);
+
+    // Probe ports
+    if let Some(ref mut ctrl) = AHCI_CONTROLLER.lock().as_mut() {
+        // Initialize port 0 if it has a SATA device
+        let ports_impl = ctrl.ghc.pi;
+        if ports_impl & 1 != 0 {
+            let port = &mut ctrl.ports[0];
+            let sig = port.sig;
+            if sig == 0x00000101 {
+                ctrl.init_port_dma(0);
+            }
+        }
     }
-    
+
     true
 }
 
-/// Read blocks from AHCI device (stub - needs proper implementation)
-pub fn read_blocks(_device: usize, _lba: u64, _count: usize, _buffer: &mut [u8]) -> bool {
-    // Stub implementation - would use AHCI DMA to read blocks
-    crate::serial::println!("[AHCI] read_blocks stub: device={}, lba={}, count={}", _device, _lba, _count);
-    false
+/// Read blocks from AHCI device
+pub fn read_blocks(device: usize, lba: u64, count: usize, buffer: &mut [u8]) -> bool {
+    let mut guard = AHCI_CONTROLLER.lock();
+    if let Some(ref mut ctrl) = guard.as_mut() {
+        // For now, assume device 0 = port 0
+        ctrl.read_blocks(0, lba, count, buffer)
+    } else {
+        crate::serial::println!("[AHCI] Controller not initialized");
+        false
+    }
 }

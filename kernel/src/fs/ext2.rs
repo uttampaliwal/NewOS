@@ -1,5 +1,5 @@
 //! ext2 filesystem driver for Turnix OS
-//! Provides persistent storage via ext2 filesystem
+//! Provides persistent storage via ext2 filesystem.
 
 extern crate alloc;
 
@@ -7,6 +7,7 @@ use spin::Mutex;
 use alloc::vec::Vec;
 use alloc::vec;
 use core::ptr;
+use alloc::string::String;
 
 /// ext2 superblock (offset 1024 in filesystem)
 #[repr(C, packed)]
@@ -34,16 +35,40 @@ pub struct Ext2Superblock {
     pub checkinterval: u32,
     pub creator_os: u32,
     pub rev_level: u32,
-    pub reserved: [u8; 768], // Simplified - rest of superblock
+    pub reserved: [u8; 768],
 }
 
 impl Ext2Superblock {
     pub fn is_valid(&self) -> bool {
-        self.magic == 0xEF53
+        let magic_ptr = ptr::addr_of!(self.magic);
+        let magic = unsafe { ptr::read_unaligned(magic_ptr) };
+        magic == 0xEF53
     }
 
     pub fn block_size(&self) -> usize {
-        1024 << self.log_block_size
+        let log_bs_ptr = ptr::addr_of!(self.log_block_size);
+        let log_bs = unsafe { ptr::read_unaligned(log_bs_ptr) };
+        1024 << log_bs
+    }
+
+    pub fn get_inode_count(&self) -> u32 {
+        let ptr = ptr::addr_of!(self.inode_count);
+        unsafe { ptr::read_unaligned(ptr) }
+    }
+
+    pub fn get_block_count(&self) -> u32 {
+        let ptr = ptr::addr_of!(self.block_count);
+        unsafe { ptr::read_unaligned(ptr) }
+    }
+
+    pub fn get_inodes_per_group(&self) -> u32 {
+        let ptr = ptr::addr_of!(self.inodes_per_group);
+        unsafe { ptr::read_unaligned(ptr) }
+    }
+
+    pub fn get_blocks_per_group(&self) -> u32 {
+        let ptr = ptr::addr_of!(self.blocks_per_group);
+        unsafe { ptr::read_unaligned(ptr) }
     }
 }
 
@@ -72,15 +97,27 @@ pub struct Ext2Inode {
 
 impl Ext2Inode {
     pub fn is_directory(&self) -> bool {
-        self.mode & 0x4000 != 0
+        let mode_ptr = ptr::addr_of!(self.mode);
+        let mode = unsafe { ptr::read_unaligned(mode_ptr) };
+        mode & 0x4000 != 0
     }
 
     pub fn is_regular_file(&self) -> bool {
-        self.mode & 0x8000 != 0
+        let mode_ptr = ptr::addr_of!(self.mode);
+        let mode = unsafe { ptr::read_unaligned(mode_ptr) };
+        mode & 0x8000 != 0
     }
 
     pub fn size(&self) -> u64 {
-        self.size_low as u64
+        let size_ptr = ptr::addr_of!(self.size_low);
+        let size_low = unsafe { ptr::read_unaligned(size_ptr) };
+        size_low as u64
+    }
+
+    pub fn get_block(&self, idx: usize) -> u32 {
+        if idx >= 15 { return 0; }
+        let block_ptr = unsafe { (self as *const _ as *const u8).add(40 + idx * 4) as *const u32 };
+        unsafe { ptr::read_unaligned(block_ptr) }
     }
 }
 
@@ -91,6 +128,28 @@ pub struct Ext2DirEntry {
     pub rec_len: u16,
     pub name_len: u8,
     pub file_type: u8,
+}
+
+impl Ext2DirEntry {
+    pub fn get_inode(&self) -> u32 {
+        let ptr = ptr::addr_of!(self.inode);
+        unsafe { ptr::read_unaligned(ptr) }
+    }
+
+    pub fn get_rec_len(&self) -> u16 {
+        let ptr = ptr::addr_of!(self.rec_len);
+        unsafe { ptr::read_unaligned(ptr) }
+    }
+
+    pub fn get_name_len(&self) -> u8 {
+        let ptr = ptr::addr_of!(self.name_len);
+        unsafe { ptr::read_unaligned(ptr) }
+    }
+
+    pub fn get_file_type(&self) -> u8 {
+        let ptr = ptr::addr_of!(self.file_type);
+        unsafe { ptr::read_unaligned(ptr) }
+    }
 }
 
 /// Group descriptor
@@ -106,23 +165,27 @@ pub struct GroupDesc {
     pub reserved: [u8; 12],
 }
 
+impl GroupDesc {
+    pub fn get_inode_table(&self) -> u32 {
+        let ptr = ptr::addr_of!(self.inode_table);
+        unsafe { ptr::read_unaligned(ptr) }
+    }
+}
+
 /// ext2 filesystem state
 pub struct Ext2Fs {
-    pub superblock: Ext2Superblock,
+    pub superblock: Option<Ext2Superblock>,
     pub block_size: usize,
     pub device_id: usize,
-    pub group_desc: Vec<GroupDesc>,
+    pub group_descs: Vec<GroupDesc>,
 }
 
 /// Global ext2 state
-static mut EXT2_FS: Option<Ext2Fs> = None;
-static EXT2_MUTEX: Mutex<()> = Mutex::new(());
+static EXT2_FS: Mutex<Option<Ext2Fs>> = Mutex::new(None);
 
 /// Read blocks from block device (using AHCI)
 fn read_blocks(device_id: usize, lba: u64, count: usize, buffer: &mut [u8]) -> bool {
-    // Use AHCI driver to read blocks
     crate::serial::println!("[EXT2] Reading {} blocks from LBA {} on device {}", count, lba, device_id);
-    // Call AHCI driver's read_blocks function
     crate::drivers::ahci::read_blocks(device_id, lba, count, buffer)
 }
 
@@ -131,50 +194,25 @@ fn read_superblock(device_id: usize) -> Option<Ext2Superblock> {
     let block_size = 1024usize;
     let mut buffer = vec![0u8; block_size];
 
-    // Superblock is at offset 1024 (block 1 for 1024-byte blocks)
-    if !read_blocks(device_id, 2, 1, &mut buffer) {
-        // For now, create a dummy superblock for testing
-        crate::serial::println!("[EXT2] Using dummy superblock for testing");
-        let mut sb = Ext2Superblock {
-            inode_count: 0,
-            block_count: 0,
-            reserved_blocks: 0,
-            free_blocks: 0,
-            free_inodes: 0,
-            first_data_block: 1,
-            log_block_size: 0,
-            log_frag_size: 0,
-            blocks_per_group: 8192,
-            frags_per_group: 8192,
-            inodes_per_group: 1024,
-            mtime: 0,
-            wtime: 0,
-            mnt_count: 0,
-            max_mnt_count: 0,
-            magic: 0xEF53,
-            state: 1,
-            errors: 0,
-            minor_rev_level: 0,
-            lastcheck: 0,
-            checkinterval: 0,
-            creator_os: 0,
-            rev_level: 0,
-            reserved: [0; 768],
-        };
-        return Some(sb);
-    }
-
-    let sb = unsafe { ptr::read_unaligned(buffer.as_ptr() as *const Ext2Superblock) };
-    let magic = sb.magic; // Copy to local to avoid unaligned reference
-    if !sb.is_valid() {
-        crate::serial::println!("[EXT2] Invalid superblock magic: {:#x}", magic);
+    // Superblock is at offset 1024, which is sector 2 for 512-byte sectors
+    if !read_blocks(device_id, 2, 2, &mut buffer) {
+        crate::serial::println!("[EXT2] Failed to read superblock from device");
         return None;
     }
 
+    // Read superblock from buffer
+    let sb = unsafe { ptr::read_unaligned(buffer.as_ptr() as *const Ext2Superblock) };
+
+    if !sb.is_valid() {
+        crate::serial::println!("[EXT2] Invalid superblock");
+        return None;
+    }
+
+    crate::serial::println!("[EXT2] Valid superblock: block_size={}", sb.block_size());
     Some(sb)
 }
 
-/// Initialize ext2 filesystem on a block device
+/// Initialize ext2 filesystem on a block device.
 pub fn init(device_id: usize) -> bool {
     crate::serial::println!("[EXT2] Initializing ext2 on device {}", device_id);
 
@@ -186,30 +224,41 @@ pub fn init(device_id: usize) -> bool {
         }
     };
 
-    let magic = superblock.magic; // Copy to avoid unaligned reference
-    let block_size = superblock.block_size(); // Compute before printing
-    crate::serial::println!("[EXT2] Superblock valid: magic={:#x}, block_size={}",
-        magic, block_size);
-
     let block_size = superblock.block_size();
-    let group_count = ((superblock.block_count + superblock.blocks_per_group - 1) / superblock.blocks_per_group) as usize;
+    let block_count = superblock.get_block_count();
+    let inodes_per_group = superblock.get_inodes_per_group();
+    let group_count = ((block_count + superblock.get_blocks_per_group() - 1) / superblock.get_blocks_per_group()) as usize;
+
+    crate::serial::println!("[EXT2] Filesystem: {} blocks, {} inodes, {} groups",
+        block_size, superblock.get_inode_count(), group_count);
 
     // Read group descriptors (located after superblock)
-    let gd_block = if block_size == 1024 { 2 } else { 1 };
-    let gd_size = ((group_count * 32 + block_size - 1) / block_size) * block_size;
-    let mut gd_buffer = vec![0u8; gd_size];
+    let gd_block = if block_size == 1024 { 2u64 } else { 1u64 };
+    let gd_size = group_count * 32; // Each group desc is 32 bytes
+    let mut gd_buffer = vec![0u8; ((gd_size + block_size - 1) / block_size) * block_size];
+
+    if !read_blocks(device_id, gd_block, gd_buffer.len() / 512, &mut gd_buffer) {
+        crate::serial::println!("[EXT2] Failed to read group descriptors");
+    }
+
+    let mut group_descs = Vec::new();
+    for i in 0..group_count {
+        if i * 32 + 32 <= gd_buffer.len() {
+            let gd = unsafe { ptr::read_unaligned(gd_buffer.as_ptr().add(i * 32) as *const GroupDesc) };
+            group_descs.push(gd);
+        }
+    }
+
+    crate::serial::println!("[EXT2] Read {} group descriptors", group_descs.len());
 
     let fs = Ext2Fs {
-        superblock,
+        superblock: Some(superblock),
         block_size,
         device_id,
-        group_desc: Vec::new(), // TODO: Read group descriptors
+        group_descs,
     };
 
-    unsafe {
-        let _lock = EXT2_MUTEX.lock();
-        EXT2_FS = Some(fs);
-    }
+    *EXT2_FS.lock() = Some(fs);
 
     crate::serial::println!("[EXT2] ext2 filesystem initialized");
     true
@@ -230,13 +279,88 @@ pub fn mount(device_id: usize) -> bool {
 }
 
 /// Read inode by number
-pub fn read_inode(_device_id: usize, _ino: u32) -> Option<Ext2Inode> {
-    // TODO: Implement inode reading from inode table
+pub fn read_inode(device_id: usize, ino: u32) -> Option<Ext2Inode> {
+    unsafe {
+        let _lock = EXT2_MUTEX.lock();
+        if let Some(ref fs) = EXT2_FS {
+            if let Some(ref sb) = fs.superblock {
+                let block_size = fs.block_size;
+                let inodes_per_group = sb.get_inodes_per_group();
+                let inode_size = 128usize; // Standard ext2 inode size
+
+                let group = (ino - 1) / inodes_per_group;
+                let index = (ino - 1) % inodes_per_group;
+
+                if (group as usize) < fs.group_descs.len() {
+                    let gd = &fs.group_descs[group as usize];
+                    let inode_table = gd.get_inode_table();
+                    let inode_table_lba = inode_table as u64 * (block_size / 512) as u64;
+                    let inode_offset = index as u64 * inode_size as u64;
+
+                    let mut buffer = vec![0u8; block_size];
+                    if read_blocks(device_id, inode_table_lba, block_size / 512, &mut buffer) {
+                        let inode_ptr = buffer.as_ptr().add(inode_offset as usize) as *const Ext2Inode;
+                        let inode = ptr::read_unaligned(inode_ptr);
+                        return Some(inode);
+                    }
+                }
+            }
+        }
+    }
     None
 }
 
 /// List directory contents
-pub fn list_dir(_device_id: usize, _ino: u32) -> Vec<(u32, alloc::string::String, u8)> {
-    // TODO: Implement directory listing
-    Vec::new()
+pub fn list_dir(device_id: usize, ino: u32) -> Vec<(u32, String, u8)> {
+    let mut result = Vec::new();
+
+    let block_size = if let Some(fs) = unsafe { &raw const EXT2_FS }.as_ref() {
+        fs.as_ref().map(|fs| fs.block_size).unwrap_or(1024)
+    } else {
+        1024
+    };
+
+    if let Some(inode) = read_inode(device_id, ino) {
+        let size = inode.size() as usize;
+
+        // Read direct blocks (simplified - only first 12 blocks)
+        for i in 0..12 {
+            let block_num = inode.get_block(i);
+            if block_num == 0 {
+                break;
+            }
+
+            let mut buffer = vec![0u8; block_size];
+            let lba = block_num as u64 * (block_size / 512) as u64;
+            if !read_blocks(device_id, lba, block_size / 512, &mut buffer) {
+                break;
+            }
+
+            // Parse directory entries
+            let mut offset = 0;
+            while offset < buffer.len() && offset < size {
+                let entry_ptr = unsafe { buffer.as_ptr().add(offset) as *const Ext2DirEntry };
+                let entry = unsafe { ptr::read_unaligned(entry_ptr) };
+
+                let rec_len = entry.get_rec_len() as usize;
+                let name_len = entry.get_name_len() as usize;
+                let inode_num = entry.get_inode();
+                let file_type = entry.get_file_type();
+
+                if inode_num == 0 || rec_len == 0 {
+                    break;
+                }
+
+                if name_len > 0 && name_len <= 255 {
+                    let name_cow = String::from_utf8_lossy(&buffer[offset + 8..offset + 8 + name_len]);
+                    let name = String::from(&*name_cow); // Convert Cow<str> to String
+                    result.push((inode_num, name, file_type));
+                }
+
+                offset += rec_len;
+            }
+        }
+    }
+
+    result
 }

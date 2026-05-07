@@ -9,6 +9,7 @@ enum Command {
     Doctor,
     BuildUefi,
     RunUefi,
+    TestQemu,
 }
 
 fn main() {
@@ -22,6 +23,7 @@ fn main() {
             println!("UEFI image staged at {}", image.display());
         }
         Command::RunUefi => run_uefi(&workspace_root),
+        Command::TestQemu => test_qemu_smoke(&workspace_root),
     }
 }
 
@@ -72,6 +74,7 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some("doctor") => Command::Doctor,
         Some("build-uefi") => Command::BuildUefi,
         Some("run-uefi") => Command::RunUefi,
+        Some("test-qemu") => Command::TestQemu,
         Some("uefi-loader") => {
             println!(
                 "`cargo xtask uefi-loader` is kept as a compatibility alias for `cargo xtask run-uefi`."
@@ -81,7 +84,7 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some("status") | None => Command::Status,
         Some(other) => {
             eprintln!("Unknown xtask command: {other}");
-            eprintln!("Available commands: status, doctor, build-uefi, run-uefi, uefi-loader");
+            eprintln!("Available commands: status, doctor, build-uefi, run-uefi, test-qemu, uefi-loader");
             std::process::exit(2);
         }
     }
