@@ -174,6 +174,8 @@ fn handle_exit(args: SyscallArgs) -> SyscallResult {
     let code = args.arg0 as i32;
     crate::serial::print(format_args!("\n[syscall] exit code: {}\n", code));
     crate::task::scheduler::exit_current_task();
+    // This line is unreachable but required for the function signature
+    #[allow(unreachable_code)]
     SyscallResult::Success(0)
 }
 

@@ -72,6 +72,7 @@ struct PrdEntry {
 pub struct AhciController {
     ghc: &'static mut Ghc,
     ports: &'static mut [PortRegs; 32],
+    #[allow(dead_code)]
     abar: VirtAddr,
     cmd_list: Vec<u8>,    // Command list memory
     recv_fis: Vec<u8>,   // Receive FIS memory

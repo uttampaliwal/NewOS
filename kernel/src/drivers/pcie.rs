@@ -217,5 +217,149 @@ mod tests {
         // BAR1 should be None since it's consumed as high part of BAR0
         assert!(bars[1].is_none());
     }
+
+    
+    #[test]
+    fn test_parse_32bit_memory_bar() {
+        // Test parsing a 32-bit memory BAR
+        let mut config = [0u32; 16];
+        config[4] = 0x80000008; // BAR0: 32-bit memory, prefetchable=1 (bit 3), base=0x80000000
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+
+        match bars[0] {
+            Some(Bar::Memory32 { base, size: _, prefetchable }) => {
+                assert_eq!(base, 0x80000000);
+                assert_eq!(prefetchable, true);
+            }
+            _ => panic!("Expected Memory32 BAR"),
+        }
+    }
+
+    #[test]
+    fn test_parse_io_bar() {
+        // Test parsing an I/O BAR
+        let mut config = [0u32; 16];
+        config[4] = 0x000003F9; // BAR0: I/O space, port=0x3F8
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+
+        match bars[0] {
+            Some(Bar::Io { port, size }) => {
+                assert_eq!(port, 0x3F8);
+                assert_eq!(size, 0);
+            }
+            _ => panic!("Expected Io BAR"),
+        }
+    }
+
+    #[test]
+    fn test_parse_mixed_bars() {
+        // Test parsing mixed BAR types
+        let mut config = [0u32; 16];
+        config[4] = 0x000003F9; // BAR0: I/O space, port=0x3F8
+        config[5] = 0x80000008; // BAR1: 32-bit memory, prefetchable=1 (bit 3), base=0x80000000
+        config[6] = 0x00000004; // BAR2: 64-bit memory low
+        config[7] = 0x12345678; // BAR3: 64-bit memory high
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+
+        // BAR0 should be I/O
+        match bars[0] {
+            Some(Bar::Io { port, .. }) => assert_eq!(port, 0x3F8),
+            _ => panic!("Expected Io BAR at index 0"),
+        }
+
+        // BAR1 should be 32-bit memory
+        match bars[1] {
+            Some(Bar::Memory32 { base, prefetchable, .. }) => {
+                assert_eq!(base, 0x80000000);
+                assert_eq!(prefetchable, true);
+            }
+            _ => panic!("Expected Memory32 BAR at index 1"),
+        }
+
+        // BAR2 should be 64-bit memory
+        match bars[2] {
+            Some(Bar::Memory64 { base, prefetchable, .. }) => {
+                assert_eq!(base, 0x1234567800000000);
+                assert_eq!(prefetchable, false);
+            }
+            _ => panic!("Expected Memory64 BAR at index 2"),
+        }
+
+        // BAR3 should be None (consumed as high part of BAR2)
+        assert!(bars[3].is_none());
+    }
+
+    #[test]
+    fn test_parse_zero_bar() {
+        // Test that a BAR value of 0 results in None
+        let mut config = [0u32; 16];
+        config[4] = 0x00000000; // BAR0: zero (unused)
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+
+        assert!(bars[0].is_none(), "BAR with value 0 should be None");
+    }
+
+    #[test]
+    fn test_64bit_bar_address_reconstruction() {
+        // Test 64-bit BAR address reconstruction from two 32-bit reads
+        // This directly tests the requirement: "Test 64-bit BAR address reconstruction from two 32-bit config reads"
+        let mut config = [0u32; 16];
+        config[4] = 0x00000004; // BAR0 low: 64-bit memory, base_low=0x00000000
+        config[5] = 0x12345678; // BAR1 high: 0x12345678
+        
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+
+        // BAR0 should be Memory64 with reconstructed base address
+        match bars[0] {
+            Some(Bar::Memory64 { base, .. }) => {
+                // Expected: (0x12345678 << 32) | 0x00000000 = 0x1234567800000000
+                assert_eq!(base, 0x1234567800000000);
+            }
+            _ => panic!("Expected Memory64 BAR"),
+        }
+
+        // BAR1 should be None since it's consumed as high part of BAR0
+        assert!(bars[1].is_none());
+    }
+
+    
+    #[test]
+    fn test_device_info_creation() {
+        // Test creating DeviceInfo with parsed values
+        let info = DeviceInfo {
+            vendor_id: 0x1234,
+            device_id: 0x5678,
+            class_code: 0x01,
+            subclass: 0x02,
+            prog_if: 0x03,
+            bars: [None, None, None, None, None, None],
+            irq: Some(5),
+        };
+
+        assert_eq!(info.vendor_id, 0x1234);
+        assert_eq!(info.device_id, 0x5678);
+        assert_eq!(info.class_code, 0x01);
+        assert_eq!(info.subclass, 0x02);
+        assert_eq!(info.prog_if, 0x03);
+        assert_eq!(info.irq, Some(5));
+        assert_eq!(info.bars.len(), 6);
+    }
+
+    #[test]
+    fn test_device_key_creation_and_ordering() {
+        // Test DeviceKey creation and ordering (used in BTreeMap)
+        let key1 = DeviceKey::new(0, 1, 0, 0x1234, 0x5678);
+        let key2 = DeviceKey::new(0, 2, 0, 0x1234, 0x5678);
+        let key3 = DeviceKey::new(1, 0, 0, 0x1234, 0x5678);
+
+        assert!(key1 < key2, "Same bus, lower device number should be less");
+        assert!(key2 < key3, "Lower bus number should be less");
+        assert_eq!(key1, DeviceKey::new(0, 1, 0, 0x1234, 0x5678), "Equal keys should be equal");
+    }
 }
 
