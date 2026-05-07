@@ -757,4 +757,45 @@ mod tests {
             }
         }
     }
+
+    /// **Property 2: Driver Lifecycle Invariant**
+    ///
+    /// **Validates: Requirements 1.1, 1.6**
+    ///
+    /// For any probed driver instance:
+    /// - `initialize()` succeeds after `probe()`, and marks the driver initialised.
+    /// - `suspend()` then `resume()` restores observable state (device IDs remain
+    ///   stable and the suspended flag returns to false).
+    proptest! {
+        #[test]
+        fn prop_driver_lifecycle_invariant(
+            vendor_id in any::<u16>().prop_filter("exclude unsupported vendor", |v| *v != 0xDEAD),
+            device_id in any::<u16>(),
+        ) {
+            let info = make_device_info(vendor_id, device_id);
+
+            let mut driver = MockDriver::probe(&info)
+                .expect("probe should succeed for any vendor except 0xDEAD");
+
+            prop_assert_eq!(driver.vendor, vendor_id);
+            prop_assert_eq!(driver.device, device_id);
+            prop_assert!(!driver.initialised);
+            prop_assert!(!driver.suspended);
+
+            // initialize succeeds after probe
+            prop_assert!(driver.initialize().is_ok());
+            prop_assert!(driver.initialised);
+
+            // suspend -> resume restores observable state
+            prop_assert!(driver.suspend().is_ok());
+            prop_assert!(driver.suspended);
+            prop_assert!(driver.resume().is_ok());
+            prop_assert!(!driver.suspended);
+
+            // Device identity and initialisation should remain stable.
+            prop_assert_eq!(driver.vendor, vendor_id);
+            prop_assert_eq!(driver.device, device_id);
+            prop_assert!(driver.initialised);
+        }
+    }
 }
