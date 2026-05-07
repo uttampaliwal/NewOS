@@ -131,11 +131,17 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
 
                 return next_ptr;
             } else {
-                // No other tasks.
-                if !is_zombie {
-                    sched.current_task = Some(prev_task);
-                    sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
+                // No other tasks - check if we should halt
+                if is_zombie {
+                    // Last task exited - halt the system
+                    crate::serial::println!("[scheduler] All tasks exited. Halting system.");
+                    loop {
+                        x86_64::instructions::hlt();
+                    }
                 }
+                // No tasks to run, return to current context
+                sched.current_task = Some(prev_task);
+                sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
             }
         }
     }

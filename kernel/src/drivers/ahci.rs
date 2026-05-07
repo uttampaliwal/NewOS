@@ -165,3 +165,10 @@ pub fn init_from_pci(bar5_addr: u64, phys_mem_offset: VirtAddr) -> bool {
     
     true
 }
+
+/// Read blocks from AHCI device (stub - needs proper implementation)
+pub fn read_blocks(_device: usize, _lba: u64, _count: usize, _buffer: &mut [u8]) -> bool {
+    // Stub implementation - would use AHCI DMA to read blocks
+    crate::serial::println!("[AHCI] read_blocks stub: device={}, lba={}, count={}", _device, _lba, _count);
+    false
+}

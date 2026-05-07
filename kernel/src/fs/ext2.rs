@@ -6,7 +6,6 @@ extern crate alloc;
 use spin::Mutex;
 use alloc::vec::Vec;
 use alloc::vec;
-use alloc::boxed::Box;
 use core::ptr;
 
 /// ext2 superblock (offset 1024 in filesystem)
@@ -121,10 +120,10 @@ static EXT2_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Read blocks from block device (using AHCI)
 fn read_blocks(device_id: usize, lba: u64, count: usize, buffer: &mut [u8]) -> bool {
-    // Stub - would use AHCI driver to read blocks
-    // For now, return false to indicate not implemented
-    crate::serial::println!("[EXT2] read_blocks stub: device={}, lba={}, count={}", device_id, lba, count);
-    false
+    // Use AHCI driver to read blocks
+    crate::serial::println!("[EXT2] Reading {} blocks from LBA {} on device {}", count, lba, device_id);
+    // Call AHCI driver's read_blocks function
+    crate::drivers::ahci::read_blocks(device_id, lba, count, buffer)
 }
 
 /// Read superblock from device
