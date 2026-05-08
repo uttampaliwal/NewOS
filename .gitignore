@@ -1,16 +1,36 @@
+# --- Build & CI Artifacts ---
 target/
 dist/
 out/
-.idea/
-.vscode/
-.trae/
+turnix/
 extraa/
-
-
+baseline_checksums.csv
+disassembly.txt
 *.log
 *.tmp
 *.qcow2
 *.img
 *.iso
+*.bin
+*.elf
+*.map
+
+# --- IDEs & Editors ---
+.idea/
+.vscode/
+.trae/
+.kiro/
+*.swp
+*.swo
+*~
+
+# --- OS Specific ---
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# --- Tooling & Cache ---
+.clangd/
+.cache/
+compile_commands.json
+perf.data
