@@ -1267,7 +1267,8 @@ fn pin_from_index(index: u8) -> Option<Pin> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::boxed::Box;
+    use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
+    use core::{mem, ptr::NonNull};
     use std::{thread, time::Duration};
 
     use crate::drivers::framework::{DeviceInfo, DeviceKey, DeviceRegistry};
@@ -1342,6 +1343,226 @@ mod tests {
         fn write_pci_u32(&self, _segment: u16, _bus: u8, _device: u8, _function: u8, _offset: u16, _value: u32) {}
     }
 
+    #[derive(Clone)]
+    struct TestAcpiTableHandler {
+        image: Arc<[u8]>,
+    }
+
+    impl TestAcpiTableHandler {
+        fn new(image: Vec<u8>) -> Self {
+            Self { image: image.into() }
+        }
+    }
+
+    impl AcpiHandler for TestAcpiTableHandler {
+        unsafe fn map_physical_region<T>(
+            &self,
+            physical_address: usize,
+            size: usize,
+        ) -> PhysicalMapping<Self, T> {
+            let end = physical_address
+                .checked_add(size)
+                .expect("synthetic ACPI mapping overflow");
+            assert!(
+                end <= self.image.len(),
+                "synthetic ACPI mapping outside test image: {physical_address:#x}..{end:#x}",
+            );
+
+            let ptr = unsafe { self.image.as_ptr().add(physical_address) as *mut T };
+            unsafe {
+                PhysicalMapping::new(
+                    physical_address,
+                    NonNull::new(ptr).unwrap(),
+                    size,
+                    size,
+                    self.clone(),
+                )
+            }
+        }
+
+        fn unmap_physical_region<T>(_region: &PhysicalMapping<Self, T>) {}
+    }
+
+    fn finalize_checksum(bytes: &mut [u8], checksum_index: usize) {
+        bytes[checksum_index] = 0;
+        let sum = bytes.iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte));
+        bytes[checksum_index] = (0u8).wrapping_sub(sum);
+    }
+
+    fn write_blob(image: &mut [u8], physical_address: usize, blob: &[u8]) {
+        let end = physical_address + blob.len();
+        image[physical_address..end].copy_from_slice(blob);
+    }
+
+    fn build_rsdp_blob(rsdt_address: u32) -> Vec<u8> {
+        let mut rsdp = vec![0u8; 36];
+        rsdp[..8].copy_from_slice(b"RSD PTR ");
+        rsdp[9..15].copy_from_slice(b"TURNIX");
+        rsdp[15] = 0;
+        rsdp[16..20].copy_from_slice(&rsdt_address.to_le_bytes());
+        finalize_checksum(&mut rsdp[..20], 8);
+        rsdp
+    }
+
+    fn build_sdt_blob(signature: &[u8; 4], body: &[u8]) -> Vec<u8> {
+        let header_len = mem::size_of::<acpi::sdt::SdtHeader>();
+        let mut blob = vec![0u8; header_len + body.len()];
+        let total_length = blob.len() as u32;
+        blob[..4].copy_from_slice(signature);
+        blob[4..8].copy_from_slice(&total_length.to_le_bytes());
+        blob[8] = 2;
+        blob[10..16].copy_from_slice(b"TURNIX");
+        blob[16..24].copy_from_slice(b"TESTACPI");
+        blob[24..28].copy_from_slice(&1u32.to_le_bytes());
+        blob[28..32].copy_from_slice(&0x5452_4e58u32.to_le_bytes());
+        blob[32..36].copy_from_slice(&1u32.to_le_bytes());
+        blob[header_len..].copy_from_slice(body);
+        finalize_checksum(&mut blob, 9);
+        blob
+    }
+
+    fn build_rsdt_blob(entries: &[u32]) -> Vec<u8> {
+        let mut body = Vec::with_capacity(entries.len() * mem::size_of::<u32>());
+        for entry in entries {
+            body.extend_from_slice(&entry.to_le_bytes());
+        }
+        build_sdt_blob(b"RSDT", &body)
+    }
+
+    fn append_name_seg(bytes: &mut Vec<u8>, name: &str) {
+        assert!(!name.is_empty() && name.len() <= 4);
+        let mut seg = [b'_'; 4];
+        seg[..name.len()].copy_from_slice(name.as_bytes());
+        bytes.extend_from_slice(&seg);
+    }
+
+    fn encode_pkg_length(payload_len_without_length_field: usize) -> Vec<u8> {
+        for total_length_bytes in 1..=4usize {
+            let extra_bytes = total_length_bytes - 1;
+            let raw_length = payload_len_without_length_field + total_length_bytes;
+            let encodable_bits = if extra_bytes == 0 { 6 } else { 4 + (extra_bytes * 8) };
+            let max_length = (1usize << encodable_bits) - 1;
+            if raw_length > max_length {
+                continue;
+            }
+
+            if extra_bytes == 0 {
+                return vec![raw_length as u8];
+            }
+
+            let mut bytes = Vec::with_capacity(total_length_bytes);
+            bytes.push(((extra_bytes as u8) << 6) | ((raw_length & 0x0f) as u8));
+
+            let mut remaining = raw_length >> 4;
+            for _ in 0..extra_bytes {
+                bytes.push((remaining & 0xff) as u8);
+                remaining >>= 8;
+            }
+
+            assert_eq!(remaining, 0);
+            return bytes;
+        }
+
+        panic!("AML package length too large for test encoding");
+    }
+
+    fn aml_zero() -> Vec<u8> {
+        vec![0x00]
+    }
+
+    fn aml_byte(value: u8) -> Vec<u8> {
+        if value == 0 {
+            aml_zero()
+        } else {
+            vec![0x0a, value]
+        }
+    }
+
+    fn aml_dword(value: u32) -> Vec<u8> {
+        let mut bytes = vec![0x0c];
+        bytes.extend_from_slice(&value.to_le_bytes());
+        bytes
+    }
+
+    fn aml_name(name: &str, value: Vec<u8>) -> Vec<u8> {
+        let mut bytes = vec![0x08];
+        append_name_seg(&mut bytes, name);
+        bytes.extend(value);
+        bytes
+    }
+
+    fn aml_package(elements: Vec<Vec<u8>>) -> Vec<u8> {
+        let payload_len = 1 + elements.iter().map(Vec::len).sum::<usize>();
+        let mut bytes = vec![0x12];
+        bytes.extend(encode_pkg_length(payload_len));
+        bytes.push(elements.len() as u8);
+        for element in elements {
+            bytes.extend(element);
+        }
+        bytes
+    }
+
+    fn aml_scope_sb_pci0(terms: Vec<Vec<u8>>) -> Vec<u8> {
+        let mut term_bytes = Vec::new();
+        for term in terms {
+            term_bytes.extend(term);
+        }
+
+        let mut name = vec![b'\\', 0x2e];
+        append_name_seg(&mut name, "_SB");
+        append_name_seg(&mut name, "PCI0");
+
+        let mut bytes = vec![0x10];
+        bytes.extend(encode_pkg_length(name.len() + term_bytes.len()));
+        bytes.extend(name);
+        bytes.extend(term_bytes);
+        bytes
+    }
+
+    fn build_prt_ssdt_blob(routes: &[(u16, u16, u8, u32)]) -> Vec<u8> {
+        let prt_entries = routes
+            .iter()
+            .map(|(device, function, pin, gsi)| {
+                aml_package(vec![
+                    aml_dword((u32::from(*device) << 16) | u32::from(*function)),
+                    aml_byte(*pin),
+                    aml_zero(),
+                    aml_dword(*gsi),
+                ])
+            })
+            .collect::<Vec<_>>();
+
+        let aml = aml_scope_sb_pci0(vec![aml_name("_PRT", aml_package(prt_entries))]);
+        build_sdt_blob(b"SSDT", &aml)
+    }
+
+    fn parse_test_aml_table_blob(context: &mut AmlContext, table_blob: &[u8]) -> Result<(), &'static str> {
+        let header_len = mem::size_of::<acpi::sdt::SdtHeader>();
+        if table_blob.len() < header_len {
+            return Err("synthetic SSDT blob shorter than header");
+        }
+
+        if &table_blob[..4] != b"SSDT" {
+            return Err("synthetic SSDT blob has wrong signature");
+        }
+
+        let declared_length = u32::from_le_bytes(table_blob[4..8].try_into().unwrap()) as usize;
+        if declared_length != table_blob.len() {
+            return Err("synthetic SSDT blob length mismatch");
+        }
+
+        let checksum = table_blob
+            .iter()
+            .fold(0u8, |sum, byte| sum.wrapping_add(*byte));
+        if checksum != 0 {
+            return Err("synthetic SSDT blob has invalid checksum");
+        }
+
+        context
+            .parse_table(&table_blob[header_len..])
+            .map_err(|_| "failed to parse synthetic AML payload")
+    }
+
     fn add_prt_method(context: &mut AmlContext, path: &str, routes: &[(u16, u16, u8, u32)]) {
         let entries = routes
             .iter()
@@ -1384,6 +1605,50 @@ mod tests {
                 irq: None,
             },
         )
+    }
+
+    #[test]
+    fn rsdp_checksum_validation_accepts_a_valid_root_pointer() {
+        let rsdt_address = 0x100usize;
+        let mut image = vec![0u8; 0x200];
+        write_blob(&mut image, 0, &build_rsdp_blob(rsdt_address as u32));
+        write_blob(&mut image, rsdt_address, &build_rsdt_blob(&[]));
+
+        let tables = unsafe { AcpiTables::from_rsdp(TestAcpiTableHandler::new(image), 0) }.unwrap();
+        assert_eq!(tables.revision, 0);
+        assert!(tables.sdts.is_empty());
+        assert!(tables.dsdt.is_none());
+        assert!(tables.ssdts.is_empty());
+    }
+
+    #[test]
+    fn rsdp_checksum_validation_rejects_corrupt_root_pointer() {
+        let mut image = build_rsdp_blob(0x100);
+        image[8] = image[8].wrapping_add(1);
+
+        let error = match unsafe { AcpiTables::from_rsdp(TestAcpiTableHandler::new(image), 0) } {
+            Ok(_) => panic!("corrupt RSDP checksum unexpectedly validated"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            acpi::AcpiError::Rsdp(acpi::RsdpError::InvalidChecksum)
+        ));
+    }
+
+    #[test]
+    fn parses_prt_entries_from_a_synthetic_ssdt_blob() {
+        let ssdt = build_prt_ssdt_blob(&[(2, 0, 0, 16)]);
+        let mut context = AmlContext::new(Box::new(NullHandler), DebugVerbosity::None);
+        parse_test_aml_table_blob(&mut context, &ssdt).unwrap();
+
+        let prt_path = AmlName::from_str("\\_SB.PCI0._PRT").unwrap();
+        let prt = PciRoutingTable::from_prt_path(&prt_path, &mut context).unwrap();
+        let descriptor = prt.route(2, 0, Pin::IntA, &mut context).unwrap();
+
+        assert_eq!(descriptor.irq, 16);
+        assert_eq!(descriptor.trigger, aml::resource::InterruptTrigger::Level);
+        assert_eq!(descriptor.polarity, aml::resource::InterruptPolarity::ActiveLow);
     }
 
     #[test]
