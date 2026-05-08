@@ -88,15 +88,16 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     crate::drivers::pci::init(phys_mem_offset);
     let _ = writeln!(writer, "[STG: PCI_INIT]");
 
-    // 3.3 Initialize ACPI
-    crate::acpi::init(boot_info.rsdp_addr, phys_mem_offset);
-    let _ = writeln!(writer, "[STG: ACPI_INIT]");
-
-    // 3.3.1 Enumerate PCIe devices via ECAM (ACPI MCFG)
+    // 3.3 Enumerate PCIe devices via ECAM (ACPI MCFG)
     crate::drivers::pcie::enumerate(boot_info.rsdp_addr, phys_mem_offset);
     let _ = writeln!(writer, "[STG: PCIE_ENUM]");
 
-    // 3.4 Initialize SMP
+    // 3.4 Initialize ACPI after PCIe enumeration so AML _PRT routing can
+    // resolve against the discovered device registry.
+    crate::acpi::init(boot_info.rsdp_addr, phys_mem_offset);
+    let _ = writeln!(writer, "[STG: ACPI_INIT]");
+
+    // 3.5 Initialize SMP
     crate::smp::init(phys_mem_offset);
     let _ = writeln!(writer, "[STG: SMP_INIT]");
 
@@ -137,12 +138,14 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                 )
                 .expect("failed to load init process ELF");
 
-                crate::task::scheduler::add_task(crate::task::Task::new_user(
+                let init_task = crate::task::Task::new_user(
                     init_proc,
                     &mut mapper,
                     get_frame_allocator().lock().as_mut().unwrap(),
                     phys_mem_offset,
-                ));
+                );
+                crate::acpi::register_init_task(init_task.id);
+                crate::task::scheduler::add_task(init_task);
 
                 // 5.1 Load shell process
                 if let Some(shell_fd) = vfs.open("shell") {
@@ -318,4 +321,3 @@ fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
 
     Ok(())
 }
-

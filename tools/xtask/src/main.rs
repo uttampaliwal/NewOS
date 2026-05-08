@@ -426,6 +426,10 @@ fn run_uefi(workspace_root: &Path) {
     handle_qemu_status(status);
 }
 
+fn test_qemu_smoke(workspace_root: &Path) {
+    run_uefi(workspace_root);
+}
+
 fn handle_qemu_status(status: ExitStatus) {
     match status.code() {
         Some(33) => println!("QEMU exited after the Turnix success path."),

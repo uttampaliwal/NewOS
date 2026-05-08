@@ -43,6 +43,11 @@ fn cfg_read_u32(cfg_phys: u64, phys_mem_offset: VirtAddr, offset: u16) -> u32 {
     unsafe { core::ptr::read_volatile(addr.as_ptr::<u32>()) }
 }
 
+fn cfg_read_u8(cfg_phys: u64, phys_mem_offset: VirtAddr, offset: u16) -> u8 {
+    let aligned = cfg_read_u32(cfg_phys, phys_mem_offset, offset & !0x3);
+    ((aligned >> ((offset & 0x3) * 8)) & 0xff) as u8
+}
+
 fn parse_bars(reader: &dyn Fn(u16) -> u32) -> [Option<Bar>; 6] {
     let mut bars: [Option<Bar>; 6] = [None, None, None, None, None, None];
 
@@ -153,6 +158,15 @@ pub fn enumerate(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
                 let prog_if = ((class_reg >> 8) & 0xFF) as u8;
                 let subclass = ((class_reg >> 16) & 0xFF) as u8;
                 let class_code = ((class_reg >> 24) & 0xFF) as u8;
+                let interrupt_line = match cfg_read_u8(cfg_phys, phys_mem_offset, 0x3c) {
+                    0xff => None,
+                    value => Some(value),
+                };
+                let interrupt_pin_raw = cfg_read_u8(cfg_phys, phys_mem_offset, 0x3d);
+                let interrupt_pin = match interrupt_pin_raw {
+                    1..=4 => Some(interrupt_pin_raw - 1),
+                    _ => None,
+                };
 
                 let reader = &|off: u16| cfg_read_u32(cfg_phys, phys_mem_offset, off);
                 let bars = parse_bars(reader);
@@ -164,6 +178,8 @@ pub fn enumerate(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
                     subclass,
                     prog_if,
                     bars,
+                    interrupt_line,
+                    interrupt_pin,
                     irq: None,
                 };
 
@@ -338,6 +354,8 @@ mod tests {
             subclass: 0x02,
             prog_if: 0x03,
             bars: [None, None, None, None, None, None],
+            interrupt_line: Some(11),
+            interrupt_pin: Some(0),
             irq: Some(5),
         };
 
@@ -346,6 +364,8 @@ mod tests {
         assert_eq!(info.class_code, 0x01);
         assert_eq!(info.subclass, 0x02);
         assert_eq!(info.prog_if, 0x03);
+        assert_eq!(info.interrupt_line, Some(11));
+        assert_eq!(info.interrupt_pin, Some(0));
         assert_eq!(info.irq, Some(5));
         assert_eq!(info.bars.len(), 6);
     }
@@ -362,4 +382,3 @@ mod tests {
         assert_eq!(key1, DeviceKey::new(0, 1, 0, 0x1234, 0x5678), "Equal keys should be equal");
     }
 }
-

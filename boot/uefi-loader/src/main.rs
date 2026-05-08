@@ -1,7 +1,9 @@
-#![no_main]
-#![no_std]
+#![cfg_attr(not(test), no_main)]
+#![cfg_attr(not(test), no_std)]
 
 extern crate alloc;
+#[cfg(test)]
+extern crate std;
 
 mod elf;
 
@@ -30,6 +32,7 @@ const RAMDISK_VIRTUAL_BASE: u64 = 0xffff_9000_0000_0000;
 
 use turnix_serial::{self as serial, println as serial_println};
 
+#[cfg(not(test))]
 #[entry]
 fn main() -> Status {
     serial::init();
@@ -197,6 +200,10 @@ fn main() -> Status {
     }
 }
 
+#[cfg(test)]
+fn main() {}
+
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo<'_>) -> ! {
     serial::init();

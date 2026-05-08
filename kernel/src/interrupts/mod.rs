@@ -15,6 +15,9 @@ pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 pub const SYSCALL_VECTOR: u8 = 0x80;
 pub const TIMER_INTERRUPT_VECTOR: u8 = 32;
 pub const KEYBOARD_INTERRUPT_VECTOR: u8 = 33;
+pub const SCI_INTERRUPT_VECTOR: u8 = 0x44;
+pub const ACPI_PCI_VECTOR_BASE: u8 = 0x50;
+pub const ACPI_PCI_VECTOR_COUNT: u8 = 32;
 pub const YIELD_INTERRUPT_VECTOR: u8 = 0x81;
 
 pub static PICS: Mutex<ChainedPics> =
@@ -241,6 +244,10 @@ lazy_static! {
         }
 
         idt[KEYBOARD_INTERRUPT_VECTOR as u8].set_handler_fn(keyboard_interrupt_handler);
+        idt[SCI_INTERRUPT_VECTOR as u8].set_handler_fn(sci_interrupt_handler);
+        for vector in ACPI_PCI_VECTOR_BASE..ACPI_PCI_VECTOR_BASE + ACPI_PCI_VECTOR_COUNT {
+            idt[vector].set_handler_fn(generic_external_interrupt_handler);
+        }
         idt[SYSCALL_VECTOR].set_handler_fn(syscall_handler);
         idt
     };
@@ -267,6 +274,19 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
         }
     }
 
+    unsafe {
+        LAPIC.lock().signal_eoi();
+    }
+}
+
+extern "x86-interrupt" fn sci_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    crate::acpi::handle_sci_interrupt();
+    unsafe {
+        LAPIC.lock().signal_eoi();
+    }
+}
+
+extern "x86-interrupt" fn generic_external_interrupt_handler(_stack_frame: InterruptStackFrame) {
     unsafe {
         LAPIC.lock().signal_eoi();
     }
@@ -340,4 +360,20 @@ extern "x86-interrupt" fn gpf_handler(stack_frame: InterruptStackFrame, error_co
 
 extern "x86-interrupt" fn syscall_handler(_stack_frame: InterruptStackFrame) {
     crate::serial::print(format_args!("[syscall int 0x80]\n"));
+}
+
+pub fn configure_ioapic_route(
+    ioapic_physical_address: u32,
+    input: u8,
+    vector: u8,
+    active_low: bool,
+    level_triggered: bool,
+) -> Result<(), &'static str> {
+    let phys_mem_offset = crate::boot::get_phys_mem_offset();
+    let ioapic_virt = phys_mem_offset + ioapic_physical_address as u64;
+    let mut ioapic = unsafe { apic::IoApic::new(ioapic_virt) };
+    unsafe {
+        ioapic.route_irq_configured(input, vector, active_low, level_triggered);
+    }
+    Ok(())
 }

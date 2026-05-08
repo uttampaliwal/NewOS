@@ -69,6 +69,8 @@ pub struct DeviceInfo {
     pub prog_if: u8,
     /// Up to 6 BARs; `None` for unused slots.
     pub bars: [Option<Bar>; 6],
+    pub interrupt_line: Option<u8>,
+    pub interrupt_pin: Option<u8>,
     pub irq: Option<u8>,
 }
 
@@ -269,6 +271,11 @@ impl DeviceRegistry {
         self.device_infos.get(key)
     }
 
+    /// Get a mutable reference to discovered [`DeviceInfo`] for a device key.
+    pub fn get_device_info_mut(&mut self, key: &DeviceKey) -> Option<&mut DeviceInfo> {
+        self.device_infos.get_mut(key)
+    }
+
     /// Iterate over all discovered devices as `(&DeviceKey, &DeviceInfo)` pairs.
     pub fn iter_device_infos(&self) -> impl Iterator<Item = (&DeviceKey, &DeviceInfo)> {
         self.device_infos.iter()
@@ -359,6 +366,8 @@ mod tests {
             subclass: 0x00,
             prog_if: 0x00,
             bars: [None, None, None, None, None, None],
+            interrupt_line: None,
+            interrupt_pin: None,
             irq: None,
         }
     }
@@ -643,6 +652,8 @@ mod tests {
                 subclass: 0x00,
                 prog_if: 0x00,
                 bars: [None, None, None, None, None, None],
+                interrupt_line: None,
+                interrupt_pin: None,
                 irq: None,
             }
         }

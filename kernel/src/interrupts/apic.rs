@@ -78,13 +78,29 @@ impl IoApic {
     }
 
     pub unsafe fn route_irq(&mut self, irq: u8, vector: u8) {
+        unsafe { self.route_irq_configured(irq, vector, false, false) };
+    }
+
+    pub unsafe fn route_irq_configured(
+        &mut self,
+        irq: u8,
+        vector: u8,
+        active_low: bool,
+        level_triggered: bool,
+    ) {
         let low_reg = 0x10 + (irq as u32) * 2;
         let high_reg = low_reg + 1;
+        let mut low = vector as u32;
 
-        // Low 32 bits: vector, delivery mode (fixed), destination mode (physical), polarity (high), trigger (edge), mask (0)
+        if active_low {
+            low |= 1 << 13;
+        }
+        if level_triggered {
+            low |= 1 << 15;
+        }
+
         unsafe {
-            self.write(low_reg, vector as u32);
-            // High 32 bits: destination (APIC ID 0)
+            self.write(low_reg, low);
             self.write(high_reg, 0);
         }
     }
