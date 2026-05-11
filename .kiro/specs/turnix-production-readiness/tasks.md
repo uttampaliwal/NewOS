@@ -42,7 +42,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test 64-bit BAR address reconstruction from two 32-bit config reads
     - _Requirements: 2.4_
 
-- [ ] 3. Implement the ACPI AML interpreter integration in `kernel/src/acpi.rs`
+- [x] 3. Implement the ACPI AML interpreter integration in `kernel/src/acpi.rs`
   - [x] 3.1 Add `acpi` and `aml` crates to `kernel/Cargo.toml`; extend `kernel/src/acpi.rs` to locate RSDP/XSDT from UEFI tables, parse DSDT and all SSDTs, and evaluate the `\_SB` namespace
     - Implement `_PRT` table evaluation to resolve PCIe interrupt routing and program the IOAPIC
     - Implement S0/S5 power state support; wire ACPI power-button event to deliver shutdown signal to init
