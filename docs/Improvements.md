@@ -38,7 +38,7 @@
 
 | \*\*P0\*\* | CI and reproducible builds | GitHub Actions workflow with build matrix and QEMU smoke job |
 
-| \*\*P0\*\* | QEMU integration tests | `xtask test-qemu` harness and `scripts/qemu-smoke.sh` |
+| \*\*P0\*\* | QEMU integration tests | `xtask test-qemu` harness |
 
 | \*\*P0\*\* | Driver framework | `drivers/device\_manager` + `drivers/kobject` skeleton crate |
 
@@ -194,15 +194,13 @@ turnix/
 
 &#x20; - Waits for deterministic banner `TURNIX\_OK` and checks exit code.
 
-\- Add `scripts/qemu-smoke.sh` for local runs and CI.
-
-\- Add a CI job that runs `xtask test-qemu` with a 60s timeout.
+\- Add a CI job that runs `cargo xtask test-qemu` with a 5 minute timeout.
 
 
 
 \*\*Deliverable\*\*
 
-\- PR: `xtask` additions, `scripts/qemu-smoke.sh`, `.github/workflows/qemu-smoke.yml`.
+\- PR: `xtask` additions and updated CI configuration.
 
 
 
@@ -422,7 +420,7 @@ How to run the tests and smoke QEMU test locally.
 
 \- \*\*Toolchain\*\*: `rustup toolchain install stable-<date>`; `rustup component add rustfmt clippy`.
 
-\- \*\*Local QEMU\*\*: `scripts/qemu-smoke.sh` usage example.
+\- \*\*Local QEMU\*\*: `cargo xtask test-qemu` usage example.
 
 \- \*\*Branching\*\*: topic branch naming rules and PR process.
 
@@ -526,29 +524,23 @@ jobs:
 
 &#x20;     - uses: actions/checkout@v4
 
-&#x20;     - run: scripts/qemu-smoke.sh
+&#x20;     - run: cargo xtask test-qemu
 
 ```
 
 
 
-\### scripts/qemu-smoke.sh
+\### xtask test-qemu
+
+The QEMU smoke test is implemented using the `xtask` tool:
 
 ```bash
 
-\#!/usr/bin/env bash
+cargo xtask test-qemu
 
-set -euo pipefail
+```
 
-KERNEL=target/x86\_64-unknown-none/release/turnix-kernel
-
-TIMEOUT=60
-
-
-
-if \[ ! -f "$KERNEL" ]; then
-
-&#x20; echo "Kernel not found at $KERNEL"
+This command builds the kernel, prepares the UEFI environment, and runs QEMU to test the system boot process.
 
 &#x20; exit 1
 
@@ -694,7 +686,7 @@ fi
 
 1\. `.github/workflows/ci.yml` + `rust-toolchain.toml`.
 
-2\. `scripts/qemu-smoke.sh` + `xtask` test harness.
+2. `xtask` test harness.
 
 3\. `PULL\_REQUEST\_TEMPLATE.md` and `CONTRIBUTING.md` updates.
 

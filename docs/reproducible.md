@@ -41,7 +41,7 @@ cargo clippy -- -D warnings
 
 ```bash
 # Run smoke test
-./scripts/qemu-smoke.sh
+./cargo xtask test-qemu
 
 # Run full test suite
 cargo xtask test-qemu
@@ -87,7 +87,7 @@ The CI pipeline automatically runs reproducibility checks:
 ### Test Failures
 
 1. **QEMU not found**: Install QEMU (`sudo apt install qemu-system-x86`)
-2. **Permission issues**: Ensure scripts are executable (`chmod +x scripts/qemu-smoke.sh`)
+2. **Permission issues**: Ensure Cargo and xtask are properly installed
 3. **Kernel panics**: Check serial output in `qemu-serial.log`
 
 ## Contributing

@@ -143,7 +143,7 @@ fn build_uefi(workspace_root: &Path) -> PathBuf {
 fn build_userland(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
-        &[
+        [
             "+nightly",
             "build",
             "-p",
@@ -175,7 +175,7 @@ fn build_userland(workspace_root: &Path) -> PathBuf {
 fn build_shell(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
-        &[
+        [
             "+nightly",
             "build",
             "-p",
@@ -207,7 +207,7 @@ fn build_shell(workspace_root: &Path) -> PathBuf {
 fn build_fault_tester(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
-        &[
+        [
             "+nightly",
             "build",
             "-p",
@@ -239,7 +239,7 @@ fn build_fault_tester(workspace_root: &Path) -> PathBuf {
 fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
-        &[
+        [
             "+nightly",
             "build",
             "-p",
@@ -344,9 +344,7 @@ fn create_minimal_psf2_font() -> Vec<u8> {
         } else {
             // A simple box border for every other character
             data.push(0xFF); // Top bar
-            for _ in 0..14 {
-                data.push(0x81); // Side bars
-            }
+            data.extend([0x81; 14]); // Side bars
             data.push(0xFF); // Bottom bar
         }
     }
@@ -453,11 +451,10 @@ fn find_ovmf_code() -> Option<PathBuf> {
     }
 
     let mut candidates = Vec::new();
-    if let Some(qemu_path) = find_command_path("qemu-system-x86_64") {
-        if let Some(base) = qemu_path.parent().and_then(Path::parent) {
-            candidates.push(base.join("share").join("qemu").join("edk2-x86_64-code.fd"));
-            candidates.push(base.join("share").join("ovmf").join("OVMF.fd"));
-        }
+    if let Some(qemu_path) = find_command_path("qemu-system-x86_64")
+        && let Some(base) = qemu_path.parent().and_then(Path::parent) {
+        candidates.push(base.join("share").join("qemu").join("edk2-x86_64-code.fd"));
+        candidates.push(base.join("share").join("ovmf").join("OVMF.fd"));
     }
 
     candidates.push(PathBuf::from("/usr/share/ovmf/OVMF.fd"));
@@ -482,14 +479,13 @@ fn find_ovmf_vars() -> Option<PathBuf> {
     }
 
     let mut candidates = Vec::new();
-    if let Some(qemu_path) = find_command_path("qemu-system-x86_64") {
-        if let Some(base) = qemu_path.parent().and_then(Path::parent) {
-            let share = base.join("share").join("qemu");
-            candidates.push(share.join("edk2-x86_64-vars.fd"));
-            candidates.push(share.join("edk2-i386-vars.fd"));
-            let ovmf = base.join("share").join("ovmf");
-            candidates.push(ovmf.join("OVMF.fd"));
-        }
+    if let Some(qemu_path) = find_command_path("qemu-system-x86_64")
+        && let Some(base) = qemu_path.parent().and_then(Path::parent) {
+        let share = base.join("share").join("qemu");
+        candidates.push(share.join("edk2-x86_64-vars.fd"));
+        candidates.push(share.join("edk2-i386-vars.fd"));
+        let ovmf = base.join("share").join("ovmf");
+        candidates.push(ovmf.join("OVMF.fd"));
     }
 
     candidates.push(PathBuf::from("/usr/share/ovmf/OVMF.fd"));

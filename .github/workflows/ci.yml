@@ -62,6 +62,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run QEMU smoke test
-        run: |
-          chmod +x scripts/qemu-smoke.sh
-          ./scripts/qemu-smoke.sh
+        run: cargo xtask test-qemu
