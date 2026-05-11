@@ -48,7 +48,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Implement S0/S5 power state support; wire ACPI power-button event to deliver shutdown signal to init
     - Add AML method execution timeout (100 ms): abort, log warning with method path, continue boot
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
-  - [ ]* 3.2 Write unit tests for ACPI table parsing
+  - [x]* 3.2 Write unit tests for ACPI table parsing
     - Test RSDP checksum validation
     - Test `_PRT` entry parsing with a synthetic ACPI table blob
     - _Requirements: 7.1_
