@@ -11,3 +11,6 @@ rustflags = [
     "-C",
     "relocation-model=static",
 ]
+
+[target.aarch64-unknown-none]
+rustflags = ["-C", "panic=abort"]

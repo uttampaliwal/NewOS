@@ -1,12 +1,17 @@
 use crate::process::Process;
+#[cfg(target_arch = "x86_64")]
 use x86_64::VirtAddr;
+#[cfg(target_arch = "x86_64")]
 use x86_64::structures::paging::{
     FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, Size4KiB, Translate,
 };
 
 pub mod scheduler;
 
+#[cfg(target_arch = "x86_64")]
 pub type TaskEntry = extern "sysv64" fn() -> !;
+#[cfg(not(target_arch = "x86_64"))]
+pub type TaskEntry = extern "C" fn() -> !;
 
 const KERNEL_STACK_REGION_BASE: u64 = 0xFFFF_FE00_0000_0000;
 
@@ -256,16 +261,24 @@ impl Task {
     }
 
     pub fn switch_to(&self) {
-        crate::gdt::set_interrupt_stack(x86_64::VirtAddr::new(self.kernel_stack_top as u64));
+        #[cfg(target_arch = "x86_64")]
+        {
+            crate::gdt::set_interrupt_stack(x86_64::VirtAddr::new(self.kernel_stack_top as u64));
 
-        let (current_pml4, _) = x86_64::registers::control::Cr3::read();
-        if current_pml4 != self.process.pml4_frame() {
-            unsafe {
-                x86_64::registers::control::Cr3::write(
-                    self.process.pml4_frame(),
-                    x86_64::registers::control::Cr3Flags::empty(),
-                );
+            let (current_pml4, _) = x86_64::registers::control::Cr3::read();
+            if current_pml4 != self.process.pml4_frame() {
+                unsafe {
+                    x86_64::registers::control::Cr3::write(
+                        self.process.pml4_frame(),
+                        x86_64::registers::control::Cr3Flags::empty(),
+                    );
+                }
             }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let _ = self;
+            // AArch64 switch_to implementation
         }
     }
 }

@@ -1,5 +1,3 @@
-use x86_64::VirtAddr;
-
 pub const USER_CODE_SEGMENT: u64 = 0x23;
 pub const USER_DATA_SEGMENT: u64 = 0x2b;
 pub const KERNEL_CODE_SEGMENT: u64 = 0x08;
@@ -24,18 +22,18 @@ impl UserContext {
     pub fn switch_to_user(&self) -> ! {
         unsafe {
             core::arch::asm!(
-                "mov rsp, {0}",
-                "push {1}",
+                "mov rsp, {0:r}",
+                "push {1:r}",
                 "push rsp",
                 "pushf",
-                "push {2}",
+                "push {2:r}",
                 "push rdi",
                 "iretq",
                 in(reg) self.stackPointer,
                 in(reg) 0,
                 in(reg) self.entry,
             );
+            core::hint::unreachable_unchecked()
         }
-        core::hint::unreachable_unchecked()
     }
 }

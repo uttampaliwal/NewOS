@@ -46,19 +46,34 @@ impl Write for SerialWriter {
 /// # Safety
 /// The caller must ensure `port` is a valid I/O port and the operation is safe.
 pub unsafe fn out8(port: u16, value: u8) {
+    #[cfg(target_arch = "x86_64")]
     unsafe {
         asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack, preserves_flags));
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        let _ = (port, value);
+        // On non-x86 architectures, port I/O doesn't exist or is mapped differently.
+        // For now, this is a no-op stub.
     }
 }
 
 /// # Safety
 /// The caller must ensure `port` is a valid I/O port and the operation is safe.
 pub unsafe fn in8(port: u16) -> u8 {
-    let value: u8;
-    unsafe {
-        asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack, preserves_flags));
+    #[cfg(target_arch = "x86_64")]
+    {
+        let value: u8;
+        unsafe {
+            asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack, preserves_flags));
+        }
+        value
     }
-    value
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        let _ = port;
+        0
+    }
 }
 
 #[macro_export]

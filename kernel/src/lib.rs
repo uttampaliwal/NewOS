@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(abi_x86_interrupt)]
+#![cfg_attr(feature = "arch-x86_64", feature(abi_x86_interrupt))]
 
 //! Kernel skeleton for turnix.
 //!
@@ -10,22 +10,42 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
+pub mod arch;
+
+// Re-export arch-specific modules at their original paths so
+// existing `crate::gdt::*` and `crate::interrupts::*` references
+// continue to compile without changes.
+pub use arch::gdt;
+pub use arch::interrupts;
+pub use arch::context;
+
+#[cfg(feature = "arch-x86_64")]
 pub mod acpi;
+#[cfg(feature = "arch-x86_64")]
 pub mod boot;
+#[cfg(feature = "arch-x86_64")]
 pub mod drivers;
 pub mod elf;
+#[cfg(feature = "arch-x86_64")]
 pub mod fs;
-pub mod gdt;
+#[cfg(feature = "arch-x86_64")]
 pub mod input;
-pub mod interrupts;
+#[cfg(feature = "arch-x86_64")]
 pub mod memory;
+#[cfg(feature = "arch-x86_64")]
 pub mod process;
+#[cfg(feature = "arch-x86_64")]
 pub mod security;
 pub mod serial;
+#[cfg(feature = "arch-x86_64")]
 pub mod smp;
+#[cfg(feature = "arch-x86_64")]
 pub mod syscall;
+#[cfg(feature = "arch-x86_64")]
 pub mod task;
+#[cfg(feature = "arch-x86_64")]
 pub mod tty;
+#[cfg(feature = "arch-x86_64")]
 pub mod vfs;
 
 

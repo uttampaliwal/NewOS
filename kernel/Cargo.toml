@@ -14,21 +14,27 @@ name = "turnix-kernel-image"
 path = "src/bin/turnix-kernel-image.rs"
 test = false
 bench = false
+required-features = ["arch-x86_64"]
 
 [dependencies]
 turnix-abi = { path = "../shared/abi" }
 turnix-serial = { path = "../shared/serial" }
-x86_64 = "0.15.2"
+x86_64 = { version = "0.15.2", optional = true }
 spin = "0.9.8"
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 linked_list_allocator = "0.10.5"
 bitflags = "2.8.0"
 log = "0.4.22"
-pc-keyboard = "0.7.0"
-pic8259 = "0.11.0"
+pc-keyboard = { version = "0.7.0", optional = true }
+pic8259 = { version = "0.11.0", optional = true }
 acpi = "4.1.1"
 smoltcp = { version = "0.9.0", default-features = false, features = ["alloc", "proto-ipv4", "medium-ethernet", "socket-tcp"] }
 aml = "0.16.4"
 
 [dev-dependencies]
 proptest = "1.6.0"
+
+[features]
+default = ["arch-x86_64"]
+arch-x86_64 = ["dep:x86_64", "dep:pic8259", "dep:pc-keyboard"]
+arch-aarch64 = []
