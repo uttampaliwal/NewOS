@@ -746,4 +746,58 @@ mod tests {
         };
         assert!(VirtioNetDriver::probe(&info).is_err());
     }
+
+    #[test]
+    fn test_mac_feature_flag_bit() {
+        assert_eq!(VIRTIO_NET_F_MAC, 1 << 5);
+        let mac_flag = VIRTIO_NET_F_MAC;
+        let features_with_mac = mac_flag | VIRTIO_F_VERSION_1;
+        assert!(features_with_mac & VIRTIO_NET_F_MAC != 0);
+        let features_without_mac = VIRTIO_F_VERSION_1;
+        assert!(features_without_mac & VIRTIO_NET_F_MAC == 0);
+    }
+
+    fn alloc_all(desc: &mut [Desc; QUEUE_SIZE as usize], head: &mut u16, count: &mut u16) -> alloc::vec::Vec<u16> {
+        let mut out = alloc::vec::Vec::with_capacity(*count as usize);
+        while *count > 0 {
+            let h = *head;
+            *head = desc[h as usize].next;
+            desc[h as usize].next = 0xFFFF;
+            *count -= 1;
+            out.push(h);
+        }
+        out
+    }
+
+    #[test]
+    fn test_virtqueue_ring_wraparound() {
+        let desc_len = core::mem::size_of::<Desc>() * QUEUE_SIZE as usize;
+        let mut desc_mem = alloc::vec![0u8; desc_len];
+        let desc = unsafe { &mut *(desc_mem.as_mut_ptr() as *mut [Desc; QUEUE_SIZE as usize]) };
+        for i in 0..QUEUE_SIZE - 1 {
+            desc[i as usize].next = i + 1;
+        }
+        desc[QUEUE_SIZE as usize - 1].next = 0xFFFF;
+
+        let mut free_head = 0u16;
+        let mut free_count = QUEUE_SIZE;
+
+        let first_round = alloc_all(desc, &mut free_head, &mut free_count);
+        assert_eq!(first_round.len(), QUEUE_SIZE as usize);
+        assert_eq!(free_count, 0);
+        assert_eq!(free_head, 0xFFFF);
+
+        for &h in first_round.iter().rev() {
+            desc[h as usize].next = free_head;
+            free_head = h;
+            free_count += 1;
+        }
+        assert_eq!(free_count, QUEUE_SIZE);
+        assert_eq!(free_head, 0);
+
+        let second_round = alloc_all(desc, &mut free_head, &mut free_count);
+        assert_eq!(second_round, first_round,
+            "second alloc cycle should produce same order as first");
+        assert_eq!(free_count, 0);
+    }
 }

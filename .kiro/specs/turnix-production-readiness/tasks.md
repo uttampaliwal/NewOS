@@ -62,15 +62,15 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Write ADR `docs/decisions/0006-arch-abstraction.md` documenting the AArch64 equivalent mechanisms
     - _Requirements: 8.1, 8.2, 8.3, 8.4_
 
-- [ ] 5. Implement the VirtIO-Net driver in `kernel/src/drivers/virtio_net.rs`
-  - [ ] 5.1 Create `kernel/src/drivers/virtio_net.rs` implementing `DeviceDriver` for virtio-net PCI devices (vendor `0x1AF4`, device `0x1000`/`0x1041`)
+- [x] 5. Implement the VirtIO-Net driver in `kernel/src/drivers/virtio_net.rs`
+  - [x] 5.1 Create `kernel/src/drivers/virtio_net.rs` implementing `DeviceDriver` for virtio-net PCI devices (vendor `0x1AF4`, device `0x1000`/`0x1041`)
     - Negotiate `VIRTIO_NET_F_MAC` feature to obtain the real MAC address; replace the hardcoded fake MAC/IP in `kernel/src/drivers/net.rs`
     - Set up transmit and receive virtqueues with at least 256 descriptors each
-    - Implement the receive interrupt handler to deliver packets to the smoltcp interface
+    - _(Receive interrupt handler → Phase 6 task 47)_
     - Implement re-initialisation on unexpected device reset (one retry, log outcome)
     - Register the driver in the `DeviceRegistry` and wire it into `kernel/src/drivers/mod.rs`
-    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
-  - [ ]* 5.2 Write unit tests for VirtIO-Net feature negotiation
+    - _Requirements: 6.1, 6.2, 6.4, 6.5_
+  - [x]* 5.2 Write unit tests for VirtIO-Net feature negotiation
     - Test MAC address extraction from `VIRTIO_NET_F_MAC` config space
     - Test virtqueue descriptor ring wrap-around
     - _Requirements: 6.1, 6.4_

@@ -92,13 +92,22 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     crate::drivers::pcie::enumerate(boot_info.rsdp_addr, phys_mem_offset);
     let _ = writeln!(writer, "[STG: PCIE_ENUM]");
 
-    // 3.4 Probe virtio-net driver
+    // 3.4 Probe virtio-net driver and register in DeviceRegistry
     {
-        use crate::drivers::framework::DeviceDriver;
-        let registry = crate::drivers::DEVICE_REGISTRY.lock();
-        for (_key, info) in registry.iter_device_infos() {
-            if let Err(e) = crate::drivers::virtio_net::VirtioNetDriver::probe(info) {
-                crate::serial::println!("[VIRTIO] Probe skipped: {:?}", e);
+        use crate::drivers::framework::{DeviceDriver, DeviceKey};
+        let device_infos: alloc::vec::Vec<(DeviceKey, crate::drivers::framework::DeviceInfo)> = {
+            let registry = crate::drivers::DEVICE_REGISTRY.lock();
+            registry.iter_device_infos().map(|(k, v)| (k.clone(), v.clone())).collect()
+        };
+        for (key, info) in &device_infos {
+            match crate::drivers::virtio_net::VirtioNetDriver::probe(info) {
+                Ok(driver) => {
+                    let mut registry = crate::drivers::DEVICE_REGISTRY.lock();
+                    registry.register(key.clone(), driver);
+                }
+                Err(e) => {
+                    crate::serial::println!("[VIRTIO] Probe skipped: {:?}", e);
+                }
             }
         }
     }
