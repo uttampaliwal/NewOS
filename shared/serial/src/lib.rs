@@ -1,6 +1,5 @@
 #![no_std]
 
-use core::arch::asm;
 use core::fmt::{self, Write};
 
 pub const COM1_BASE: u16 = 0x3F8;
@@ -48,7 +47,7 @@ impl Write for SerialWriter {
 pub unsafe fn out8(port: u16, value: u8) {
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack, preserves_flags));
+        core::arch::asm!("out dx, al", in("dx") port, in("al") value, options(nomem, nostack, preserves_flags));
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
@@ -65,7 +64,7 @@ pub unsafe fn in8(port: u16) -> u8 {
     {
         let value: u8;
         unsafe {
-            asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack, preserves_flags));
+            core::arch::asm!("in al, dx", in("dx") port, out("al") value, options(nomem, nostack, preserves_flags));
         }
         value
     }

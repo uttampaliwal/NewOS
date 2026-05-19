@@ -319,6 +319,7 @@ mod tests {
     }
 
     #[derive(Debug)]
+    #[allow(dead_code)]
     struct MockError(&'static str);
 
     impl DeviceDriver for MockDriver {
@@ -708,16 +709,15 @@ mod tests {
         })
     }
 
-    /// **Property 1: Device Registry Round-Trip**
-    ///
-    /// **Validates: Requirements 1.2, 1.4**
-    ///
-    /// For any set of mock drivers where some `probe` succeeds and some fail:
-    /// 1. The registry contains *exactly* the drivers whose probe succeeded.
-    /// 2. Drivers whose probe failed are *absent* from the registry.
-    /// 3. Lookup by `DeviceKey` returns the same vendor/device IDs that were
-    ///    passed to `probe` (round-trip identity).
-    /// 4. The total registry size equals the number of successful probes.
+    // Property 1: Device Registry Round-Trip
+    // Validates: Requirements 1.2, 1.4
+    //
+    // For any set of mock drivers where some probe succeeds and some fail:
+    // 1. The registry contains exactly the drivers whose probe succeeded.
+    // 2. Drivers whose probe failed are absent from the registry.
+    // 3. Lookup by DeviceKey returns the same vendor/device IDs that were
+    //    passed to probe (round-trip identity).
+    // 4. The total registry size equals the number of successful probes.
     proptest! {
         #[test]
         fn prop_device_registry_round_trip(specs in arb_device_specs()) {
@@ -788,14 +788,13 @@ mod tests {
         }
     }
 
-    /// **Property 2: Driver Lifecycle Invariant**
-    ///
-    /// **Validates: Requirements 1.1, 1.6**
-    ///
-    /// For any probed driver instance:
-    /// - `initialize()` succeeds after `probe()`, and marks the driver initialised.
-    /// - `suspend()` then `resume()` restores observable state (device IDs remain
-    ///   stable and the suspended flag returns to false).
+    // Property 2: Driver Lifecycle Invariant
+    // Validates: Requirements 1.1, 1.6
+    //
+    // For any probed driver instance:
+    // - initialize() succeeds after probe(), and marks the driver initialised.
+    // - suspend() then resume() restores observable state (device IDs remain
+    //   stable and the suspended flag returns to false).
     proptest! {
         #[test]
         fn prop_driver_lifecycle_invariant(

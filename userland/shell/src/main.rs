@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use libturnix::{close, exit, getpid, ls, open, read, uptime, write};
+use libturnix::{exit, getpid, ls, open, read, uptime, write};
 
 #[cfg(not(test))]
 use core::panic::PanicInfo;

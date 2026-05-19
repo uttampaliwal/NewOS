@@ -1,5 +1,5 @@
 pub fn init(_phys_mem_offset: u64) {
-    panic!("AArch64 interrupts (GIC) not yet implemented");
+    // AArch64: GIC initialization not yet implemented
 }
 
 pub fn enable_interrupts() {
@@ -14,11 +14,11 @@ pub fn halt() {
     // WFI on AArch64
 }
 
-pub fn without_interrupts<F, R>(_f: F) -> R 
+pub fn without_interrupts<F, R>(f: F) -> R 
 where 
     F: FnOnce() -> R 
 {
-    panic!("AArch64 without_interrupts not yet implemented");
+    f()
 }
 
 pub mod apic {
