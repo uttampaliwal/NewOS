@@ -67,6 +67,12 @@ pub struct DeviceInfo {
     pub class_code: u8,
     pub subclass: u8,
     pub prog_if: u8,
+    /// PCI bus number.
+    pub bus: u8,
+    /// PCI device/slot number (0–31).
+    pub device: u8,
+    /// PCI function number (0–7).
+    pub function: u8,
     /// Up to 6 BARs; `None` for unused slots.
     pub bars: [Option<Bar>; 6],
     pub interrupt_line: Option<u8>,
@@ -366,6 +372,9 @@ mod tests {
             class_code: 0x01,
             subclass: 0x00,
             prog_if: 0x00,
+            bus: 0,
+            device: 0,
+            function: 0,
             bars: [None, None, None, None, None, None],
             interrupt_line: None,
             interrupt_pin: None,
@@ -646,12 +655,14 @@ mod tests {
     impl DeviceSpec {
         fn device_info(&self) -> DeviceInfo {
             DeviceInfo {
-                // Use 0xFFFF as the sentinel vendor when we want probe to fail.
                 vendor_id: if self.fail_probe { 0xFFFF } else { self.vendor_id },
                 device_id: self.device_id,
                 class_code: 0x01,
                 subclass: 0x00,
                 prog_if: 0x00,
+                bus: self.bus,
+                device: self.device_slot,
+                function: self.function,
                 bars: [None, None, None, None, None, None],
                 interrupt_line: None,
                 interrupt_pin: None,

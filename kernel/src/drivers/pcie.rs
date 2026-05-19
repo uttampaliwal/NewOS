@@ -177,6 +177,9 @@ pub fn enumerate(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
                     class_code,
                     subclass,
                     prog_if,
+                    bus,
+                    device,
+                    function,
                     bars,
                     interrupt_line,
                     interrupt_pin,
@@ -353,6 +356,9 @@ mod tests {
             class_code: 0x01,
             subclass: 0x02,
             prog_if: 0x03,
+            bus: 0,
+            device: 0x1F,
+            function: 0,
             bars: [None, None, None, None, None, None],
             interrupt_line: Some(11),
             interrupt_pin: Some(0),
@@ -364,6 +370,9 @@ mod tests {
         assert_eq!(info.class_code, 0x01);
         assert_eq!(info.subclass, 0x02);
         assert_eq!(info.prog_if, 0x03);
+        assert_eq!(info.bus, 0);
+        assert_eq!(info.device, 0x1F);
+        assert_eq!(info.function, 0);
         assert_eq!(info.interrupt_line, Some(11));
         assert_eq!(info.interrupt_pin, Some(0));
         assert_eq!(info.irq, Some(5));

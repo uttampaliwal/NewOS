@@ -92,12 +92,28 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     crate::drivers::pcie::enumerate(boot_info.rsdp_addr, phys_mem_offset);
     let _ = writeln!(writer, "[STG: PCIE_ENUM]");
 
-    // 3.4 Initialize ACPI after PCIe enumeration so AML _PRT routing can
+    // 3.4 Probe virtio-net driver
+    {
+        use crate::drivers::framework::DeviceDriver;
+        let registry = crate::drivers::DEVICE_REGISTRY.lock();
+        for (_key, info) in registry.iter_device_infos() {
+            if let Err(e) = crate::drivers::virtio_net::VirtioNetDriver::probe(info) {
+                crate::serial::println!("[VIRTIO] Probe skipped: {:?}", e);
+            }
+        }
+    }
+    let _ = writeln!(writer, "[STG: VIRTIO_NET_PROBE]");
+
+    // 3.5 Initialize network stack (uses MAC from virtio-net)
+    crate::drivers::net::init();
+    let _ = writeln!(writer, "[STG: NET_INIT]");
+
+    // 3.6 Initialize ACPI after PCIe enumeration so AML _PRT routing can
     // resolve against the discovered device registry.
     crate::acpi::init(boot_info.rsdp_addr, phys_mem_offset);
     let _ = writeln!(writer, "[STG: ACPI_INIT]");
 
-    // 3.5 Initialize SMP
+    // 3.7 Initialize SMP
     crate::smp::init(phys_mem_offset);
     let _ = writeln!(writer, "[STG: SMP_INIT]");
 
