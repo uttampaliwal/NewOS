@@ -75,15 +75,15 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test virtqueue descriptor ring wrap-around
     - _Requirements: 6.1, 6.4_
 
-- [ ] 6. Implement the NVMe block driver in `kernel/src/drivers/nvme.rs`
-  - [ ] 6.1 Create `kernel/src/drivers/nvme.rs` implementing `DeviceDriver` for NVMe controllers (class `0x01`, subclass `0x08`)
+- [x] 6. Implement the NVMe block driver in `kernel/src/drivers/nvme.rs`
+  - [x] 6.1 Create `kernel/src/drivers/nvme.rs` implementing `DeviceDriver` for NVMe controllers (class `0x01`, subclass `0x08`)
     - Initialise admin queue and at least one I/O submission/completion queue pair
     - Implement `identify namespace` to discover namespace capacity and LBA size (512 or 4096 bytes)
     - Implement read and write NVM commands using PRPs; expose each namespace as a block device in `DeviceRegistry`
     - Implement 30-second command timeout: abort command, log timeout, return `IoError` to caller
     - Wire NVMe driver into `kernel/src/drivers/mod.rs` and the PCIe probe loop
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
-  - [ ]* 6.2 Write unit tests for NVMe queue management
+  - [x]* 6.2 Write unit tests for NVMe queue management
     - Test submission queue tail doorbell write
     - Test completion queue head advancement and phase bit toggling
     - _Requirements: 4.1_
