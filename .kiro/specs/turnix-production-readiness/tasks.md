@@ -53,8 +53,8 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test `_PRT` entry parsing with a synthetic ACPI table blob
     - _Requirements: 7.1_
 
-- [ ] 4. Implement the arch abstraction boundary in `kernel/src/arch/`
-  - [ ] 4.1 Create `kernel/src/arch/mod.rs` with an `ArchInterface` trait covering GDT/IDT setup, LAPIC init, SYSCALL/SYSRET configuration, MSR reads/writes, and interrupt enable/disable
+- [x] 4. Implement the arch abstraction boundary in `kernel/src/arch/`
+  - [x] 4.1 Create `kernel/src/arch/mod.rs` with an `ArchInterface` trait covering GDT/IDT setup, LAPIC init, SYSCALL/SYSRET configuration, MSR reads/writes, and interrupt enable/disable
     - Move all x86_64-specific code from `kernel/src/gdt.rs`, `kernel/src/interrupts/`, and `kernel/src/context.rs` behind `kernel/src/arch/x86_64/` implementations of `ArchInterface`
     - Create `kernel/src/arch/aarch64/` with stub implementations returning `Err(NotImplemented)` for all trait methods
     - Add Cargo feature flags `arch-x86_64` (default) and `arch-aarch64` to `kernel/Cargo.toml`; gate arch modules behind these features
