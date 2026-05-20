@@ -113,6 +113,27 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     }
     let _ = writeln!(writer, "[STG: VIRTIO_NET_PROBE]");
 
+    // 3.4a Probe NVMe driver and register in DeviceRegistry
+    {
+        use crate::drivers::framework::{DeviceDriver, DeviceKey};
+        let device_infos: alloc::vec::Vec<(DeviceKey, crate::drivers::framework::DeviceInfo)> = {
+            let registry = crate::drivers::DEVICE_REGISTRY.lock();
+            registry.iter_device_infos().map(|(k, v)| (k.clone(), v.clone())).collect()
+        };
+        for (key, info) in &device_infos {
+            match crate::drivers::nvme::NvmeDriver::probe(info) {
+                Ok(driver) => {
+                    let mut registry = crate::drivers::DEVICE_REGISTRY.lock();
+                    registry.register(key.clone(), driver);
+                }
+                Err(e) => {
+                    crate::serial::println!("[NVMe] Probe skipped: {:?}", e);
+                }
+            }
+        }
+    }
+    let _ = writeln!(writer, "[STG: NVME_PROBE]");
+
     // 3.5 Initialize network stack (uses MAC from virtio-net)
     crate::drivers::net::init();
     let _ = writeln!(writer, "[STG: NET_INIT]");

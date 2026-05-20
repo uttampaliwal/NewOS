@@ -1,6 +1,7 @@
 pub mod ahci;
 pub mod framework;
 pub mod net;
+pub mod nvme;
 pub mod pci;
 pub mod pcie;
 pub mod video;
