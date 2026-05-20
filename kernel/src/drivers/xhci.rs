@@ -435,6 +435,12 @@ impl XhciController {
     /// Get the status of a single port.
     fn get_port_status(&self, port: u32) -> XhciPortStatus {
         let raw = self.portsc_read(port);
+        Self::parse_port_status(port, raw)
+    }
+
+    /// Parse a raw PORTSC register value into an `XhciPortStatus`.
+    /// This is a pure function (no MMIO access) suitable for unit testing.
+    fn parse_port_status(port: u32, raw: u32) -> XhciPortStatus {
         XhciPortStatus {
             port_num: (port + 1) as u8,
             connected: (raw & PORTSC_CCS) != 0,
@@ -992,6 +998,47 @@ mod tests {
         assert!(status.connected);
         assert!(status.speed.is_usb3());
         assert!(status.reset_change);
+    }
+
+    #[test]
+    fn test_xhci_port_status_extracted_from_portsc() {
+        // Simulate a USB 2.0 High-Speed connected port with
+        // Connect Status Change and Port Reset Change bits set.
+        let raw = PORTSC_CCS | PORTSC_PED | (SPEED_HIGH << PORTSC_SPEED_SHIFT)
+            | PORTSC_CSC | PORTSC_PRC;
+        let status = XhciController::parse_port_status(0, raw);
+        assert!(status.connected);
+        assert!(status.enabled);
+        assert_eq!(status.speed, PortSpeed::Usb20High);
+        assert!(status.speed.is_usb2());
+        assert!(!status.speed.is_usb3());
+        assert!(status.connect_change);
+        assert!(status.reset_change);
+    }
+
+    #[test]
+    fn test_xhci_port_status_extracted_usb3_from_portsc() {
+        // Simulate a USB 3.x SuperSpeed connected port.
+        let raw = PORTSC_CCS | PORTSC_PED | (SPEED_SUPER << PORTSC_SPEED_SHIFT);
+        let status = XhciController::parse_port_status(1, raw);
+        assert!(status.connected);
+        assert!(status.enabled);
+        assert_eq!(status.speed, PortSpeed::Usb30Super);
+        assert!(status.speed.is_usb3());
+        assert!(!status.speed.is_usb2());
+        assert!(!status.connect_change);
+        assert!(!status.reset_change);
+    }
+
+    #[test]
+    fn test_xhci_port_status_disconnected_port() {
+        // Simulate a port with no device connected.
+        let raw = 0u32;
+        let status = XhciController::parse_port_status(2, raw);
+        assert!(!status.connected);
+        assert!(!status.enabled);
+        assert_eq!(status.speed, PortSpeed::None);
+        assert_eq!(status.port_num, 3); // port=2 → port_num=3
     }
 
     #[test]
