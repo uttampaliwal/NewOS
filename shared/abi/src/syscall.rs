@@ -190,4 +190,14 @@ mod tests {
     fn unlink_syscall_id_is_twenty() {
         assert_eq!(Syscall::Unlink as u16, 20);
     }
+
+    #[test]
+    fn mmap_framebuffer_syscall_id_is_twenty_one() {
+        assert_eq!(Syscall::MmapFramebuffer as u16, 21);
+    }
+
+    #[test]
+    fn mmap_framebuffer_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(21), Some(Syscall::MmapFramebuffer));
+    }
 }

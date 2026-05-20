@@ -127,10 +127,6 @@ impl BochsDisplayDriver {
     ///
     /// # Safety
     /// Accesses I/O ports `0x1CE`/`0x1CF`.
-    /// Write to a VBE DISPI index register.
-    ///
-    /// # Safety
-    /// Accesses I/O ports `0x1CE`/`0x1CF`.
     unsafe fn vbe_write_index(index: u16, value: u16) {
         #[cfg(not(test))]
         // SAFETY: caller must ensure I/O ports are accessible
