@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6f1069a9ec92dd1c6795cfdf4a948d1e867a5f7b38a2f99482d47ec2d720d16d # shrinks to vmas = [Vma { start: VirtAddr(0x1000), end: VirtAddr(0x2000), prot: VmaProt(0x0), backing: Anonymous, flags: VmaFlags(MAP_PRIVATE) }, Vma { start: VirtAddr(0x2000), end: VirtAddr(0x3000), prot: VmaProt(0x0), backing: Anonymous, flags: VmaFlags(MAP_PRIVATE) }]

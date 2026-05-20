@@ -120,14 +120,14 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
 
 ## Phase 2 — Memory Management Maturity
 
-- [ ] 10. Implement the VMA tracker in `kernel/src/memory/vma.rs`
-  - [ ] 10.1 Create `kernel/src/memory/vma.rs` with `VmaProt` bitflags, `VmaBacking` enum (`Anonymous`, `FileBacked`, `DeviceMapped`), `VmaFlags` (`MAP_SHARED`, `MAP_PRIVATE`, `MAP_FIXED`), and `Vma` struct
+- [x] 10. Implement the VMA tracker in `kernel/src/memory/vma.rs`
+  - [x] 10.1 Create `kernel/src/memory/vma.rs` with `VmaProt` bitflags, `VmaBacking` enum (`Anonymous`, `FileBacked`, `DeviceMapped`), `VmaFlags` (`MAP_SHARED`, `MAP_PRIVATE`, `MAP_FIXED`), and `Vma` struct
     - Implement `VmaSet` using a sorted `BTreeMap<VirtAddr, Vma>` for O(log n) lookup; implement `find`, `insert`, `remove`, and `iter`
     - `insert` must reject overlapping VMAs with `VmaError::Conflict`
     - Add `vma_set: VmaSet` field to `ProcessInner` in `kernel/src/process.rs`
-    - Add `pub mod vma;` to `kernel/src/memory/mod.rs` (or `kernel/src/memory/allocator/mod.rs`)
+    - Add `pub mod vma;` to `kernel/src/memory.rs`
     - _Requirements: 9.4_
-  - [ ]* 10.2 Write property test for VMA Tracking Consistency
+  - [x]* 10.2 Write property test for VMA Tracking Consistency
     - **Property 4: VMA Tracking Consistency**
     - **Validates: Requirements 9.1, 9.4**
     - Use `proptest` with `arb_vma_set()` generator; apply random mmap/munmap sequences; assert every mapped address is covered by exactly one VMA and every unmapped address is not covered

@@ -1,5 +1,6 @@
 use crate::elf;
 use crate::memory::paging;
+use crate::memory::vma::VmaSet;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
     Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB,
@@ -29,6 +30,7 @@ pub struct ProcessInner {
     pub entry_point: VirtAddr,
     pub stack_top: VirtAddr,
     pub threads: Vec<TaskId>,
+    pub vma_set: VmaSet,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +74,7 @@ impl Process {
                         entry_point: VirtAddr::zero(),
                         stack_top: VirtAddr::zero(),
                         threads: Vec::new(),
+                        vma_set: VmaSet::new(),
                     }))
                 }
             };
@@ -96,6 +99,7 @@ impl Process {
             entry_point: VirtAddr::new(header.entry),
             stack_top,
             threads: Vec::new(),
+            vma_set: VmaSet::new(),
         };
 
         let process = Self {
@@ -206,6 +210,7 @@ impl Process {
             entry_point: inner.entry_point,
             stack_top: inner.stack_top,
             threads: Vec::new(),
+            vma_set: VmaSet::new(),
         };
 
         Self {

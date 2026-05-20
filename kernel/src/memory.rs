@@ -8,6 +8,7 @@ pub mod allocator;
 pub mod heap;
 pub mod paging;
 pub mod user;
+pub mod vma;
 
 pub const PAGE_SIZE: u64 = 4096;
 const LOW_MEMORY_CUTOFF: u64 = 0x100000;
