@@ -141,7 +141,7 @@ fn main() -> Status {
     serial_println!("exiting boot services");
 
     // Find ACPI RSDP before exiting boot services
-    let mut rsdp_addr = 0;
+    let rsdp_addr = 0;
     // TODO: Fix RSDP detection for uefi 0.37 API
     // For now, RSDP detection is disabled - ACPI will be unavailable
     serial_println!("RSDP detection disabled for now");

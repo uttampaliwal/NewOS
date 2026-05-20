@@ -22,8 +22,10 @@ use super::{
 // ---------------------------------------------------------------------------
 
 /// VBE DISPI index I/O port.
+#[allow(dead_code)]
 const VBE_DISPI_IOPORT_INDEX: u16 = 0x1CE;
 /// VBE DISPI data I/O port.
+#[allow(dead_code)]
 const VBE_DISPI_IOPORT_DATA: u16 = 0x1CF;
 
 /// VBE DISPI register indices.

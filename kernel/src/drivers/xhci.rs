@@ -29,7 +29,9 @@ const XHCI_PROG_IF: u8 = 0x30;
 const CAP_CAPLENGTH: u64 = 0x00; // 8-bit: offset to operational regs
 const CAP_HCIVERSION: u64 = 0x02; // 16-bit: interface version
 const CAP_HCSPARAMS1: u64 = 0x04; // 32-bit: structural parameters 1
+#[allow(dead_code)]
 const CAP_HCSPARAMS2: u64 = 0x08; // 32-bit: structural parameters 2
+#[allow(dead_code)]
 const CAP_HCSPARAMS3: u64 = 0x0C; // 32-bit: structural parameters 3
 const CAP_HCCPARAMS1: u64 = 0x10; // 32-bit: capability parameters 1
 const CAP_DBOFF: u64 = 0x14; // 32-bit: doorbell offset
@@ -57,9 +59,13 @@ const HCC1_XECP_MASK: u32 = 0xFFFF << 16;
 
 const OP_USBCMD: u64 = 0x00;
 const OP_USBSTS: u64 = 0x04;
+#[allow(dead_code)]
 const OP_PAGESIZE: u64 = 0x08;
+#[allow(dead_code)]
 const OP_DNCTRL: u64 = 0x14;
+#[allow(dead_code)]
 const OP_CRCR: u64 = 0x18;
+#[allow(dead_code)]
 const OP_DCBAAP: u64 = 0x30;
 const OP_CONFIG: u64 = 0x38;
 
@@ -67,6 +73,7 @@ const OP_CONFIG: u64 = 0x38;
 const USBCMD_RUN: u32 = 1 << 0;
 const USBCMD_HCRST: u32 = 1 << 1;
 const USBCMD_INTE: u32 = 1 << 2;
+#[allow(dead_code)]
 const USBCMD_HSEE: u32 = 1 << 3;
 
 // USBSTS bits
@@ -135,6 +142,7 @@ const SPEED_LOW: u32 = 2;    // USB 1.0 (1.5 Mbps)
 const SPEED_HIGH: u32 = 3;   // USB 2.0 (480 Mbps)
 const SPEED_SUPER: u32 = 4;  // USB 3.x (5 Gbps+)
 
+#[allow(dead_code)]
 fn speed_name(speed: u32) -> &'static str {
     match speed {
         SPEED_FULL => "USB 1.1 Full-Speed",
@@ -145,10 +153,12 @@ fn speed_name(speed: u32) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn speed_is_usb3(speed: u32) -> bool {
     speed == SPEED_SUPER
 }
 
+#[allow(dead_code)]
 fn speed_is_usb2(speed: u32) -> bool {
     speed == SPEED_HIGH || speed == SPEED_FULL || speed == SPEED_LOW
 }
@@ -157,9 +167,12 @@ fn speed_is_usb2(speed: u32) -> bool {
 // Extended capabilities
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 const XECP_USB_LEGACY: u8 = 0x01;
 const XECP_SUPPORTED_PROTOCOL: u8 = 0x02;
+#[allow(dead_code)]
 const XECP_EXTENDED_POWER: u8 = 0x03;
+#[allow(dead_code)]
 const XECP_DEBUG: u8 = 0x0A;
 
 /// Supported Protocol capability — describes USB2/USB3 protocol on a port range.
