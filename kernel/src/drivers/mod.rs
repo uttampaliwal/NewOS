@@ -1,5 +1,6 @@
 pub mod ahci;
 pub mod framework;
+pub mod gpu;
 pub mod net;
 pub mod nvme;
 pub mod pci;

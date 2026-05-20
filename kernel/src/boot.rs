@@ -155,6 +155,27 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     }
     let _ = writeln!(writer, "[STG: XHCI_PROBE]");
 
+    // 3.4c Probe GPU driver and register in DeviceRegistry
+    {
+        use crate::drivers::framework::{DeviceDriver, DeviceKey};
+        let device_infos: alloc::vec::Vec<(DeviceKey, crate::drivers::framework::DeviceInfo)> = {
+            let registry = crate::drivers::DEVICE_REGISTRY.lock();
+            registry.iter_device_infos().map(|(k, v)| (k.clone(), v.clone())).collect()
+        };
+        for (key, info) in &device_infos {
+            match crate::drivers::gpu::GpuDriver::probe(info) {
+                Ok(driver) => {
+                    let mut registry = crate::drivers::DEVICE_REGISTRY.lock();
+                    registry.register(key.clone(), driver);
+                }
+                Err(e) => {
+                    crate::serial::println!("[GPU] Probe skipped: {:?}", e);
+                }
+            }
+        }
+    }
+    let _ = writeln!(writer, "[STG: GPU_PROBE]");
+
     // 3.5 Initialize network stack (uses MAC from virtio-net)
     crate::drivers::net::init();
     let _ = writeln!(writer, "[STG: NET_INIT]");

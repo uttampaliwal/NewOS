@@ -1,6 +1,7 @@
 use crate::elf;
 use crate::vfs::VFS;
 use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
+use crate::drivers::gpu;
 
 #[derive(Debug)]
 pub enum SyscallResult {
@@ -43,6 +44,7 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Brk => handle_brk(args),
         Syscall::Mkdir => handle_mkdir(args),
         Syscall::Unlink => handle_unlink(args),
+        Syscall::MmapFramebuffer => handle_mmap_framebuffer_syscall(args),
     }
 }
 
@@ -320,6 +322,14 @@ fn handle_yielder(args: SyscallArgs) -> SyscallResult {
         crate::task::scheduler::yield_task();
     }
     SyscallResult::Success(0)
+}
+
+fn handle_mmap_framebuffer_syscall(args: SyscallArgs) -> SyscallResult {
+    let caller_pid = args.arg0;
+    match gpu::handle_mmap_framebuffer(caller_pid) {
+        Ok(addr) => SyscallResult::Success(addr),
+        Err(_) => SyscallResult::Error(-1),
+    }
 }
 
 pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallResult {

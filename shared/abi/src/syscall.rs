@@ -33,6 +33,7 @@ pub enum Syscall {
     Brk = 18,
     Mkdir = 19,
     Unlink = 20,
+    MmapFramebuffer = 21,
 }
 
 impl Syscall {
@@ -58,6 +59,7 @@ impl Syscall {
             18 => Some(Self::Brk),
             19 => Some(Self::Mkdir),
             20 => Some(Self::Unlink),
+            21 => Some(Self::MmapFramebuffer),
             _ => None,
         }
     }
