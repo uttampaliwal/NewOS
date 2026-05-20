@@ -11,7 +11,3 @@ test = false
 turnix-abi = { path = "../../shared/abi" }
 libturnix = { path = "../libturnix" }
 
-[profile.release]
-panic = "abort"
-lto = true
-codegen-units = 1
