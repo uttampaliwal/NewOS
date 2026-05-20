@@ -88,15 +88,15 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test completion queue head advancement and phase bit toggling
     - _Requirements: 4.1_
 
-- [ ] 7. Implement the XHCI USB driver in `kernel/src/drivers/xhci.rs`
-  - [ ] 7.1 Create `kernel/src/drivers/xhci.rs` implementing `DeviceDriver` for XHCI controllers (class `0x0C`, subclass `0x03`, prog_if `0x30`)
+- [x] 7. Implement the XHCI USB driver in `kernel/src/drivers/xhci.rs`
+  - [x] 7.1 Create `kernel/src/drivers/xhci.rs` implementing `DeviceDriver` for XHCI controllers (class `0x0C`, subclass `0x03`, prog_if `0x30`)
     - Implement controller reset with 1-second timeout; log failure and mark unavailable if timeout exceeded
     - Enumerate root hub ports; detect USB 2.0 and USB 3.x devices
     - For USB HID devices: set up interrupt endpoint, deliver input events to `kernel/src/input/mod.rs` within 10 ms of interrupt
     - For USB mass-storage devices: expose as block device in `DeviceRegistry`
     - Wire XHCI driver into `kernel/src/drivers/mod.rs`
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
-  - [ ]* 7.2 Write unit tests for XHCI port status parsing
+  - [x]* 7.2 Write unit tests for XHCI port status parsing
     - Test port speed detection (USB 2.0 vs USB 3.x) from port status register bits
     - Test controller reset timeout path
     - _Requirements: 3.2, 3.5_

@@ -6,6 +6,7 @@ pub mod pci;
 pub mod pcie;
 pub mod video;
 pub mod virtio_net;
+pub mod xhci;
 
 use lazy_static::lazy_static;
 use spin::Mutex;
