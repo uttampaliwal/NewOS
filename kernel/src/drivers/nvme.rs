@@ -206,6 +206,9 @@ pub struct NvmeNamespace {
 // NVMe Controller state
 // ---------------------------------------------------------------------------
 
+/// Phase bit mask: bit 15 of the CQE status field.
+const PHASE_BIT: u16 = 1 << 15;
+
 /// NVMe Controller instance.
 pub struct NvmeController {
     /// Virtual address of BAR0 (MMIO registers).
@@ -232,6 +235,8 @@ pub struct NvmeController {
     next_cid: AtomicU16,
     /// Doorbell stride (in bytes).
     doorbell_stride: u64,
+    /// Expected phase bit value for admin CQ (qid=0) and I/O CQ (qid=1).
+    cq_expected_phase: [AtomicBool; 2],
     /// Discovered namespaces.
     pub namespaces: Vec<NvmeNamespace>,
     /// Device key for this controller (for registry lookup).
@@ -331,9 +336,16 @@ impl NvmeController {
         let cidx = cq_head as usize % cq_entry_count;
         let cqe = unsafe { *clt.add(cidx) };
 
-        // Advance CQ head
-        self.admin_cq_head.store(cq_head.wrapping_add(1), Ordering::Relaxed);
-        self.ring_admin_cq(cq_head.wrapping_add(1));
+        // Advance CQ head; toggle expected phase on wrap-around
+        let new_head = cq_head.wrapping_add(1);
+        self.admin_cq_head.store(new_head, Ordering::Relaxed);
+        if new_head as usize % cq_entry_count == 0 && new_head != 0 {
+            self.cq_expected_phase[0].store(
+                !self.cq_expected_phase[0].load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
+        }
+        self.ring_admin_cq(new_head);
 
         if (cqe.status & 0x7F) != 0 {
             let sts = cqe.status;
@@ -350,6 +362,11 @@ impl NvmeController {
     }
 
     /// Poll a completion queue for a specific command ID with timeout.
+    ///
+    /// Uses the NVMe phase bit to detect new completions:
+    /// the controller toggles bit 15 of the status field each time
+    /// it wraps around the CQ. The host maintains an expected phase
+    /// value; entries whose phase bit matches are new completions.
     fn poll_cq(&self, qid: u16, cid: u16, timeout: u64) -> Result<(), &'static str> {
         let cq_mem = if qid == 0 {
             &self.admin_cq_mem
@@ -368,6 +385,12 @@ impl NvmeController {
             self.io_cq_head.load(Ordering::Relaxed)
         };
 
+        let expected_phase = if qid == 0 {
+            self.cq_expected_phase[0].load(Ordering::Relaxed)
+        } else {
+            self.cq_expected_phase[1].load(Ordering::Relaxed)
+        };
+
         let clt = cq_mem.as_ptr() as *const CompletionQueueEntry;
         let mut iter: u64 = 0;
 
@@ -376,12 +399,16 @@ impl NvmeController {
             let idx = cq_head as usize % cq_size;
             let cqe = unsafe { *clt.add(idx) };
 
-            if cqe.command_id == cid {
+            let phase = (cqe.status & PHASE_BIT) != 0;
+
+            if phase == expected_phase && cqe.command_id == cid {
                 return Ok(());
             }
 
-            if (cqe.status & 0x7FFF) == 0xFFFF {
-                // Phase bit not flipped yet - still pending
+            // If phase bit changed from expected, the controller has not
+            // yet written this entry — keep polling.
+            if phase != expected_phase {
+                // Still pending — continue polling.
             }
 
             iter += 1;
@@ -587,6 +614,7 @@ impl DeviceDriver for NvmeDriver {
             io_cq_head: AtomicU16::new(0),
             next_cid: AtomicU16::new(1),
             doorbell_stride,
+            cq_expected_phase: [AtomicBool::new(true), AtomicBool::new(true)],
             namespaces: Vec::new(),
             device_info: info.clone(),
         };
@@ -786,8 +814,15 @@ pub fn read_blocks(nsid: u32, lba: u64, count: u64, buffer: &mut [u8]) -> Result
             let clt = ctrl.io_cq_mem.as_ptr() as *const CompletionQueueEntry;
             let cqe = unsafe { *clt.add(cq_idx) };
 
-            ctrl.io_cq_head.store(cq_head.wrapping_add(1), Ordering::Relaxed);
-            ctrl.ring_io_cq(cq_head.wrapping_add(1));
+            let new_head = cq_head.wrapping_add(1);
+            ctrl.io_cq_head.store(new_head, Ordering::Relaxed);
+            if new_head as usize % IO_QUEUE_SIZE as usize == 0 && new_head != 0 {
+                ctrl.cq_expected_phase[1].store(
+                    !ctrl.cq_expected_phase[1].load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+            }
+            ctrl.ring_io_cq(new_head);
 
             if (cqe.status & 0x7F) != 0 {
                 return Err(IoError::DeviceError(cqe.status));
@@ -854,8 +889,15 @@ pub fn write_blocks(nsid: u32, lba: u64, count: u64, buffer: &[u8]) -> Result<()
             let clt = ctrl.io_cq_mem.as_ptr() as *const CompletionQueueEntry;
             let cqe = unsafe { *clt.add(cq_idx) };
 
-            ctrl.io_cq_head.store(cq_head.wrapping_add(1), Ordering::Relaxed);
-            ctrl.ring_io_cq(cq_head.wrapping_add(1));
+            let new_head = cq_head.wrapping_add(1);
+            ctrl.io_cq_head.store(new_head, Ordering::Relaxed);
+            if new_head as usize % IO_QUEUE_SIZE as usize == 0 && new_head != 0 {
+                ctrl.cq_expected_phase[1].store(
+                    !ctrl.cq_expected_phase[1].load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+            }
+            ctrl.ring_io_cq(new_head);
 
             if (cqe.status & 0x7F) != 0 {
                 return Err(IoError::DeviceError(cqe.status));
@@ -1115,6 +1157,7 @@ mod tests {
             io_cq_head: AtomicU16::new(0),
             next_cid: AtomicU16::new(1),
             doorbell_stride: stride,
+            cq_expected_phase: [AtomicBool::new(true), AtomicBool::new(true)],
             namespaces: Vec::new(),
             device_info: DeviceInfo {
                 vendor_id: 0,
@@ -1158,5 +1201,379 @@ mod tests {
         let err = NvmeError::IoTimeout { nsid: 1, lba: 100, count: 8 };
         let debug_str = format!("{:?}", err);
         assert!(debug_str.contains("IoTimeout"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 6.2 — NVMe queue management tests
+    // -----------------------------------------------------------------------
+
+    fn make_ctrl_for_queue_tests() -> NvmeController {
+        let admin_sq_size = ADMIN_QUEUE_SIZE as usize * SQ_ENTRY_SIZE as usize;
+        let admin_cq_size = ADMIN_QUEUE_SIZE as usize * CQ_ENTRY_SIZE as usize;
+        let io_sq_size = IO_QUEUE_SIZE as usize * SQ_ENTRY_SIZE as usize;
+        let io_cq_size = IO_QUEUE_SIZE as usize * CQ_ENTRY_SIZE as usize;
+
+        NvmeController {
+            bar0: 0,
+            phys_mem_offset: 0,
+            admin_sq_mem: alloc::vec![0u8; admin_sq_size],
+            admin_cq_mem: alloc::vec![0u8; admin_cq_size],
+            io_sq_mem: alloc::vec![0u8; io_sq_size],
+            io_cq_mem: alloc::vec![0u8; io_cq_size],
+            admin_sq_tail: AtomicU16::new(0),
+            admin_cq_head: AtomicU16::new(0),
+            io_sq_tail: AtomicU16::new(0),
+            io_cq_head: AtomicU16::new(0),
+            next_cid: AtomicU16::new(1),
+            doorbell_stride: 4,
+            cq_expected_phase: [AtomicBool::new(true), AtomicBool::new(true)],
+            namespaces: Vec::new(),
+            device_info: DeviceInfo {
+                vendor_id: 0,
+                device_id: 0,
+                class_code: 0,
+                subclass: 0,
+                prog_if: 0,
+                bus: 0,
+                device: 0,
+                function: 0,
+                bars: [None, None, None, None, None, None],
+                interrupt_line: None,
+                interrupt_pin: None,
+                irq: None,
+            },
+        }
+    }
+
+    /// Write a CQE at a given index in the admin CQ buffer with the
+    /// specified command_id and phase bit.
+    fn write_admin_cqe(ctrl: &mut NvmeController, idx: usize, command_id: u16, phase: bool) {
+        let cq_size = ADMIN_QUEUE_SIZE as usize;
+        let clt = ctrl.admin_cq_mem.as_mut_ptr() as *mut CompletionQueueEntry;
+        let entry = unsafe { &mut *clt.add(idx % cq_size) };
+        *entry = CompletionQueueEntry {
+            cdw0: 0,
+            cdw1: 0,
+            sq_head: 0,
+            sq_id: 0,
+            command_id,
+            status: if phase { PHASE_BIT } else { 0 },
+        };
+    }
+
+    /// Write a CQE at a given index in the I/O CQ buffer with the
+    /// specified command_id and phase bit.
+    fn write_io_cqe(ctrl: &mut NvmeController, idx: usize, command_id: u16, phase: bool) {
+        let cq_size = IO_QUEUE_SIZE as usize;
+        let clt = ctrl.io_cq_mem.as_mut_ptr() as *mut CompletionQueueEntry;
+        let entry = unsafe { &mut *clt.add(idx % cq_size) };
+        *entry = CompletionQueueEntry {
+            cdw0: 0,
+            cdw1: 0,
+            sq_head: 0,
+            sq_id: 0,
+            command_id,
+            status: if phase { PHASE_BIT } else { 0 },
+        };
+    }
+
+    #[test]
+    fn test_submission_queue_tail_doorbell_write() {
+        // Requirement 4.1: Verify SQ tail advances correctly on each
+        // submission and the doorbell offset computation is correct.
+        let mut ctrl = make_ctrl_for_queue_tests();
+
+        // Initially tail should be 0.
+        assert_eq!(ctrl.admin_sq_tail.load(Ordering::Relaxed), 0);
+
+        // Simulate writing admin commands: each submission advances the
+        // tail by 1 and writes the tail value to the correct doorbell offset.
+        let sq_size = ADMIN_QUEUE_SIZE as usize;
+        let slt = ctrl.admin_sq_mem.as_mut_ptr() as *mut SubmissionQueueEntry;
+
+        for i in 0..sq_size * 2 + 5 {
+            let tail_before = ctrl.admin_sq_tail.load(Ordering::Relaxed);
+            let idx = tail_before as usize % sq_size;
+
+            // Write a submission entry (simulating admin_command internals).
+            let entry = unsafe { &mut *slt.add(idx) };
+            *entry = SubmissionQueueEntry {
+                opcode: ADMIN_IDENTIFY,
+                flags: 0,
+                command_id: (i + 1) as u16,
+                nsid: 1,
+                cdw2: 0,
+                cdw3: 0,
+                mptr: 0,
+                prp1: 0,
+                prp2: 0,
+                cdw10: 0,
+                cdw11: 0,
+                cdw12: 0,
+                cdw13: 0,
+                cdw14: 0,
+                cdw15: 0,
+            };
+
+            let new_tail = tail_before.wrapping_add(1);
+            ctrl.admin_sq_tail.store(new_tail, Ordering::Relaxed);
+
+            // Verify tail advanced by 1.
+            assert_eq!(
+                ctrl.admin_sq_tail.load(Ordering::Relaxed),
+                tail_before.wrapping_add(1),
+                "tail should advance by 1 after submission {}",
+                i,
+            );
+
+            // Verify the entry was placed at the correct slot.
+            let read_entry = unsafe { &*slt.add(idx) };
+            assert_eq!(read_entry.command_id, (i + 1) as u16);
+            assert_eq!(read_entry.opcode, ADMIN_IDENTIFY);
+
+            // Verify doorbell offset (SQ0 doorbell) is at 0x1000.
+            assert_eq!(ctrl.sq_doorbell(0), 0x1000);
+        }
+
+        // Verify tail wraps around correctly (ADMIN_QUEUE_SIZE = 64).
+        let submissions = sq_size * 2 + 5;
+        let expected_tail = (submissions as u16).wrapping_mul(1);
+        assert_eq!(
+            ctrl.admin_sq_tail.load(Ordering::Relaxed),
+            expected_tail,
+            "unwrapped tail should be {} after {} submissions",
+            expected_tail, submissions,
+        );
+
+        // After 2 full wraps, the last-written slot index should be valid.
+        let last_slot = (expected_tail.wrapping_sub(1)) as usize % sq_size;
+        let read_entry = unsafe { &*slt.add(last_slot) };
+        assert_eq!(read_entry.command_id, submissions as u16);
+
+        // I/O SQ doorbell: verify offset for qid=1.
+        assert_eq!(ctrl.sq_doorbell(1), 0x1008);
+    }
+
+    #[test]
+    fn test_completion_queue_head_advancement() {
+        // Requirement 4.1: Verify CQ head advances correctly after
+        // consuming completions, and poll_cq detects the right CQE.
+        let mut ctrl = make_ctrl_for_queue_tests();
+
+        // Simulate the device completing 3 admin commands with phase=true.
+        write_admin_cqe(&mut ctrl, 0, 42, true);
+        write_admin_cqe(&mut ctrl, 1, 43, true);
+        write_admin_cqe(&mut ctrl, 2, 44, true);
+
+        // poll_cq should find CID=42 at index 0.
+        assert!(ctrl.poll_cq(0, 42, 100_000).is_ok());
+
+        // Advance CQ head past entry 0.
+        ctrl.admin_cq_head.store(1, Ordering::Relaxed);
+
+        // poll_cq should find CID=43 at index 1.
+        assert!(ctrl.poll_cq(0, 43, 100_000).is_ok());
+
+        // Advance CQ head past entry 1.
+        ctrl.admin_cq_head.store(2, Ordering::Relaxed);
+
+        // poll_cq should find CID=44 at index 2.
+        assert!(ctrl.poll_cq(0, 44, 100_000).is_ok());
+
+        // Advance CQ head past entry 2.
+        ctrl.admin_cq_head.store(3, Ordering::Relaxed);
+
+        // A non-existent CID should time out.
+        assert!(ctrl.poll_cq(0, 999, 100).is_err());
+    }
+
+    #[test]
+    fn test_completion_queue_phase_bit_toggle_on_wrap() {
+        // Requirement 4.1: Verify phase bit detection after CQ wrap-around.
+        // The controller toggles the phase bit when it wraps around the CQ;
+        // the host must toggle its expected phase accordingly.
+        let mut ctrl = make_ctrl_for_queue_tests();
+        let cq_size = ADMIN_QUEUE_SIZE as usize;
+
+        // Initially expected_phase[0] = true (default).
+        assert!(ctrl.cq_expected_phase[0].load(Ordering::Relaxed));
+
+        // Fill the entire admin CQ with completions (phase=true, first pass).
+        for i in 0..cq_size {
+            write_admin_cqe(&mut ctrl, i, (i + 100) as u16, true);
+        }
+
+        // Consume all entries: advance head to end of CQ.
+        ctrl.admin_cq_head.store(cq_size as u16, Ordering::Relaxed);
+
+        // Simulate head wrap: cq_head was cq_size, new_head = cq_size + 1.
+        // The wrap condition: new_head % cq_size == 0 && new_head != 0.
+        // For head advancing from `cq_size - 1` to `cq_size`:
+        //   new_head % cq_size = cq_size % cq_size = 0, and new_head != 0 → toggle.
+        let old_phase = ctrl.cq_expected_phase[0].load(Ordering::Relaxed);
+        let new_head = cq_size as u16;
+        ctrl.admin_cq_head.store(new_head, Ordering::Relaxed);
+        if new_head as usize % cq_size == 0 && new_head != 0 {
+            ctrl.cq_expected_phase[0].store(!old_phase, Ordering::Relaxed);
+        }
+        assert!(!ctrl.cq_expected_phase[0].load(Ordering::Relaxed),
+            "expected_phase should have toggled from true to false after wrap");
+
+        // Now simulate the device writing new completions with phase=false
+        // (toggled because it wrapped too).
+        write_admin_cqe(&mut ctrl, 0, 200, false);
+
+        // poll_cq should detect CID=200 at the wrapped-around head position.
+        let cq_head = ctrl.admin_cq_head.load(Ordering::Relaxed);
+        assert_eq!(cq_head as usize % cq_size, 0,
+            "head should point to slot 0 after wrap");
+        assert!(ctrl.poll_cq(0, 200, 100_000).is_ok());
+
+        // Advance head past entry 0 at the wrapped position.
+        let new_head2 = ctrl.admin_cq_head.load(Ordering::Relaxed) + 1;
+        ctrl.admin_cq_head.store(new_head2, Ordering::Relaxed);
+
+        // A CID with wrong phase should NOT be detected.
+        write_admin_cqe(&mut ctrl, 1, 300, true); // wrong phase for second wrap
+        assert!(ctrl.poll_cq(0, 300, 1000).is_err(),
+            "should NOT detect CID=300 with wrong phase bit");
+    }
+
+    #[test]
+    fn test_io_submission_queue_tail_wraparound() {
+        // Verify that I/O SQ tail wraps around correctly at IO_QUEUE_SIZE.
+        let mut ctrl = make_ctrl_for_queue_tests();
+        let sq_size = IO_QUEUE_SIZE as usize;
+        let slt = ctrl.io_sq_mem.as_mut_ptr() as *mut SubmissionQueueEntry;
+
+        // Submit commands past wrap point.
+        for i in 0..sq_size + 10 {
+            let tail_before = ctrl.io_sq_tail.load(Ordering::Relaxed);
+            let idx = tail_before as usize % sq_size;
+
+            let entry = unsafe { &mut *slt.add(idx) };
+            *entry = SubmissionQueueEntry {
+                opcode: NVM_READ,
+                flags: 0,
+                command_id: i as u16,
+                nsid: 1,
+                cdw2: 0,
+                cdw3: 0,
+                mptr: 0,
+                prp1: 0,
+                prp2: 0,
+                cdw10: i as u32,
+                cdw11: 0,
+                cdw12: 0,
+                cdw13: 0,
+                cdw14: 0,
+                cdw15: 0,
+            };
+
+            ctrl.io_sq_tail.store(tail_before.wrapping_add(1), Ordering::Relaxed);
+        }
+
+        let final_tail = ctrl.io_sq_tail.load(Ordering::Relaxed);
+        let expected_tail = (sq_size + 10) as u16;
+        assert_eq!(final_tail, expected_tail);
+
+        // Verify entry at the wrapped slot is the latest one.
+        let wrapped_idx = final_tail.wrapping_sub(1) as usize % sq_size;
+        let read_entry = unsafe { &*slt.add(wrapped_idx) };
+        assert_eq!(read_entry.command_id, (sq_size + 9) as u16);
+    }
+
+    #[test]
+    fn test_completion_queue_multiple_wrap_phase_toggle() {
+        // Test multiple CQ wraps to verify phase toggles on each wrap.
+        let mut ctrl = make_ctrl_for_queue_tests();
+        let cq_size = ADMIN_QUEUE_SIZE as usize;
+
+        // Start with phase=true.
+        assert!(ctrl.cq_expected_phase[0].load(Ordering::Relaxed));
+
+        // --- First pass: fill CQ with phase=true entries ---
+        for i in 0..cq_size {
+            write_admin_cqe(&mut ctrl, i, (i + 1) as u16, true);
+        }
+        // Consume entries one by one, advancing head.
+        for i in 0..cq_size {
+            let cid = (i + 1) as u16;
+            ctrl.admin_cq_head.store(i as u16, Ordering::Relaxed);
+            assert!(ctrl.poll_cq(0, cid, 100_000).is_ok(),
+                "should detect CID={} in first pass", cid);
+            // Advance head (simulating admin_command post-poll).
+            let new_head = (i + 1) as u16;
+            ctrl.admin_cq_head.store(new_head, Ordering::Relaxed);
+        }
+
+        // Wrap: advance head from cq_size to cq_size + 1 → triggers toggle.
+        let old_phase = ctrl.cq_expected_phase[0].load(Ordering::Relaxed);
+        let wrap_head = cq_size as u16;
+        if wrap_head as usize % cq_size == 0 && wrap_head != 0 {
+            ctrl.cq_expected_phase[0].store(!old_phase, Ordering::Relaxed);
+        }
+        ctrl.admin_cq_head.store(wrap_head, Ordering::Relaxed);
+        assert!(!ctrl.cq_expected_phase[0].load(Ordering::Relaxed),
+            "expected_phase should be false after first wrap");
+
+        // --- Second pass: fill CQ with phase=false entries ---
+        for i in 0..cq_size {
+            write_admin_cqe(&mut ctrl, i, (i + 1000) as u16, false);
+        }
+
+        // Consume entries from the wrapped position.
+        for i in 0..cq_size {
+            let cid = (i + 1000) as u16;
+            // Head points to slot (wrap_head + i) % cq_size which should be slot i.
+            let head_val = wrap_head + i as u16;
+            ctrl.admin_cq_head.store(head_val, Ordering::Relaxed);
+            assert!(ctrl.poll_cq(0, cid, 100_000).is_ok(),
+                "should detect CID={} in second pass at head={}", cid, head_val);
+            // Advance head.
+            let new_head = head_val.wrapping_add(1);
+            ctrl.admin_cq_head.store(new_head, Ordering::Relaxed);
+        }
+
+        // --- Second wrap: toggle back to true ---
+        let old_phase2 = ctrl.cq_expected_phase[0].load(Ordering::Relaxed);
+        let wrap_head2 = wrap_head + cq_size as u16;
+        if wrap_head2 as usize % cq_size == 0 && wrap_head2 != 0 {
+            ctrl.cq_expected_phase[0].store(!old_phase2, Ordering::Relaxed);
+        }
+        ctrl.admin_cq_head.store(wrap_head2, Ordering::Relaxed);
+        assert!(ctrl.cq_expected_phase[0].load(Ordering::Relaxed),
+            "expected_phase should toggle back to true after second wrap");
+
+        // --- Third pass: write and detect a completion with phase=true ---
+        write_admin_cqe(&mut ctrl, 0, 500, true);
+        ctrl.admin_cq_head.store(wrap_head2, Ordering::Relaxed);
+        assert!(ctrl.poll_cq(0, 500, 100_000).is_ok(),
+            "should detect CID=500 with phase=true after second wrap");
+    }
+
+    #[test]
+    fn test_io_completion_queue_phase_toggle() {
+        // I/O CQ phase bit toggling (qid=1).
+        let mut ctrl = make_ctrl_for_queue_tests();
+        let cq_size = IO_QUEUE_SIZE as usize;
+
+        assert!(ctrl.cq_expected_phase[1].load(Ordering::Relaxed));
+
+        // Fill I/O CQ with completions (phase=true).
+        for i in 0..cq_size {
+            write_io_cqe(&mut ctrl, i, (i + 50) as u16, true);
+        }
+
+        // Consume all entries and wrap.
+        let wrap_head = cq_size as u16; // 256 → idx = 256 % 256 = 0
+        ctrl.io_cq_head.store(wrap_head, Ordering::Relaxed);
+        let old_phase = ctrl.cq_expected_phase[1].load(Ordering::Relaxed);
+        ctrl.cq_expected_phase[1].store(!old_phase, Ordering::Relaxed);
+        assert!(!ctrl.cq_expected_phase[1].load(Ordering::Relaxed));
+
+        // Write new completion at slot 0 with toggled (false) phase.
+        write_io_cqe(&mut ctrl, 0, 99, false);
+        assert!(ctrl.poll_cq(1, 99, 100_000).is_ok());
     }
 }
