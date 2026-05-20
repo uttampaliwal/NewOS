@@ -101,19 +101,19 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test controller reset timeout path
     - _Requirements: 3.2, 3.5_
 
-- [ ] 8. Implement the GPU framebuffer driver and DRM/KMS layer in `kernel/src/drivers/gpu/`
-  - [ ] 8.1 Create `kernel/src/drivers/gpu/drm.rs` with the `DrmDevice` trait (`enumerate_connectors`, `set_mode`, `page_flip`, `create_framebuffer`) and a linear framebuffer implementation for QEMU's `virtio-gpu` or `bochs-display` device
+- [x] 8. Implement the GPU framebuffer driver and DRM/KMS layer in `kernel/src/drivers/gpu/`
+  - [x] 8.1 Create `kernel/src/drivers/gpu/drm.rs` with the `DrmDevice` trait (`enumerate_connectors`, `set_mode`, `page_flip`, `create_framebuffer`) and a linear framebuffer implementation for QEMU's `virtio-gpu` or `bochs-display` device
     - Negotiate a 1920×1080 32bpp linear framebuffer mode via DRM/KMS
     - Expose the framebuffer as a memory-mapped region via a new `mmap_framebuffer` syscall; enforce that only the Compositor process PID may map it (return `EPERM` for all others)
     - Implement display resolution change notification to the Compositor via an event fd
     - Wire GPU driver into `kernel/src/drivers/mod.rs` and register in `DeviceRegistry`
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
-  - [ ]* 8.2 Write unit tests for DRM framebuffer permission enforcement
+  - [x]* 8.2 Write unit tests for DRM framebuffer permission enforcement
     - Test that `mmap_framebuffer` returns `EPERM` for a non-compositor PID
     - Test framebuffer size calculation for 1920×1080×4 bytes
     - _Requirements: 5.5_
 
-- [ ] 9. Phase 1 checkpoint — wire all drivers and verify boot
+- [x] 9. Phase 1 checkpoint — wire all drivers and verify boot
   - Ensure all Phase 1 drivers compile, all unit tests pass, and QEMU boots with PCIe enumeration log showing at least the virtio-net and virtio-blk devices
   - Ensure all tests pass, ask the user if questions arise.
 

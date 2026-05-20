@@ -132,13 +132,13 @@ impl BochsDisplayDriver {
         // SAFETY: caller must ensure I/O ports are accessible
         unsafe {
             core::arch::asm!(
-                "out dx, ax",
+                "outw %ax, %dx",
                 in("dx") VBE_DISPI_IOPORT_INDEX,
                 in("ax") index,
                 options(att_syntax, nostack)
             );
             core::arch::asm!(
-                "out dx, ax",
+                "outw %ax, %dx",
                 in("dx") VBE_DISPI_IOPORT_DATA,
                 in("ax") value,
                 options(att_syntax, nostack)
@@ -160,7 +160,7 @@ impl BochsDisplayDriver {
         unsafe {
             // Write index
             core::arch::asm!(
-                "out dx, ax",
+                "outw %ax, %dx",
                 in("dx") VBE_DISPI_IOPORT_INDEX,
                 in("ax") index,
                 options(att_syntax, nostack)
@@ -168,7 +168,7 @@ impl BochsDisplayDriver {
             // Read value
             let value: u16;
             core::arch::asm!(
-                "in ax, dx",
+                "inw %dx, %ax",
                 in("dx") VBE_DISPI_IOPORT_DATA,
                 out("ax") value,
                 options(att_syntax, nostack)
