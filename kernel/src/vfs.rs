@@ -287,6 +287,31 @@ impl Vfs {
     }
 }
 
+impl Vfs {
+    /// Read a page-sized chunk (4 KiB) from a VFS entry identified by
+    /// its index in the entry list, used as a simple inode identifier
+    /// for the page cache integration.
+    pub fn read_page(&self, entry_idx: usize, page_offset: u64, buf: &mut [u8]) -> bool {
+        if entry_idx >= self.entries.len() {
+            return false;
+        }
+        if let Some(data) = &self.entries[entry_idx].data {
+            let start = page_offset as usize;
+            if start >= data.len() {
+                return false;
+            }
+            let avail = data.len() - start;
+            let len = buf.len().min(avail);
+            buf[..len].copy_from_slice(&data[start..start + len]);
+            if len < buf.len() {
+                buf[len..].fill(0);
+            }
+            return true;
+        }
+        false
+    }
+}
+
 impl Default for Vfs {
     fn default() -> Self {
         Self::new()

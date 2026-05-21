@@ -3,16 +3,77 @@ use x86_64::structures::paging::{
     FrameAllocator, Mapper, OffsetPageTable, Page, PageSize, PageTable, PageTableFlags, PhysFrame,
     Size4KiB,
 };
+use x86_64::VirtAddr;
 
-use crate::memory::vma::VmaProt;
+use crate::memory::page_cache::PAGE_CACHE;
+use crate::memory::vma::{VmaBacking, VmaProt};
+use crate::memory::PAGE_SIZE;
+
+/// Map a physical frame into the current process at the given virtual
+/// address, using the protection flags from the VMA.
+fn map_fault_frame(
+    fault_addr: VirtAddr,
+    frame: PhysFrame<Size4KiB>,
+    prot: VmaProt,
+    allocator: &mut impl FrameAllocator<Size4KiB>,
+    phys_mem_offset: VirtAddr,
+) -> bool {
+    unsafe {
+        let page = Page::<Size4KiB>::containing_address(fault_addr);
+        let (pml4_frame, _) = x86_64::registers::control::Cr3::read();
+        let pml4_ptr =
+            (phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+        let mut mapper = OffsetPageTable::new(&mut *pml4_ptr, phys_mem_offset);
+
+        let mut flags = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
+        if prot.is_writable() {
+            flags |= PageTableFlags::WRITABLE;
+        }
+        if !prot.is_executable() {
+            flags |= PageTableFlags::NO_EXECUTE;
+        }
+
+        match mapper.map_to(page, frame, flags, allocator) {
+            Ok(flush) => {
+                flush.flush();
+                true
+            }
+            Err(_) => false,
+        }
+    }
+}
+
+/// Read a page of file data from the VFS for a file-backed mapping.
+/// Falls back to zero-fill when the file data is unavailable.
+fn populate_file_page(
+    frame_ptr: *mut u8,
+    inode: crate::memory::vma::InodeId,
+    page_idx: u64,
+) {
+    let vfs = crate::vfs::VFS.lock();
+    let page_offset = page_idx * PAGE_SIZE;
+    let buf =
+        unsafe { core::slice::from_raw_parts_mut(frame_ptr, Size4KiB::SIZE as usize) };
+    if !vfs.read_page(inode.0 as usize, page_offset, buf) {
+        // File data not available — zero-fill
+        unsafe {
+            core::ptr::write_bytes(frame_ptr, 0, Size4KiB::SIZE as usize);
+        }
+    }
+}
 
 /// Handle a page fault caused by demand paging.
 ///
 /// Checks the faulting address (from `Cr2`) against the current process's
-/// `VmaSet`. If the address is covered by a VMA, a physical frame is
-/// allocated, zero-filled, and mapped with the VMA's protection flags.
-/// Returns `true` if the fault was resolved, `false` if it should
-/// result in `SIGSEGV` / process termination.
+/// `VmaSet`. If the address is covered by a VMA:
+///
+/// - For `Anonymous` VMAs: allocates a zero-filled physical frame and maps it.
+/// - For `FileBacked` VMAs: checks the page cache first. On hit, maps the
+///   cached frame directly. On miss, allocates a new frame, reads file data
+///   from the VFS, populates the cache, and maps the frame.
+///
+/// Returns `true` if the fault was resolved, `false` if it should result
+/// in `SIGSEGV` / process termination.
 pub fn handle_demand_fault() -> bool {
     let fault_addr = match Cr2::read() {
         Ok(a) => a,
@@ -36,6 +97,47 @@ pub fn handle_demand_fault() -> bool {
         None => return false,
     };
 
+    // ── File-backed VMA — use the page cache ──────────────────────
+    if let VmaBacking::FileBacked { inode, offset } = &vma.backing {
+        let vma_offset = fault_addr.as_u64().saturating_sub(vma.start.as_u64());
+        let file_offset = offset.saturating_add(vma_offset);
+        let page_idx = file_offset / PAGE_SIZE;
+        let now = crate::task::scheduler::get_uptime_ticks();
+
+        let mut cache = PAGE_CACHE.lock();
+
+        // 1. Cache hit — map the existing shared frame
+        if let Some(cached_frame) = cache.lookup(*inode, page_idx, now) {
+            cache.add_ref(*inode, page_idx);
+            drop(cache);
+            let kframe = PhysFrame::containing_address(x86_64::PhysAddr::new(
+                cached_frame.start_address,
+            ));
+            return map_fault_frame(fault_addr, kframe, vma.prot, allocator, phys_mem_offset);
+        }
+        drop(cache);
+
+        // 2. Cache miss — allocate a frame, populate from VFS, insert
+        let kframe: PhysFrame<Size4KiB> = match allocator.allocate_frame() {
+            Some(f) => f,
+            None => return false,
+        };
+        let frame_ptr =
+            (phys_mem_offset + kframe.start_address().as_u64()).as_mut_ptr::<u8>();
+
+        populate_file_page(frame_ptr, *inode, page_idx);
+
+        let mut cache = PAGE_CACHE.lock();
+        let phys = crate::memory::PhysFrame {
+            start_address: kframe.start_address().as_u64(),
+        };
+        cache.insert(*inode, page_idx, phys, now);
+        cache.add_ref(*inode, page_idx);
+
+        return map_fault_frame(fault_addr, kframe, vma.prot, allocator, phys_mem_offset);
+    }
+
+    // ── Anonymous VMA — allocate + zero-fill ──────────────────────
     let frame: PhysFrame<Size4KiB> = match allocator.allocate_frame() {
         Some(f) => f,
         None => return false,
@@ -46,30 +148,7 @@ pub fn handle_demand_fault() -> bool {
         core::ptr::write_bytes(frame_ptr, 0, Size4KiB::SIZE as usize);
     }
 
-    let page = Page::<Size4KiB>::containing_address(fault_addr);
-
-    let (pml4_frame, _) = x86_64::registers::control::Cr3::read();
-    let pml4_ptr =
-        (phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
-    let mut mapper = unsafe { OffsetPageTable::new(&mut *pml4_ptr, phys_mem_offset) };
-
-    let mut flags = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
-    if vma.prot.is_writable() {
-        flags |= PageTableFlags::WRITABLE;
-    }
-    if !vma.prot.is_executable() {
-        flags |= PageTableFlags::NO_EXECUTE;
-    }
-
-    unsafe {
-        match mapper.map_to(page, frame, flags, allocator) {
-            Ok(flush) => {
-                flush.flush();
-                true
-            }
-            Err(_) => false,
-        }
-    }
+    map_fault_frame(fault_addr, frame, vma.prot, allocator, phys_mem_offset)
 }
 
 /// Check whether the given `VmaProt` violates W^X (both WRITE and EXECUTE).

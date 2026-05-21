@@ -7,6 +7,7 @@ use x86_64::structures::paging::{
 pub mod allocator;
 pub mod demand;
 pub mod heap;
+pub mod page_cache;
 pub mod paging;
 pub mod user;
 pub mod vma;
