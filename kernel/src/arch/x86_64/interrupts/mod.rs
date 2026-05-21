@@ -312,8 +312,11 @@ extern "x86-interrupt" fn page_fault_handler(
 
     let addr = Cr2::read();
 
-    // Check if the fault occurred in user mode (CS segment selector has RPL 3)
+    // Attempt demand paging for user-mode faults
     if stack_frame.code_segment.0 & 0x3 == 0x3 {
+        if crate::memory::demand::handle_demand_fault() {
+            return;
+        }
         crate::serial::println!(
             "PROCESS FAULT: Page Fault at {:?} with error code {:?}. Terminating process.",
             addr,

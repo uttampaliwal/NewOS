@@ -1,7 +1,9 @@
 use crate::elf;
+use crate::memory::vma::{VmaFlags, VmaProt};
 use crate::vfs::VFS;
 use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
 use crate::drivers::gpu;
+use x86_64::VirtAddr;
 
 #[derive(Debug)]
 pub enum SyscallResult {
@@ -45,6 +47,8 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Mkdir => handle_mkdir(args),
         Syscall::Unlink => handle_unlink(args),
         Syscall::MmapFramebuffer => handle_mmap_framebuffer_syscall(args),
+        Syscall::Mmap => handle_mmap(args),
+        Syscall::Munmap => handle_munmap(args),
     }
 }
 
@@ -329,6 +333,68 @@ fn handle_mmap_framebuffer_syscall(args: SyscallArgs) -> SyscallResult {
     match gpu::handle_mmap_framebuffer(caller_pid) {
         Ok(addr) => SyscallResult::Success(addr),
         Err(_) => SyscallResult::Error(-1),
+    }
+}
+
+fn handle_mmap(args: SyscallArgs) -> SyscallResult {
+    let addr_hint = args.arg0;
+    let length = args.arg1;
+    let prot_bits = args.arg2 as u8;
+    let flags_bits = args.arg3 as u8;
+
+    if length == 0 || length > 0x1000_0000 {
+        return SyscallResult::Error(22);
+    }
+
+    let prot = VmaProt::from_bits_truncate(prot_bits);
+    if crate::memory::demand::check_wx(prot) {
+        crate::serial::println!("[mmap] W^X violation: rejecting MAP_ANONYMOUS with PROT_WRITE|PROT_EXEC");
+        return SyscallResult::Error(13);
+    }
+
+    let mut flags = VmaFlags::empty();
+    if flags_bits & 1 != 0 { flags |= VmaFlags::MAP_PRIVATE; }
+    if flags_bits & 2 != 0 { flags |= VmaFlags::MAP_SHARED; }
+    if flags_bits & 4 != 0 { flags |= VmaFlags::MAP_FIXED; }
+
+    let is_anon = flags_bits & 8 != 0;
+    if !is_anon {
+        return SyscallResult::Error(22);
+    }
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let addr = if flags.contains(VmaFlags::MAP_FIXED) {
+        Some(VirtAddr::new(addr_hint))
+    } else {
+        None
+    };
+
+    match process.mmap_anon(addr, length, prot, flags) {
+        Ok(start) => SyscallResult::Success(start.as_u64()),
+        Err(_) => SyscallResult::Error(11),
+    }
+}
+
+fn handle_munmap(args: SyscallArgs) -> SyscallResult {
+    let addr = args.arg0;
+    let length = args.arg1;
+
+    if length == 0 {
+        return SyscallResult::Success(0);
+    }
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    match process.munmap_range(VirtAddr::new(addr), length) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(_) => SyscallResult::Error(1),
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::elf;
 use crate::memory::paging;
-use crate::memory::vma::VmaSet;
+use crate::memory::vma::{VmaSet, Vma, VmaProt, VmaFlags, VmaBacking, VmaError};
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
     Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB,
@@ -23,6 +23,8 @@ impl ProcessId {
 use crate::task::TaskId;
 use alloc::vec::Vec;
 
+pub const DEFAULT_MMAP_BASE: u64 = 0x0000_2000_0000_0000;
+
 #[derive(Debug)]
 pub struct ProcessInner {
     pub id: ProcessId,
@@ -31,6 +33,7 @@ pub struct ProcessInner {
     pub stack_top: VirtAddr,
     pub threads: Vec<TaskId>,
     pub vma_set: VmaSet,
+    pub mmap_next_addr: VirtAddr,
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +66,50 @@ impl Process {
         self.inner.lock().threads.clone()
     }
 
+    pub fn with_vma_set<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&VmaSet) -> R,
+    {
+        let inner = self.inner.lock();
+        f(&inner.vma_set)
+    }
+
+    pub fn with_vma_set_mut<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut VmaSet) -> R,
+    {
+        let mut inner = self.inner.lock();
+        f(&mut inner.vma_set)
+    }
+
+    pub fn mmap_anon(&self, addr: Option<VirtAddr>, length: u64, prot: VmaProt, flags: VmaFlags) -> Result<VirtAddr, VmaError> {
+        let mut inner = self.inner.lock();
+        let page_aligned_len = length.max(4096).next_multiple_of(4096);
+        let actual_addr = match addr {
+            Some(a) => a,
+            None => {
+                let a = inner.mmap_next_addr;
+                inner.mmap_next_addr = VirtAddr::new(inner.mmap_next_addr.as_u64().checked_add(page_aligned_len).unwrap_or(u64::MAX));
+                a
+            }
+        };
+        let vma = Vma {
+            start: actual_addr,
+            end: VirtAddr::new(actual_addr.as_u64().checked_add(page_aligned_len).unwrap_or(u64::MAX)),
+            prot,
+            backing: VmaBacking::Anonymous,
+            flags,
+        };
+        inner.vma_set.insert(vma)?;
+        Ok(actual_addr)
+    }
+
+    pub fn munmap_range(&self, addr: VirtAddr, _length: u64) -> Result<(), VmaError> {
+        let mut inner = self.inner.lock();
+        inner.vma_set.remove(addr).ok_or(VmaError::Conflict)?;
+        Ok(())
+    }
+
     pub fn kernel_process() -> Self {
         lazy_static::lazy_static! {
             static ref KERNEL_PROC: Process = {
@@ -75,6 +122,7 @@ impl Process {
                         stack_top: VirtAddr::zero(),
                         threads: Vec::new(),
                         vma_set: VmaSet::new(),
+                        mmap_next_addr: VirtAddr::new(DEFAULT_MMAP_BASE),
                     }))
                 }
             };
@@ -100,6 +148,7 @@ impl Process {
             stack_top,
             threads: Vec::new(),
             vma_set: VmaSet::new(),
+            mmap_next_addr: VirtAddr::new(DEFAULT_MMAP_BASE),
         };
 
         let process = Self {
@@ -211,6 +260,7 @@ impl Process {
             stack_top: inner.stack_top,
             threads: Vec::new(),
             vma_set: VmaSet::new(),
+            mmap_next_addr: inner.mmap_next_addr,
         };
 
         Self {

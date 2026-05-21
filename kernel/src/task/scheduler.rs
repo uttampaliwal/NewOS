@@ -1,4 +1,5 @@
 use super::{Task, TaskId};
+use crate::process::Process;
 use alloc::collections::VecDeque;
 use core::sync::atomic::{AtomicU64, Ordering};
 use lazy_static::lazy_static;
@@ -174,4 +175,9 @@ pub fn get_task_count() -> usize {
 
 pub fn get_current_task_id() -> Option<TaskId> {
     SCHEDULER.lock().current_task_id
+}
+
+pub fn get_current_process() -> Option<Process> {
+    let sched = SCHEDULER.lock();
+    sched.current_task.as_ref().map(|task| task.process.clone())
 }

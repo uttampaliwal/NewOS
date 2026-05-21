@@ -34,6 +34,8 @@ pub enum Syscall {
     Mkdir = 19,
     Unlink = 20,
     MmapFramebuffer = 21,
+    Mmap = 22,
+    Munmap = 23,
 }
 
 impl Syscall {
@@ -59,7 +61,9 @@ impl Syscall {
             18 => Some(Self::Brk),
             19 => Some(Self::Mkdir),
             20 => Some(Self::Unlink),
-            21 => Some(Self::MmapFramebuffer),
+             21 => Some(Self::MmapFramebuffer),
+             22 => Some(Self::Mmap),
+             23 => Some(Self::Munmap),
             _ => None,
         }
     }
@@ -199,5 +203,25 @@ mod tests {
     #[test]
     fn mmap_framebuffer_syscall_round_trip() {
         assert_eq!(Syscall::from_u16(21), Some(Syscall::MmapFramebuffer));
+    }
+
+    #[test]
+    fn mmap_syscall_id_is_twenty_two() {
+        assert_eq!(Syscall::Mmap as u16, 22);
+    }
+
+    #[test]
+    fn munmap_syscall_id_is_twenty_three() {
+        assert_eq!(Syscall::Munmap as u16, 23);
+    }
+
+    #[test]
+    fn mmap_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(22), Some(Syscall::Mmap));
+    }
+
+    #[test]
+    fn munmap_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(23), Some(Syscall::Munmap));
     }
 }

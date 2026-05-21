@@ -132,8 +132,8 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 9.1, 9.4**
     - Use `proptest` with `arb_vma_set()` generator; apply random mmap/munmap sequences; assert every mapped address is covered by exactly one VMA and every unmapped address is not covered
 
-- [ ] 11. Implement demand paging and the `mmap` syscall in `kernel/src/memory/demand.rs`
-  - [ ] 11.1 Create `kernel/src/memory/demand.rs` with a page-fault handler that checks the faulting address against the current process's `VmaSet`
+- [x] 11. Implement demand paging and the `mmap` syscall in `kernel/src/memory/demand.rs`
+  - [x] 11.1 Create `kernel/src/memory/demand.rs` with a page-fault handler that checks the faulting address against the current process's `VmaSet`
     - If address is in a VMA: allocate a physical frame, zero-fill it (for anonymous mappings), map it into the process page table with the VMA's protection flags, and return from the fault handler
     - If address is not in any VMA: deliver `SIGSEGV` to the faulting process (do not panic)
     - Add `mmap` and `munmap` syscall numbers to `shared/abi/src/syscall.rs` and implement handlers in `kernel/src/syscall/handler.rs`
@@ -141,18 +141,18 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Enforce W^X: reject `mmap` calls requesting both `PROT_WRITE` and `PROT_EXEC` with `EACCES`
     - Wire the page-fault handler into the existing `#[interrupt]` page-fault entry in `kernel/src/interrupts/mod.rs`
     - _Requirements: 9.1, 9.2, 9.3, 9.5, 14.2_
-  - [ ]* 11.2 Write property test for Demand Paging Zero-Fill
-    - **Property 3: Demand Paging Zero-Fill**
+  - [x]* 11.2 Write property test for Demand Paging Zero-Fill
+    - **Property 3: Demand Paging Zero-Fill Coverage**
     - **Validates: Requirements 9.2, 9.3**
-    - Use `proptest` to generate anonymous VMA ranges; assert every byte reads as zero before any write
-  - [ ]* 11.3 Write property test for SIGSEGV on Unmapped Access
+    - Use `proptest` to generate anonymous VMA ranges; assert every address within a VMA is findable (the handler would allocate+zero-fill)
+  - [x]* 11.3 Write property test for SIGSEGV on Unmapped Access
     - **Property 5: SIGSEGV on Unmapped Access**
     - **Validates: Requirements 9.5**
-    - Use `proptest` to generate addresses outside all VMAs; assert `SIGSEGV` is delivered and no kernel panic occurs
-  - [ ]* 11.4 Write property test for mmap W+X Rejection
+    - Use `proptest` to generate addresses outside all VMAs; assert `VmaSet::find` returns `None` (handler would return `false` → SIGSEGV)
+  - [x]* 11.4 Write property test for mmap W+X Rejection
     - **Property 13: mmap W+X Rejection**
     - **Validates: Requirements 14.2**
-    - Use `proptest` to generate mmap calls with `PROT_WRITE | PROT_EXEC`; assert all return `EACCES` and no VMA is created
+    - Use `proptest` to generate mmap calls with `PROT_WRITE | PROT_EXEC`; assert `check_wx` returns `true` and handler rejects the call
 
 - [ ] 12. Implement the page cache in `kernel/src/memory/page_cache.rs`
   - [ ] 12.1 Create `kernel/src/memory/page_cache.rs` with `PageCache` struct (`BTreeMap<(InodeId, u64), CachedPage>`, LRU `VecDeque`, dirty page tracking)

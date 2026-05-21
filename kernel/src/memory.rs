@@ -5,6 +5,7 @@ use x86_64::structures::paging::{
 };
 
 pub mod allocator;
+pub mod demand;
 pub mod heap;
 pub mod paging;
 pub mod user;
