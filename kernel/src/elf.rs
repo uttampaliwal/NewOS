@@ -15,6 +15,7 @@ pub struct ElfHeader {
     pub program_header_offset: u64,
     pub program_header_entry_size: u16,
     pub program_header_count: u16,
+    pub elf_type: u16,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -77,6 +78,7 @@ pub fn parse_header(data: &[u8]) -> Result<ElfHeader, ParseError> {
         program_header_offset: e_phoff,
         program_header_entry_size: e_phentsize,
         program_header_count: e_phnum,
+        elf_type: e_type,
     })
 }
 
@@ -223,6 +225,7 @@ mod tests {
         assert_eq!(header.program_header_offset, 0x40);
         assert_eq!(header.program_header_entry_size, 56);
         assert_eq!(header.program_header_count, 1);
+        assert_eq!(header.elf_type, ELF_TYPE_EXEC);
     }
 
     #[test]

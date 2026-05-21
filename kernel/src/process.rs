@@ -1,4 +1,5 @@
 use crate::elf;
+use crate::memory::aslr;
 use crate::memory::paging;
 use crate::memory::vma::{VmaSet, Vma, VmaProt, VmaFlags, VmaBacking, VmaError};
 use x86_64::VirtAddr;
@@ -136,19 +137,25 @@ impl Process {
         physical_memory_offset: VirtAddr,
     ) -> Result<Self, elf::ParseError> {
         let header = elf::parse_header(elf_data)?;
+        let aslr_base = aslr::randomise_load_base(&header);
+
         let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
-        let stack_start = VirtAddr::new(0x0000_7000_0000_0000);
         let stack_size: u64 = 4096 * 8;
+        let stack_base = aslr::randomise_stack_base();
+        let stack_start = stack_base;
         let stack_top = stack_start + stack_size;
+
+        let entry_point = aslr_base + header.entry;
+        let mmap_base = aslr::randomise_heap_base();
 
         let inner = ProcessInner {
             id: ProcessId::new(),
             pml4_frame,
-            entry_point: VirtAddr::new(header.entry),
+            entry_point,
             stack_top,
             threads: Vec::new(),
             vma_set: VmaSet::new(),
-            mmap_next_addr: VirtAddr::new(DEFAULT_MMAP_BASE),
+            mmap_next_addr: mmap_base,
         };
 
         let process = Self {
@@ -184,7 +191,7 @@ impl Process {
                         return Err(elf::ParseError::ProgramHeaderOutOfBounds);
                     }
 
-                    let virt_start = VirtAddr::new(ph.virtual_address);
+                    let virt_start = aslr_base + ph.virtual_address;
                     let mut flags = PageTableFlags::empty();
                     if ph.flags & elf::PF_W != 0 {
                         flags |= PageTableFlags::WRITABLE;
@@ -257,10 +264,10 @@ impl Process {
             id: ProcessId::new(),
             pml4_frame,
             entry_point: inner.entry_point,
-            stack_top: inner.stack_top,
+            stack_top: aslr::randomise_stack_base(),
             threads: Vec::new(),
             vma_set: VmaSet::new(),
-            mmap_next_addr: inner.mmap_next_addr,
+            mmap_next_addr: aslr::randomise_heap_base(),
         };
 
         Self {
