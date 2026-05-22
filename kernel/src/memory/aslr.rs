@@ -112,6 +112,33 @@ pub fn randomise_heap_base() -> VirtAddr {
 }
 
 // ---------------------------------------------------------------------------
+// KASLR
+// ---------------------------------------------------------------------------
+
+/// Number of bits of page-offset entropy for KASLR (requirement: >= 9).
+const KASLR_PAGE_ENTROPY: u64 = 9;
+/// Number of page-aligned positions for the kernel: 2^9 = 512.
+const KASLR_RANGE_PAGES: u64 = 1 << KASLR_PAGE_ENTROPY;
+
+/// Traditional kernel load base (higher-half).
+pub const KERNEL_BASE: u64 = 0xffff_ffff_8000_0000;
+
+/// Return a randomised page-aligned offset for the kernel load address,
+/// providing at least 9 bits of entropy within the higher-half region.
+///
+/// The offset is relative to `KERNEL_BASE` and is guaranteed to keep the
+/// kernel within the canonical higher-half range.
+///
+/// **Note:** Full KASLR activation requires the kernel to be compiled as
+/// position-independent code (`-C relocation-model=pic`).  The offset is
+/// still generated here and passed through `BootInfo` so that the UEFI
+/// loader can map the kernel at the randomised address.
+pub fn randomise_kernel_base() -> VirtAddr {
+    let page_offset = ASLR_RNG.lock().next_u64() % KASLR_RANGE_PAGES;
+    VirtAddr::new(KERNEL_BASE + page_offset * crate::memory::PAGE_SIZE)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -284,6 +311,45 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Property 31 — KASLR Offset Entropy and Alignment
+    // -----------------------------------------------------------------------
+    //
+    // Verify that randomise_kernel_base produces page-aligned addresses with
+    // at least 9 bits of entropy above the KERNEL_BASE.
+    proptest! {
+        #[test]
+        fn kaslr_entropy_and_alignment(
+            _seed in any::<u64>(),
+        ) {
+            let addr = randomise_kernel_base();
+            let offset = addr.as_u64().wrapping_sub(KERNEL_BASE);
+
+            // Must be page-aligned
+            prop_assert_eq!(
+                offset & 0xFFF, 0,
+                "KASLR offset must be page-aligned",
+            );
+
+            // Must be within the range of 2^9 pages
+            prop_assert!(
+                offset < KASLR_RANGE_PAGES * 4096,
+                "KASLR offset out of range: {:#x}",
+                offset,
+            );
+        }
+    }
+
+    #[test]
+    fn kaslr_consecutive_calls_differ() {
+        let a = randomise_kernel_base().as_u64();
+        let b = randomise_kernel_base().as_u64();
+        if a == b {
+            let c = randomise_kernel_base().as_u64();
+            assert_ne!(a, c);
         }
     }
 }

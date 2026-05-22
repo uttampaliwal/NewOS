@@ -29,6 +29,7 @@ const KERNEL_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\turnix\kernel.elf");
 const RAMDISK_IMAGE_PATH: &uefi::CStr16 = cstr16!(r"\turnix\initramfs.img");
 const PHYSICAL_MEMORY_OFFSET: u64 = 0xffff_8000_0000_0000;
 const RAMDISK_VIRTUAL_BASE: u64 = 0xffff_9000_0000_0000;
+const KERNEL_VIRTUAL_BASE: u64 = 0xffff_ffff_8000_0000;
 
 use turnix_serial::{self as serial, println as serial_println};
 
@@ -40,6 +41,9 @@ fn main() -> Status {
 
     serial_println!("turnix UEFI loader");
 
+    // Compute KASLR offset before loading the kernel (needed for RELA fixups)
+    let kaslr_offset = generate_kaslr_offset();
+
     // 1. Load Kernel ELF and Ramdisk
     let (loaded_kernel, ramdisk_phys, ramdisk_size) = {
         let image_fs = boot::get_image_file_system(boot::image_handle())
@@ -50,7 +54,7 @@ fn main() -> Status {
             .read(KERNEL_IMAGE_PATH)
             .expect("kernel image should be readable");
         let loaded_kernel =
-            elf::load_kernel(&kernel_bytes).expect("kernel ELF should load successfully");
+            elf::load_kernel(&kernel_bytes, kaslr_offset).expect("kernel ELF should load successfully");
         serial_println!("kernel loaded: entry=0x{:016x}", loaded_kernel.entry_point);
 
         let ramdisk_bytes = file_system.read(RAMDISK_IMAGE_PATH).unwrap_or_else(|_| {
@@ -124,6 +128,7 @@ fn main() -> Status {
             loaded_kernel,
             ramdisk_phys,
             ramdisk_size,
+            kaslr_offset,
         );
     }
 
@@ -159,8 +164,9 @@ fn main() -> Status {
         let boot_info = &mut *boot_info_ptr;
         *boot_info = BootInfo::uefi(ABI_VERSION);
         boot_info.flags |= BOOT_FLAG_BOOT_SERVICES_EXITED;
-        boot_info.kernel_image_base = loaded_kernel.virtual_base;
+        boot_info.kernel_image_base = KERNEL_VIRTUAL_BASE + kaslr_offset;
         boot_info.kernel_image_size = loaded_kernel.image_size;
+        boot_info.kaslr_offset = kaslr_offset;
         boot_info.physical_memory_offset = PHYSICAL_MEMORY_OFFSET;
         boot_info.ramdisk_addr = if ramdisk_size > 0 {
             RAMDISK_VIRTUAL_BASE
@@ -196,7 +202,7 @@ fn main() -> Status {
         );
 
         serial_println!("Jumping to kernel...");
-        jump_to_kernel(loaded_kernel.entry_point, boot_info as *const BootInfo)
+        jump_to_kernel(loaded_kernel.entry_point + kaslr_offset, boot_info as *const BootInfo)
     }
 }
 
@@ -217,6 +223,7 @@ unsafe fn setup_mappings(
     kernel: LoadedKernel,
     ramdisk_phys: u64,
     ramdisk_size: u64,
+    kaslr_offset: u64,
 ) {
     let (old_pml4_frame, _) = Cr3::read();
     let old_pml4 = unsafe { &*(old_pml4_frame.start_address().as_u64() as *const PageTable) };
@@ -245,11 +252,12 @@ unsafe fn setup_mappings(
     }
     let mut scratch_alloc = ScratchAllocator(&mut alloc);
 
-    // 2. Map Kernel to Higher-Half (0xffffffff80000000) using 4KB pages
+    // 2. Map Kernel to Higher-Half using 4KB pages
+    let kernel_load_addr = KERNEL_VIRTUAL_BASE + kaslr_offset;
     let page_count = kernel.image_size.div_ceil(4096);
     for i in 0..page_count {
         let page: Page<Size4KiB> =
-            Page::containing_address(VirtAddr::new(kernel.virtual_base + i * 4096));
+            Page::containing_address(VirtAddr::new(kernel_load_addr + i * 4096));
         let frame =
             PhysFrame::containing_address(x86_64::PhysAddr::new(kernel.physical_base + i * 4096));
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
@@ -327,10 +335,29 @@ unsafe fn setup_mappings(
     }
 }
 
+type KernelEntry = unsafe extern "sysv64" fn(*const BootInfo) -> !;
+
 unsafe fn jump_to_kernel(entry_point: u64, boot_info: *const BootInfo) -> ! {
-    type KernelEntry = extern "sysv64" fn(*const BootInfo) -> !;
     let entry: KernelEntry = unsafe { core::mem::transmute(entry_point as usize) };
-    entry(boot_info)
+    unsafe { entry(boot_info) }
+}
+
+/// Generate a page-aligned KASLR offset with at least 9 bits of entropy
+/// derived from RDRAND (req 15.2).
+const KASLR_PAGE_ENTROPY: u64 = 9;
+const KASLR_RANGE_PAGES: u64 = 1 << KASLR_PAGE_ENTROPY;
+
+fn generate_kaslr_offset() -> u64 {
+    // Attempt RDRAND; fall back to 0 if the instruction is not available
+    // (should not happen on any real x86_64 UEFI system).
+    let mut val: u64 = 0;
+    let ok = unsafe { core::arch::x86_64::_rdrand64_step(&mut val) == 1 };
+    if ok {
+        let page_offset = val % KASLR_RANGE_PAGES;
+        page_offset * 4096
+    } else {
+        0
+    }
 }
 
 fn qemu_exit_failure() -> ! {

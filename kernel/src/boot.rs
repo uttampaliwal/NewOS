@@ -51,6 +51,20 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     let mut mapper = unsafe { crate::memory::paging::init(phys_mem_offset) };
     let _ = writeln!(writer, "[STG: PAGING_INIT]");
 
+    // 1a. W^X self-check: verify no kernel page is both writable and executable
+    {
+        let violations = crate::memory::wx::boot_self_check(phys_mem_offset);
+        if violations > 0 {
+            let _ = writeln!(
+                writer,
+                "[WARNING] W^X violation: {} kernel pages are both writable and executable",
+                violations
+            );
+        } else {
+            let _ = writeln!(writer, "[STG: W^X_OK]");
+        }
+    }
+
     // 2. Initialize the kernel heap
     crate::memory::heap::init_heap(&mut mapper, &mut frame_allocator)
         .expect("heap initialization failed");
@@ -366,7 +380,8 @@ fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
         "Validating BootInfo: ABI version = {}, expected = 3",
         boot_info.abi_version
     );
-    if boot_info.abi_version != 3 {
+    // Validate BootInfo ABI version
+    if boot_info.abi_version != 3 && boot_info.abi_version != 4 {
         return Err("Unsupported BootInfo ABI version");
     }
 

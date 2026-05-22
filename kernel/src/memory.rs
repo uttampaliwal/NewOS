@@ -12,6 +12,7 @@ pub mod page_cache;
 pub mod paging;
 pub mod user;
 pub mod vma;
+pub mod wx;
 
 pub const PAGE_SIZE: u64 = 4096;
 const LOW_MEMORY_CUTOFF: u64 = 0x100000;
@@ -147,6 +148,7 @@ mod tests {
                 format: 0,
             },
             rsdp_addr: 0,
+            kaslr_offset: 0,
         }
     }
 

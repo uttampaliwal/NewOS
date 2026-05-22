@@ -13,11 +13,12 @@ const ELF_TYPE_EXEC: u16 = 2;
 const ELF_TYPE_DYN: u16 = 3;
 const ELF_MACHINE_X86_64: u16 = 62;
 const PROGRAM_HEADER_LOAD: u32 = 1;
+const SECTION_TYPE_RELA: u32 = 4;
+const R_X86_64_RELATIVE: u32 = 8;
 
 #[derive(Debug, Clone, Copy)]
 pub struct LoadedKernel {
     pub entry_point: u64,
-    pub virtual_base: u64,
     pub physical_base: u64,
     pub image_size: u64,
 }
@@ -58,7 +59,7 @@ struct ProgramHeader {
     memory_size: usize,
 }
 
-pub fn load_kernel(image: &[u8]) -> Result<LoadedKernel, LoadError> {
+pub fn load_kernel(image: &[u8], kaslr_offset: u64) -> Result<LoadedKernel, LoadError> {
     let header = parse_header(image)?;
 
     let mut loadable = 0usize;
@@ -126,9 +127,14 @@ pub fn load_kernel(image: &[u8]) -> Result<LoadedKernel, LoadError> {
         }
     }
 
+    // Apply RELA relocations for KASLR (only when the binary is PIE/ET_DYN
+    // and a non-zero offset was requested).
+    if kaslr_offset != 0 {
+        apply_relocations(image, physical_base, virtual_base, kaslr_offset)?;
+    }
+
     Ok(LoadedKernel {
         entry_point: header.entry_point,
-        virtual_base,
         physical_base,
         image_size,
     })
@@ -140,6 +146,119 @@ fn kernel_memory_type() -> MemoryType {
     } else {
         MemoryType::LOADER_DATA
     }
+}
+
+/// Apply `R_X86_64_RELATIVE` relocations from all `SHT_RELA` sections,
+/// adding `kaslr_offset` to each absolute address target.
+///
+/// This makes the kernel position-independent by adjusting all embedded
+/// absolute addresses to account for the load offset from the preferred
+/// base (0xffff_ffff_8000_0000).
+fn apply_relocations(
+    image: &[u8],
+    physical_base: u64,
+    virtual_base: u64,
+    kaslr_offset: u64,
+) -> Result<(), LoadError> {
+    if image.len() < 64 {
+        return Err(LoadError::FileTooSmall);
+    }
+
+    let shoff = read_u64(image, 40)? as usize;
+    let shentsize = read_u16(image, 58)? as usize;
+    let shnum = read_u16(image, 60)? as usize;
+    let shstrndx = read_u16(image, 62)? as usize;
+
+    if shoff == 0 || shentsize < 64 || shnum == 0 {
+        return Ok(()); // No section headers, nothing to relocate
+    }
+
+    // Read the section name string table (.shstrtab)
+    let strtab_off = shoff
+        .checked_add(shstrndx.checked_mul(shentsize).ok_or(LoadError::ProgramHeaderOutOfBounds)?)
+        .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+    let strtab_end = strtab_off
+        .checked_add(shentsize)
+        .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+    if strtab_end > image.len() {
+        return Err(LoadError::ProgramHeaderOutOfBounds);
+    }
+    let strtab_sh = &image[strtab_off..strtab_end];
+    let _strtab_offset = read_u64(strtab_sh, 24)? as usize;
+    let _strtab_size = read_u64(strtab_sh, 32)? as usize;
+
+    // Iterate through all section headers looking for SHT_RELA
+    for i in 0..shnum {
+        let sh_off = shoff
+            .checked_add(i.checked_mul(shentsize).ok_or(LoadError::ProgramHeaderOutOfBounds)?)
+            .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+        let sh_end = sh_off
+            .checked_add(shentsize)
+            .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+        if sh_end > image.len() {
+            return Err(LoadError::ProgramHeaderOutOfBounds);
+        }
+
+        let sh_data = &image[sh_off..sh_end];
+        let sh_type = read_u32(sh_data, 4)?;
+
+        if sh_type != SECTION_TYPE_RELA {
+            continue;
+        }
+
+        let sh_offset = read_u64(sh_data, 24)? as usize;
+        let sh_size = read_u64(sh_data, 32)? as usize;
+        let sh_entsize = read_u64(sh_data, 56)? as usize;
+
+        // Each RELA entry is 24 bytes
+        if sh_entsize < 24 {
+            continue;
+        }
+
+        let num_entries = sh_size / sh_entsize;
+
+        for j in 0..num_entries {
+            let entry_off = sh_offset
+                .checked_add(j.checked_mul(sh_entsize).ok_or(LoadError::ProgramHeaderOutOfBounds)?)
+                .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+            let entry_end = entry_off
+                .checked_add(24)
+                .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
+            if entry_end > image.len() {
+                return Err(LoadError::ProgramHeaderOutOfBounds);
+            }
+
+            let r_offset = read_u64(image, entry_off)?;                  // location to fix
+            let r_info = read_u64(image, entry_off + 8)?;                // symbol index + type
+            let r_addend = read_u64(image, entry_off + 16)?;             // addend
+
+            let r_type = (r_info & 0xffff_ffff) as u32;
+
+            if r_type != R_X86_64_RELATIVE {
+                continue;
+            }
+
+            // The target address (absolute virtual address in the ELF)
+            let target_va = r_offset;
+            // Convert to physical offset from where the kernel was loaded
+            if target_va < virtual_base {
+                continue;
+            }
+            let physical_target = physical_base + (target_va - virtual_base);
+
+            // R_X86_64_RELATIVE: *(r_offset) = B + A
+            //   B = load delta = actual_base - linked_virtual_base = kaslr_offset
+            //   A = addend (the prelinked full virtual address from the RELA entry)
+            // Result: the addend (full VA) shifted by the KASLR offset.
+            let new_val = r_addend.wrapping_add(kaslr_offset);
+            let target_ptr = physical_target as *mut u64;
+            unsafe {
+                core::ptr::write_volatile(target_ptr, new_val);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn parse_header(image: &[u8]) -> Result<ElfHeader, LoadError> {

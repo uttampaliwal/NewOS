@@ -154,55 +154,55 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 14.2**
     - Use `proptest` to generate mmap calls with `PROT_WRITE | PROT_EXEC`; assert `check_wx` returns `true` and handler rejects the call
 
-- [ ] 12. Implement the page cache in `kernel/src/memory/page_cache.rs`
-  - [ ] 12.1 Create `kernel/src/memory/page_cache.rs` with `PageCache` struct (`BTreeMap<(InodeId, u64), CachedPage>`, LRU `VecDeque`, dirty page tracking)
+- [x] 12. Implement the page cache in `kernel/src/memory/page_cache.rs`
+  - [x] 12.1 Create `kernel/src/memory/page_cache.rs` with `PageCache` struct (`BTreeMap<(InodeId, u64), CachedPage>`, LRU `VecDeque`, dirty page tracking)
     - Implement `lookup`, `insert`, `mark_dirty`, and `evict_lru` methods
     - Integrate page cache into the VFS read path: check cache before issuing block I/O; populate cache on miss
     - Implement dirty page writeback scheduling (mark dirty on write, writeback within 30 seconds via a kernel timer)
     - Implement page sharing: multiple processes mapping the same file page use the same `PhysFrame`
     - Evict LRU pages when free memory falls below a configurable low-watermark
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
-  - [ ]* 12.2 Write property test for Page Cache Read Idempotence
+  - [x]* 12.2 Write property test for Page Cache Read Idempotence
     - **Property 6: Page Cache Read Idempotence**
     - **Validates: Requirements 10.1, 10.2**
     - Use `proptest` to generate file/page-index pairs; assert second read issues zero block I/O requests
-  - [ ]* 12.3 Write property test for Page Cache LRU Eviction Order
+  - [x]* 12.3 Write property test for Page Cache LRU Eviction Order
     - **Property 7: Page Cache LRU Eviction Order**
     - **Validates: Requirements 10.3**
     - Use `proptest` to generate access sequences; assert evicted page has the earliest last-access timestamp
-  - [ ]* 12.4 Write property test for Page Cache Sharing
+  - [x]* 12.4 Write property test for Page Cache Sharing
     - **Property 8: Page Cache Sharing**
     - **Validates: Requirements 10.5**
     - Use `proptest` to generate N-process file mappings; assert distinct physical frame count equals unique page count
 
-- [ ] 13. Implement ASLR in `kernel/src/memory/aslr.rs`
-  - [ ] 13.1 Create `kernel/src/memory/aslr.rs` with a PRNG seeded from `RDRAND` at boot
+- [x] 13. Implement ASLR in `kernel/src/memory/aslr.rs`
+  - [x] 13.1 Create `kernel/src/memory/aslr.rs` with a PRNG seeded from `RDRAND` at boot
     - Implement `randomise_load_base(elf: &ElfHeader) -> VirtAddr` providing at least 28 bits of entropy for PIE binaries; log a warning and return the preferred address for non-PIE binaries
     - Implement `randomise_stack_base() -> VirtAddr` and `randomise_heap_base() -> VirtAddr` for fork
     - Integrate into `kernel/src/process.rs` `new_from_elf`: use `randomise_load_base` to set the ELF load address; preserve relative segment layout (add ASLR base to each segment's file virtual address)
     - Integrate into `kernel/src/process.rs` `fork`: assign new random stack/heap bases to the child
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5_
-  - [ ]* 13.2 Write property test for ASLR Address Diversity
+  - [x]* 13.2 Write property test for ASLR Address Diversity
     - **Property 9: ASLR Address Diversity**
     - **Validates: Requirements 13.1**
     - Use `proptest` to call `randomise_load_base` 10 times with the same ELF; assert all 10 addresses are distinct
-  - [ ]* 13.3 Write property test for ASLR Fork Address Diversity
+  - [x]* 13.3 Write property test for ASLR Fork Address Diversity
     - **Property 10: ASLR Fork Address Diversity**
     - **Validates: Requirements 13.3**
     - Use `proptest` to generate a process and fork it; assert child stack/heap bases differ from parent
-  - [ ]* 13.4 Write property test for ELF Segment Relative Layout Preservation
+  - [x]* 13.4 Write property test for ELF Segment Relative Layout Preservation
     - **Property 11: ELF Segment Relative Layout Preservation**
     - **Validates: Requirements 13.4**
     - Use `proptest` to generate PIE ELF headers with N segments; assert inter-segment virtual address differences are preserved regardless of ASLR base
 
-- [ ] 14. Implement W^X enforcement and KASLR in `kernel/src/memory/`
-  - [ ] 14.1 Create `kernel/src/memory/wx.rs` with a `check_wx_invariant(page_table: &OffsetPageTable)` function that walks all page table entries and asserts no entry has both `WRITABLE` and `!NO_EXECUTE`
+- [x] 14. Implement W^X enforcement and KASLR in `kernel/src/memory/`
+  - [x] 14.1 Create `kernel/src/memory/wx.rs` with a `check_wx_invariant(page_table: &OffsetTable)` function that walks all page table entries and asserts no entry has both `WRITABLE` and `!NO_EXECUTE`
     - Call `check_wx_invariant` at boot and log the result (pass/fail with count of violations)
     - Enforce W^X in `kernel/src/process.rs` `map_user_region`: strip `WRITABLE` from any segment also lacking `NO_EXECUTE` before mapping; after ELF load, revoke write permission on executable segments before jumping to entry point
-    - Extend `kernel/src/memory/aslr.rs` with KASLR: in `boot/uefi-loader/src/main.rs`, derive a random offset from `RDRAND` or UEFI random seed, apply it to the kernel load address before jumping to the kernel entry point
+    - Extend `kernel/src/memory/aslr.rs` with KASLR: in `boot/uefi-loader/src/main.rs`, derive a random offset from `RDRAND`, apply it to the kernel load address before jumping to the kernel entry point, and apply `R_X86_64_RELATIVE` fixups before the kernel starts
     - Ensure KASLR offset is not exposed via any syscall to unprivileged processes
     - _Requirements: 14.1, 14.3, 14.4, 14.5, 15.1, 15.2, 15.3, 15.4_
-  - [ ]* 14.2 Write property test for W^X Invariant
+  - [x]* 14.2 Write property test for W^X Invariant
     - **Property 12: W^X Invariant**
     - **Validates: Requirements 14.1, 14.3**
     - Use `proptest` to generate page table entries with random flag combinations; assert no entry has `WRITABLE && !NO_EXECUTE`

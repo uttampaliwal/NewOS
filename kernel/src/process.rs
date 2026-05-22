@@ -2,6 +2,7 @@ use crate::elf;
 use crate::memory::aslr;
 use crate::memory::paging;
 use crate::memory::vma::{VmaSet, Vma, VmaProt, VmaFlags, VmaBacking, VmaError};
+use crate::memory::wx;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
     Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB,
@@ -163,11 +164,11 @@ impl Process {
         };
 
         unsafe {
-            // Map User Stack
+            // Map User Stack (read-write, non-executable)
             process.map_user_region(
                 stack_start,
                 stack_size,
-                PageTableFlags::WRITABLE,
+                PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
                 frame_allocator,
                 physical_memory_offset,
             );
@@ -176,6 +177,9 @@ impl Process {
             let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
                 .as_mut_ptr::<PageTable>();
             let process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+
+            // Track executable segments for post-load write revocation
+            let mut exec_segments: Vec<(VirtAddr, u64)> = Vec::new();
 
             for i in 0..header.program_header_count {
                 if let Some(ph) = elf::parse_program_header(elf_data, header, i)? {
@@ -192,18 +196,20 @@ impl Process {
                     }
 
                     let virt_start = aslr_base + ph.virtual_address;
-                    let mut flags = PageTableFlags::empty();
-                    if ph.flags & elf::PF_W != 0 {
-                        flags |= PageTableFlags::WRITABLE;
-                    }
-                    if ph.flags & elf::PF_X == 0 {
-                        flags |= PageTableFlags::NO_EXECUTE;
+
+                    // Map as writable + non-executable during load (req 14.4:
+                    // writable-only, never W+X, even transiently). Executable
+                    // segments will be promoted to R-X after data copy.
+                    let map_flags = PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE;
+                    let is_exec = (ph.flags & elf::PF_X) != 0;
+                    if is_exec {
+                        exec_segments.push((virt_start, ph.memory_size));
                     }
 
                     process.map_user_region(
                         virt_start,
                         ph.memory_size,
-                        flags,
+                        map_flags,
                         frame_allocator,
                         physical_memory_offset,
                     );
@@ -239,6 +245,12 @@ impl Process {
                         offset += copy_size;
                     }
                 }
+            }
+
+            // Finalise executable segments: strip WRITABLE and clear NO_EXECUTE
+            // so they become R-X before the entry point runs (req 14.4).
+            for (seg_start, seg_size) in &exec_segments {
+                wx::clear_write_and_allow_exec(pml4_frame, physical_memory_offset, *seg_start, *seg_size);
             }
         }
         Ok(process)
@@ -289,7 +301,10 @@ impl Process {
 
         unsafe {
             let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
-            let flags = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | extra_flags;
+            // Apply W^X enforcement: strip WRITABLE if both WRITABLE and executable
+            let mut enforced_flags = extra_flags;
+            wx::enforce_wx_on_flags(&mut enforced_flags);
+            let flags = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | enforced_flags;
             let pages = Page::<Size4KiB>::range_inclusive(
                 Page::containing_address(virt_start),
                 Page::containing_address(virt_start + size - 1u64),

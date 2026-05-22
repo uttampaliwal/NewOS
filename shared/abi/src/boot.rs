@@ -135,6 +135,7 @@ pub struct BootInfo {
     pub memory_map: BootMemoryMap,
     pub framebuffer: BootFramebuffer,
     pub rsdp_addr: u64,
+    pub kaslr_offset: u64,
 }
 
 impl BootInfo {
@@ -159,6 +160,7 @@ impl BootInfo {
                 format: 0,
             },
             rsdp_addr: 0,
+            kaslr_offset: 0,
         }
     }
 
@@ -185,6 +187,7 @@ mod tests {
         assert_eq!(boot_info.ramdisk_addr, 0);
         assert_eq!(boot_info.ramdisk_size, 0);
         assert_eq!(boot_info.rsdp_addr, 0);
+        assert_eq!(boot_info.kaslr_offset, 0);
         assert_eq!(boot_info.memory_map.entry_count(), 0);
     }
 
