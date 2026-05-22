@@ -6,6 +6,7 @@ use crate::memory::FrameAllocator;
 use crate::serial::{self, SerialWriter};
 use x86_64::VirtAddr;
 
+use alloc::sync::Arc;
 use lazy_static::lazy_static;
 use spin::Mutex;
 
@@ -75,6 +76,17 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
 
     // Store the frame allocator in the global mutex after heap is ready
     *FRAME_ALLOCATOR.lock() = Some(frame_allocator);
+
+    // 2.5 Initialize swap manager with in-memory backend
+    {
+        use crate::memory::swap::{InMemorySwapDevice, SwapDevice, SwapManager};
+        let swap_device: Arc<dyn SwapDevice> = Arc::new(
+            InMemorySwapDevice::new(256, "memswap")
+                .expect("failed to allocate swap device memory"),
+        );
+        SwapManager::init(swap_device, 1024);
+    }
+    let _ = writeln!(writer, "[STG: SWAP_INIT]");
 
     // 3. Initialize Architecture
     crate::gdt::init();

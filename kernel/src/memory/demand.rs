@@ -97,6 +97,21 @@ pub fn handle_demand_fault() -> bool {
         None => return false,
     };
 
+    // ── Check for swapped-out page ──────────────────────────
+    {
+        let pml4_frame = process.pml4_frame();
+        let pte_bits = crate::memory::swap::read_pte(pml4_frame, phys_mem_offset, fault_addr);
+        if let Some(bits) = pte_bits {
+            if crate::memory::swap::is_swapped_out_pte(bits) {
+                if let Some(phys) = crate::memory::swap::restore_swapped_page(bits) {
+                    let kframe = PhysFrame::containing_address(x86_64::PhysAddr::new(phys));
+                    return map_fault_frame(fault_addr, kframe, vma.prot, allocator, phys_mem_offset);
+                }
+                return false;
+            }
+        }
+    }
+
     // ── File-backed VMA — use the page cache ──────────────────────
     if let VmaBacking::FileBacked { inode, offset } = &vma.backing {
         let vma_offset = fault_addr.as_u64().saturating_sub(vma.start.as_u64());

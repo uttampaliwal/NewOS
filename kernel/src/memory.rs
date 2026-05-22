@@ -11,6 +11,7 @@ pub mod heap;
 pub mod page_cache;
 pub mod paging;
 pub mod user;
+pub mod swap;
 pub mod vma;
 pub mod wx;
 
