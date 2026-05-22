@@ -91,13 +91,11 @@ pub fn handle_demand_fault() -> bool {
     };
 
     let phys_mem_offset = crate::boot::get_phys_mem_offset();
-    let mut frame_allocator_guard = crate::boot::FRAME_ALLOCATOR.lock();
-    let allocator = match frame_allocator_guard.as_mut() {
-        Some(a) => a,
-        None => return false,
-    };
 
     // ── Check for swapped-out page ──────────────────────────
+    // Must happen BEFORE acquiring FRAME_ALLOCATOR because restore_swapped_page
+    // → swap_in → allocate_swappable_frame also locks FRAME_ALLOCATOR.
+    // spin::Mutex is NOT re-entrant, so holding the lock here would deadlock.
     {
         let pml4_frame = process.pml4_frame();
         let pte_bits = crate::memory::swap::read_pte(pml4_frame, phys_mem_offset, fault_addr);
@@ -105,12 +103,23 @@ pub fn handle_demand_fault() -> bool {
             if crate::memory::swap::is_swapped_out_pte(bits) {
                 if let Some(phys) = crate::memory::swap::restore_swapped_page(bits) {
                     let kframe = PhysFrame::containing_address(x86_64::PhysAddr::new(phys));
-                    return map_fault_frame(fault_addr, kframe, vma.prot, allocator, phys_mem_offset);
+                    let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
+                    return match guard.as_mut() {
+                        Some(a) => map_fault_frame(fault_addr, kframe, vma.prot, a, phys_mem_offset),
+                        None => false,
+                    };
                 }
                 return false;
             }
         }
     }
+
+    // ── Acquire frame allocator for non-swap paths ──────────
+    let mut frame_allocator_guard = crate::boot::FRAME_ALLOCATOR.lock();
+    let allocator = match frame_allocator_guard.as_mut() {
+        Some(a) => a,
+        None => return false,
+    };
 
     // ── File-backed VMA — use the page cache ──────────────────────
     if let VmaBacking::FileBacked { inode, offset } = &vma.backing {
