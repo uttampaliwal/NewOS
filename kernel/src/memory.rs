@@ -8,6 +8,7 @@ pub mod allocator;
 pub mod aslr;
 pub mod demand;
 pub mod heap;
+pub mod oom;
 pub mod page_cache;
 pub mod paging;
 pub mod user;
@@ -64,6 +65,33 @@ impl<'a> FrameAllocator<'a> {
                 return Some(PhysFrame {
                     start_address: candidate,
                 });
+            }
+        }
+
+        // Out of memory — invoke OOM killer and retry once
+        if crate::memory::oom::oom_kill().is_some() {
+            // Retry the allocation after reclaim
+            for descriptor in self.boot_info.memory_map.iter() {
+                let is_usable = match descriptor.ty {
+                    MEMORY_TYPE_CONVENTIONAL => true,
+                    MEMORY_TYPE_BOOT_SERVICES_CODE => true,
+                    MEMORY_TYPE_BOOT_SERVICES_DATA => true,
+                    _ => false,
+                };
+
+                if !is_usable {
+                    continue;
+                }
+
+                let range = usable_range(descriptor).unwrap();
+                let candidate = align_up(self.next_address.max(range.start), PAGE_SIZE);
+
+                if candidate < range.end {
+                    self.next_address = candidate.checked_add(PAGE_SIZE)?;
+                    return Some(PhysFrame {
+                        start_address: candidate,
+                    });
+                }
             }
         }
 
