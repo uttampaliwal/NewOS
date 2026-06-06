@@ -394,6 +394,103 @@ impl Task {
         }
     }
 
+    /// Create a task for an exec'd process.
+    ///
+    /// Sets up a fresh kernel stack that jumps to the new entry point, with a new user stack.
+    #[cfg(target_arch = "x86_64")]
+    pub fn new_exec_user(
+        process: Process,
+        mapper: &mut impl Mapper<Size4KiB>,
+        frame_allocator: &mut impl FrameAllocator<Size4KiB>,
+        physical_memory_offset: VirtAddr,
+    ) -> Self {
+        const STACK_PAGES: u64 = 8;
+        const GUARD_PAGES: u64 = 1;
+        const STACK_SIZE: u64 = STACK_PAGES * 4096;
+        const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
+
+        let id = TaskId::new();
+        let stack_region_base =
+            VirtAddr::new(KERNEL_STACK_REGION_BASE + (id.0 as u64) * STACK_STRIDE);
+        let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
+        let stack_top_virt = usable_stack_start + STACK_SIZE;
+
+        unsafe {
+            let pages = Page::<Size4KiB>::range_inclusive(
+                Page::containing_address(usable_stack_start),
+                Page::containing_address(stack_top_virt - 1u64),
+            );
+
+            for page in pages {
+                let frame = frame_allocator
+                    .allocate_frame()
+                    .expect("out of memory for exec-task kernel stack");
+
+                // Map into current (kernel) address space
+                if let Err(_) = mapper.map_to(
+                    page,
+                    frame,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                    frame_allocator,
+                ) {
+                    // Already mapped
+                } else {
+                    use x86_64::instructions::tlb;
+                    tlb::flush(page.start_address());
+                }
+
+                // Map into new process address space
+                let pml4_ptr = (physical_memory_offset + process.pml4_frame().start_address().as_u64())
+                    .as_mut_ptr::<PageTable>();
+                let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+
+                if let Err(_) = process_mapper.map_to(
+                    page,
+                    frame,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                    frame_allocator,
+                ) {
+                    // Already mapped
+                }
+            }
+        }
+
+        let mut stack_ptr = stack_top_virt.as_mut_ptr::<usize>();
+
+        unsafe {
+            // SS (user data)
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0x23);
+            // RSP (user stack top)
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(process.stack_top().as_u64() as usize);
+            // RFLAGS
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0x202);
+            // CS (user code)
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0x2b);
+            // RIP (entry point)
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(process.entry_point().as_u64() as usize);
+
+            // General purpose registers (all zeros)
+            for _ in 0..15 {
+                stack_ptr = stack_ptr.sub(1);
+                stack_ptr.write(0);
+            }
+        }
+
+        process.add_thread(id);
+        Self {
+            id,
+            stack_ptr: stack_ptr as usize,
+            kernel_stack_top: stack_top_virt.as_u64() as usize,
+            process,
+            state: TaskState::Ready,
+        }
+    }
+
     pub fn switch_to(&self) {
         #[cfg(target_arch = "x86_64")]
         {

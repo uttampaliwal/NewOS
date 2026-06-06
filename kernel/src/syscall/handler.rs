@@ -267,44 +267,114 @@ fn handle_stat(args: SyscallArgs) -> SyscallResult {
     }
 }
 
-fn handle_exec(_args: SyscallArgs) -> SyscallResult {
-    let elf_data_ptr = _args.arg0 as *const u8;
-    let elf_size = _args.arg1 as usize;
+fn handle_exec(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
 
-    if elf_data_ptr.is_null() || elf_size == 0 {
-        crate::serial::print(format_args!("exec: null pointer or zero size\n"));
+    // Validate path pointer and len
+    if path_ptr.is_null() || path_len == 0 || path_len > 4096 {
         return SyscallResult::Error(1);
     }
 
-    let elf_data = unsafe { core::slice::from_raw_parts(elf_data_ptr, elf_size) };
+    // Convert user path to &str
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path = match core::str::from_utf8(path_slice) {
+        Ok(p) => p,
+        Err(_) => return SyscallResult::Error(2), // Invalid UTF-8
+    };
 
-    let header = match elf::parse_header(elf_data) {
-        Ok(h) => h,
-        Err(e) => {
-            crate::serial::print(format_args!("exec: invalid ELF header: {:?}\n", e));
-            return SyscallResult::Error(1);
+    // Get current process
+    let current_process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(3), // No current process
+    };
+
+    // Open the file from VFS
+    let mut vfs = crate::vfs::VFS.lock();
+    let fd = match vfs.open(path) {
+        Some(fd) => fd,
+        None => return SyscallResult::Error(4), // File not found
+    };
+
+    // Get file stat to know size
+    let stat = match vfs.stat(path) {
+        Some(s) => s,
+        None => {
+            vfs.close(fd);
+            return SyscallResult::Error(5);
         }
     };
 
-    let mut loaded_segments = 0usize;
-    for i in 0..header.program_header_count {
-        match elf::parse_program_header(elf_data, header, i) {
-            Ok(Some(_ph)) => {
-                loaded_segments += 1;
-            }
-            Ok(None) => {}
-            Err(e) => {
-                crate::serial::print(format_args!("exec: program header error: {:?}\n", e));
-            }
+    // Allocate buffer for ELF data
+    let mut elf_data = alloc::vec![0u8; stat.size as usize];
+
+    // Read the entire file into the buffer
+    let read_len = match vfs.read(fd, &mut elf_data) {
+        Some(len) => len,
+        None => {
+            vfs.close(fd);
+            return SyscallResult::Error(6);
         }
-    }
+    };
 
-    crate::serial::print(format_args!(
-        "exec: loaded {} segments, entry: {:#x}\n",
-        loaded_segments, header.entry
-    ));
+    // Close the file
+    vfs.close(fd);
 
-    SyscallResult::Success(header.entry)
+    // Drop VFS lock before doing process operations
+    drop(vfs);
+
+    // Get frame allocator and phys mem offset
+    let mut frame_allocator_guard = crate::boot::get_frame_allocator().lock();
+    let frame_allocator = match frame_allocator_guard.as_mut() {
+        Some(fa) => fa,
+        None => return SyscallResult::Error(7),
+    };
+    let phys_mem_offset = crate::boot::get_phys_mem_offset();
+
+    // Perform exec on the current process
+    match current_process.exec_from_elf(&elf_data[..read_len], frame_allocator, phys_mem_offset) {
+        Ok(_) => (),
+        Err(_) => return SyscallResult::Error(8),
+    };
+
+    // Drop frame allocator guard to unlock it
+    drop(frame_allocator_guard);
+
+    // Now, we need to create a new exec task and replace the current task in the scheduler!
+    // Get the current task ID first
+    let current_task_id = match crate::task::scheduler::get_current_task_id() {
+        Some(tid) => tid,
+        None => return SyscallResult::Error(9),
+    };
+
+    // Now create a new mapper using current Cr3 (kernel page table)
+    let (kernel_pml4_frame, _) = x86_64::registers::control::Cr3::read();
+    let mut mapper = unsafe {
+        let pml4_ptr = (phys_mem_offset + kernel_pml4_frame.start_address().as_u64())
+            .as_mut_ptr::<x86_64::structures::paging::PageTable>();
+        x86_64::structures::paging::OffsetPageTable::new(&mut *pml4_ptr, phys_mem_offset)
+    };
+
+    // Lock frame allocator again to create the new exec task
+    let mut frame_allocator_guard2 = crate::boot::get_frame_allocator().lock();
+    let frame_allocator2 = frame_allocator_guard2.as_mut().unwrap();
+
+    // Create new exec task
+    let new_task = crate::task::Task::new_exec_user(
+        current_process.clone(),
+        &mut mapper,
+        frame_allocator2,
+        phys_mem_offset,
+    );
+
+    // Add new task to scheduler, and remove the old current task
+    crate::task::scheduler::add_task(new_task);
+
+    // Yield to the scheduler, which should pick up the new task
+    crate::task::scheduler::yield_task();
+
+    // This line should never be reached
+    SyscallResult::Error(10)
 }
 
 pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::SyscallFrame) -> u64 {

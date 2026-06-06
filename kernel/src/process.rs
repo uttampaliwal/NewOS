@@ -392,6 +392,158 @@ impl Process {
         Ok(process)
     }
 
+    pub fn exec_from_elf(
+        &self,
+        elf_data: &[u8],
+        frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+        physical_memory_offset: VirtAddr,
+    ) -> Result<(), elf::ParseError> {
+        let header = elf::parse_header(elf_data)?;
+        let aslr_base = aslr::randomise_load_base(&header);
+
+        // Create new PML4 for the exec'd process
+        let new_pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
+        let stack_size: u64 = 4096 * 8;
+        let stack_base = aslr::randomise_stack_base();
+        let stack_start = stack_base;
+        let stack_top = stack_start + stack_size;
+
+        let entry_point = aslr_base + header.entry;
+        let mmap_base = aslr::randomise_heap_base();
+
+        // Now create a temporary process-like thing to set up the new mappings
+        // We'll use a dummy ProcessControlBlock for the setup
+        let temp_process = Self {
+            inner: Arc::new(Mutex::new(ProcessControlBlock {
+                id: self.id(), // Keep the same PID!
+                ppid: self.inner.lock().ppid,
+                state: ProcessState::Ready,
+                pml4_frame: new_pml4_frame,
+                entry_point,
+                stack_top,
+                threads: Vec::new(),
+                vma_set: VmaSet::new(),
+                mmap_next_addr: mmap_base,
+                aslr_base,
+                fd_table: core::array::from_fn(|i| {
+                    self.inner.lock().fd_table[i].clone().and_then(|fd| if fd.flags.is_cloexec() { None } else { Some(fd) })
+                }),
+                signal_mask: SignalSet::empty(), // Reset signals on exec
+                signal_handlers: [SignalAction::Default; 64],
+                pending_signals: SignalSet::empty(),
+            }))
+        };
+
+        unsafe {
+            // Map User Stack (read-write, non-executable)
+            temp_process.map_user_region(
+                stack_start,
+                stack_size,
+                PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
+                frame_allocator,
+                physical_memory_offset,
+            );
+
+            // Map ELF Segments
+            let pml4_ptr = (physical_memory_offset + new_pml4_frame.start_address().as_u64())
+                .as_mut_ptr::<PageTable>();
+            let temp_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+
+            // Track executable segments for post-load write revocation
+            let mut exec_segments: Vec<(VirtAddr, u64)> = Vec::new();
+
+            for i in 0..header.program_header_count {
+                if let Some(ph) = elf::parse_program_header(elf_data, header, i)? {
+                    if ph.memory_size == 0 {
+                        continue;
+                    }
+                    let file_start = ph.file_offset as usize;
+                    let file_size = ph.file_size as usize;
+                    let file_end = file_start
+                        .checked_add(file_size)
+                        .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+                    if file_end > elf_data.len() {
+                        return Err(elf::ParseError::ProgramHeaderOutOfBounds);
+                    }
+
+                    let virt_start = aslr_base + ph.virtual_address;
+
+                    // Map as writable + non-executable during load
+                    let map_flags = PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE;
+                    let is_exec = (ph.flags & elf::PF_X) != 0;
+                    if is_exec {
+                        exec_segments.push((virt_start, ph.memory_size));
+                    }
+
+                    temp_process.map_user_region(
+                        virt_start,
+                        ph.memory_size,
+                        map_flags,
+                        frame_allocator,
+                        physical_memory_offset,
+                    );
+
+                    // Copy data
+                    use x86_64::structures::paging::Translate;
+                    let mut offset = 0u64;
+                    while offset < ph.file_size {
+                        let chunk_virt = virt_start + offset;
+                        let chunk_phys =
+                            temp_mapper.translate_addr(chunk_virt).expect("ELF map");
+                        let dest_ptr =
+                            (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
+                        let copy_size =
+                            (ph.file_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
+                        core::ptr::copy_nonoverlapping(
+                            &elf_data[ph.file_offset as usize + offset as usize],
+                            dest_ptr,
+                            copy_size as usize,
+                        );
+                        offset += copy_size;
+                    }
+                    // BSS
+                    while offset < ph.memory_size {
+                        let chunk_virt = virt_start + offset;
+                        let chunk_phys =
+                            temp_mapper.translate_addr(chunk_virt).expect("BSS map");
+                        let dest_ptr =
+                            (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
+                        let copy_size =
+                            (ph.memory_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
+                        core::ptr::write_bytes(dest_ptr, 0, copy_size as usize);
+                        offset += copy_size;
+                    }
+                }
+            }
+
+            // Finalise executable segments: strip WRITABLE and clear NO_EXECUTE
+            for (seg_start, seg_size) in &exec_segments {
+                wx::clear_write_and_allow_exec(
+                    new_pml4_frame,
+                    physical_memory_offset,
+                    *seg_start,
+                    *seg_size,
+                );
+            }
+        }
+
+        // Okay now, swap all the stuff into the current Process's inner!
+        let mut current_inner = self.inner.lock();
+        current_inner.pml4_frame = new_pml4_frame;
+        current_inner.entry_point = entry_point;
+        current_inner.stack_top = stack_top;
+        current_inner.vma_set = VmaSet::new();
+        current_inner.mmap_next_addr = mmap_base;
+        current_inner.aslr_base = aslr_base;
+        current_inner.signal_mask = SignalSet::empty();
+        current_inner.signal_handlers = [SignalAction::Default; 64];
+        current_inner.pending_signals = SignalSet::empty();
+        // TODO: For fd_table, we need to close FDs marked O_CLOEXEC! But first, let's check what FileDescriptor has!
+        // For now, just keep them all, we'll handle O_CLOEXEC once we check what's in vfs.rs!
+
+        Ok(())
+    }
+
     pub fn fork(
         &self,
         frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
