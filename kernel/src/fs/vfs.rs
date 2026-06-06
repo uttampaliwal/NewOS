@@ -1567,3 +1567,339 @@ mod tests {
         assert_eq!(n, "bar");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Property-based tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod prop_tests {
+    use super::*;
+    use alloc::string::ToString;
+    use proptest::prelude::*;
+
+    // -----------------------------------------------------------------------
+    // In-memory backend for property tests
+    // -----------------------------------------------------------------------
+
+    /// A parameterised in-memory backend with a configurable set of files.
+    /// Each file is identified by name and has a fixed content payload.
+    struct PropMemBackend {
+        /// All files are flat under the root inode (inode 1).
+        /// `files[i]` has InodeId(i+2) (inode 1 is root).
+        files: alloc::vec::Vec<(String, alloc::vec::Vec<u8>)>,
+    }
+
+    impl PropMemBackend {
+        /// Create a backend seeded with `files`.
+        fn new(files: alloc::vec::Vec<(String, alloc::vec::Vec<u8>)>) -> Self {
+            Self { files }
+        }
+
+        /// Return the inode for a file name, or None.
+        fn inode_for(&self, name: &str) -> Option<InodeId> {
+            self.files
+                .iter()
+                .enumerate()
+                .find(|(_, (n, _))| n == name)
+                .map(|(i, _)| InodeId(i as u64 + 2))
+        }
+    }
+
+    impl FsBackend for PropMemBackend {
+        fn root_inode(&self) -> InodeId { InodeId(1) }
+
+        fn lookup(&self, _parent: InodeId, name: &str) -> Result<InodeId, FsError> {
+            self.inode_for(name).ok_or(FsError::NotFound)
+        }
+
+        fn open(&self, _inode: InodeId, _flags: OpenFlags) -> Result<(), FsError> { Ok(()) }
+
+        fn read(&self, inode: InodeId, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
+            let idx = inode.0.checked_sub(2).ok_or(FsError::NotFound)? as usize;
+            let data = &self.files.get(idx).ok_or(FsError::NotFound)?.1;
+            let start = offset as usize;
+            if start >= data.len() { return Ok(0); }
+            let avail = data.len() - start;
+            let len = buf.len().min(avail);
+            buf[..len].copy_from_slice(&data[start..start + len]);
+            Ok(len)
+        }
+
+        fn write(&self, _inode: InodeId, _offset: u64, _buf: &[u8]) -> Result<usize, FsError> {
+            Err(FsError::PermissionDenied)
+        }
+
+        fn stat(&self, inode: InodeId) -> Result<InodeStat, FsError> {
+            if inode == InodeId(1) {
+                return Ok(InodeStat {
+                    mode: 0o755, uid: 0, gid: 0, nlink: 2,
+                    atime: 0, mtime: 0, ctime: 0, size: 0,
+                    file_type: FileType::Directory,
+                });
+            }
+            let idx = inode.0.checked_sub(2).ok_or(FsError::NotFound)? as usize;
+            let (_, data) = self.files.get(idx).ok_or(FsError::NotFound)?;
+            Ok(InodeStat {
+                mode: 0o644, uid: 1000, gid: 1000, nlink: 1,
+                atime: 0, mtime: 0, ctime: 0, size: data.len() as u64,
+                file_type: FileType::Regular,
+            })
+        }
+
+        fn readdir(&self, inode: InodeId) -> Result<alloc::vec::Vec<DirEntry>, FsError> {
+            if inode != InodeId(1) { return Err(FsError::NotADirectory); }
+            Ok(self.files.iter().enumerate().map(|(i, (name, _))| DirEntry {
+                inode: InodeId(i as u64 + 2),
+                name: name.clone(),
+                file_type: FileType::Regular,
+            }).collect())
+        }
+
+        fn mkdir(&self, _parent: InodeId, _name: &str, _mode: u32)
+            -> Result<InodeId, FsError> { Err(FsError::NotSupported) }
+
+        fn unlink(&self, _parent: InodeId, _name: &str) -> Result<(), FsError> {
+            Err(FsError::NotSupported)
+        }
+
+        fn rename(&self, _op: InodeId, _on: &str, _np: InodeId, _nn: &str)
+            -> Result<(), FsError> { Err(FsError::NotSupported) }
+
+        fn sync(&self) -> Result<(), FsError> { Ok(()) }
+    }
+
+    // -----------------------------------------------------------------------
+    // Generators
+    // -----------------------------------------------------------------------
+
+    /// Generate a mount point path (one of a fixed set of meaningful paths).
+    fn arb_mount_point() -> impl Strategy<Value = String> {
+        prop::sample::select(alloc::vec![
+            "/mnt".to_string(),
+            "/srv".to_string(),
+            "/data".to_string(),
+            "/media".to_string(),
+            "/opt".to_string(),
+        ])
+    }
+
+    /// Generate a simple file name (no slashes, non-empty, valid ASCII).
+    fn arb_filename() -> impl Strategy<Value = String> {
+        "[a-z][a-z0-9]{0,7}(\\.[a-z]{1,3})?"
+            .prop_map(|s: String| s)
+    }
+
+    /// Generate small arbitrary content for a file.
+    fn arb_content() -> impl Strategy<Value = alloc::vec::Vec<u8>> {
+        proptest::collection::vec(any::<u8>(), 0..=64)
+    }
+
+    /// Generate 1–4 files as `(name, content)` pairs with unique names.
+    fn arb_files() -> impl Strategy<Value = alloc::vec::Vec<(String, alloc::vec::Vec<u8>)>> {
+        proptest::collection::vec(
+            (arb_filename(), arb_content()),
+            1..=4,
+        )
+        .prop_map(|mut v| {
+            // Deduplicate names (keep first occurrence).
+            let mut seen = alloc::vec::Vec::<String>::new();
+            v.retain(|(name, _)| {
+                if seen.contains(name) {
+                    false
+                } else {
+                    seen.push(name.clone());
+                    true
+                }
+            });
+            v
+        })
+        .prop_filter("need at least one file", |v| !v.is_empty())
+    }
+
+    // -----------------------------------------------------------------------
+    // Property 20 — VFS Path Lookup Across Mount Points
+    //
+    // Validates: Requirements 21.5
+    //
+    // For any path that crosses a mount point boundary (i.e. a path of the
+    // form `<mount_point>/<filename>`), the VFS SHALL transparently resolve
+    // the path by delegating to the mounted filesystem backend.
+    //
+    // Concretely this property asserts:
+    //  1. `Vfs::resolve` selects the mounted backend (not the root backend)
+    //     when the path starts with the non-root mount point.
+    //  2. The relative path extracted by `resolve` strips the mount-point
+    //     prefix and leaves a well-formed backend-relative path.
+    //  3. Walking the relative path within the backend's own namespace
+    //     produces the same `InodeId` as querying the backend directly.
+    //  4. `stat_path` on the cross-mount path returns the same file size as
+    //     the backend reports for the same inode — i.e. resolution is
+    //     transparent (the VFS does not alter metadata).
+    // -----------------------------------------------------------------------
+
+    proptest! {
+        /// **Validates: Requirements 21.5**
+        ///
+        /// Property 20: VFS Path Lookup Across Mount Points
+        ///
+        /// Generate a VFS with a root backend at `/` and a second backend at
+        /// a non-root mount point.  For every file in the second backend,
+        /// build the absolute path `<mount_point>/<filename>` and assert:
+        ///   - `resolve` delegates to the second backend (not the root)
+        ///   - The relative path extracted from `resolve` maps to the correct
+        ///     inode inside the second backend
+        ///   - The `InodeId` reached via the VFS equals the direct backend
+        ///     lookup result
+        ///   - `stat_path` returns metadata that matches the backend's own
+        ///     `stat` call (transparent delegation, no metadata mutation)
+        #[test]
+        fn vfs_path_lookup_across_mount_points(
+            mount_point in arb_mount_point(),
+            root_files  in arb_files(),
+            mnt_files   in arb_files(),
+            // Pick a file index inside the mounted backend to look up.
+            file_idx_raw in any::<usize>(),
+        ) {
+            // Build two independent in-memory backends.
+            let root_backend: Arc<dyn FsBackend> =
+                Arc::new(PropMemBackend::new(root_files));
+            let mnt_backend = Arc::new(PropMemBackend::new(mnt_files.clone()));
+            let mnt_backend_dyn: Arc<dyn FsBackend> = mnt_backend.clone();
+
+            // Mount both: "/" first (added last so it sorts after the longer
+            // mount point and is thus tried second during resolve).
+            let mut vfs = Vfs::new();
+            vfs.mount("/", root_backend, MountFlags::default()).unwrap();
+            vfs.mount(&mount_point, mnt_backend_dyn, MountFlags::default()).unwrap();
+
+            // Select one of the files in the mounted backend.
+            let file_idx = file_idx_raw % mnt_files.len();
+            let (filename, expected_content) = &mnt_files[file_idx];
+
+            // Build the absolute path that crosses the mount boundary.
+            let absolute_path = alloc::format!("{}/{}", mount_point, filename);
+
+            // --- Assertion 1: resolve selects the non-root backend ----------
+            let (resolved_entry, rel_path) = vfs.resolve(&absolute_path)
+                .expect("VFS must resolve a path under a mounted backend");
+
+            prop_assert_eq!(
+                &resolved_entry.mount_point, &mount_point,
+                "resolve must select the non-root mount point for path '{}'",
+                absolute_path
+            );
+
+            // --- Assertion 2: relative path is well-formed ------------------
+            // rel_path should start with '/' and contain the filename.
+            prop_assert!(
+                rel_path.starts_with('/'),
+                "relative path '{}' must start with '/'",
+                rel_path
+            );
+            prop_assert!(
+                rel_path.contains(filename.as_str()),
+                "relative path '{}' must contain the filename '{}'",
+                rel_path,
+                filename
+            );
+
+            // --- Assertion 3: walking rel_path reaches the correct inode ----
+            let backend = &resolved_entry.backend;
+            let root_inode = backend.root_inode();
+
+            // Direct backend lookup — the ground truth.
+            let direct_inode = backend.lookup(root_inode, filename)
+                .expect("backend must find the file by name");
+
+            // VFS walk — the path resolution via mount-point traversal.
+            let walked_inode = Vfs::walk_path(backend.as_ref(), root_inode, rel_path)
+                .expect("walk_path must find the file via the relative path");
+
+            prop_assert_eq!(
+                walked_inode, direct_inode,
+                "walk_path inode via VFS must equal direct backend lookup for '{}'",
+                filename
+            );
+
+            // --- Assertion 4: stat is transparently delegated ---------------
+            // stat via the VFS path resolution.
+            let vfs_stat = vfs.stat_path(&absolute_path)
+                .expect("stat_path must succeed for a file under a mount point");
+
+            // stat directly via the backend inode.
+            let direct_stat = backend.stat(direct_inode)
+                .expect("backend stat must succeed");
+
+            prop_assert_eq!(
+                vfs_stat.size, direct_stat.size,
+                "VFS stat size must equal backend stat size for '{}': expected {} got {}",
+                absolute_path, direct_stat.size, vfs_stat.size
+            );
+
+            // Verify content size matches expectations too.
+            prop_assert_eq!(
+                direct_stat.size, expected_content.len() as u64,
+                "backend stat size must match the expected content length for '{}'",
+                filename
+            );
+        }
+    }
+
+    proptest! {
+        /// **Validates: Requirements 21.5**
+        ///
+        /// Property 20 (complement): Root-path files do NOT cross a mount
+        /// boundary — paths NOT under the non-root mount point resolve to
+        /// the root backend, confirming that mount-point delegation is
+        /// selective (not applied universally).
+        #[test]
+        fn vfs_root_paths_resolve_to_root_backend(
+            mount_point in arb_mount_point(),
+            root_files  in arb_files(),
+            mnt_files   in arb_files(),
+            file_idx_raw in any::<usize>(),
+        ) {
+            let root_backend = Arc::new(PropMemBackend::new(root_files.clone()));
+            let root_backend_dyn: Arc<dyn FsBackend> = root_backend.clone();
+            let mnt_backend: Arc<dyn FsBackend> =
+                Arc::new(PropMemBackend::new(mnt_files));
+
+            let mut vfs = Vfs::new();
+            vfs.mount("/", root_backend_dyn, MountFlags::default()).unwrap();
+            vfs.mount(&mount_point, mnt_backend, MountFlags::default()).unwrap();
+
+            // A file path directly under "/" that is NOT under the mount point.
+            let file_idx = file_idx_raw % root_files.len();
+            let (filename, _) = &root_files[file_idx];
+
+            // Build a root-level path — guaranteed not to start with mount_point
+            // because filenames are short alphanumeric strings and mount points
+            // start with "/" followed by a known prefix (mnt/srv/data/media/opt).
+            let root_path = alloc::format!("/{}", filename);
+
+            // The mount-point prefix cannot match a root-level file unless the
+            // filename starts with the mount_point's base component (e.g. "mnt").
+            // Skip this combination to keep the test focused.
+            let mp_base = mount_point.trim_start_matches('/');
+            if filename.starts_with(mp_base) {
+                return Ok(());
+            }
+
+            let (resolved_entry, rel_path) = vfs.resolve(&root_path)
+                .expect("VFS must resolve a root-level path");
+
+            prop_assert_eq!(
+                &resolved_entry.mount_point, "/",
+                "root-level path '{}' must resolve to the root mount, not '{}'",
+                root_path, mount_point
+            );
+
+            // rel_path for root mount is the original path.
+            prop_assert_eq!(
+                rel_path, root_path.as_str(),
+                "relative path for root mount must equal the original path"
+            );
+        }
+    }
+}

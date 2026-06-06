@@ -252,7 +252,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Enforce per-file Unix permission bits on all operations
     - Replace the global `VFS: Mutex<Vfs>` in `kernel/src/vfs.rs` with the new implementation; update all syscall handlers in `kernel/src/syscall/handler.rs` to use the new VFS API
     - _Requirements: 21.1, 21.2, 21.3, 21.5, 21.6, 21.7_
-  - [ ]* 19.2 Write property test for VFS Path Lookup Across Mount Points
+  - [x] 19.2 Write property test for VFS Path Lookup Across Mount Points
     - **Property 20: VFS Path Lookup Across Mount Points**
     - **Validates: Requirements 21.5**
     - Use `proptest` to generate paths crossing mount point boundaries; assert VFS resolves them identically to single-filesystem resolution
