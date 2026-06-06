@@ -37,6 +37,25 @@ pub fn add_task(task: Task) {
     });
 }
 
+pub fn remove_task(task_id: TaskId) {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut sched = SCHEDULER.lock();
+        if let Some(ref current) = sched.current_task {
+            if current.id == task_id {
+                sched.current_task = None;
+                sched.current_task_id = None;
+                sched.task_count -= 1;
+                return;
+            }
+        }
+        let len_before = sched.tasks.len();
+        sched.tasks.retain(|t| t.id != task_id);
+        if sched.tasks.len() < len_before {
+            sched.task_count -= 1;
+        }
+    });
+}
+
 pub fn start_scheduling() -> ! {
     #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
     {

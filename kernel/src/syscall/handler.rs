@@ -369,6 +369,7 @@ fn handle_exec(args: SyscallArgs) -> SyscallResult {
 
     // Add new task to scheduler, and remove the old current task
     crate::task::scheduler::add_task(new_task);
+    crate::task::scheduler::remove_task(current_task_id);
 
     // Yield to the scheduler, which should pick up the new task
     crate::task::scheduler::yield_task();

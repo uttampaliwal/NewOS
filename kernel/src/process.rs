@@ -401,6 +401,19 @@ impl Process {
         let header = elf::parse_header(elf_data)?;
         let aslr_base = aslr::randomise_load_base(&header);
 
+        // Close fds marked with O_CLOEXEC
+        {
+            let mut vfs = crate::vfs::VFS.lock();
+            let fd_table = &self.inner.lock().fd_table;
+            for (i, fd_opt) in fd_table.iter().enumerate() {
+                if let Some(fd) = fd_opt {
+                    if fd.flags.is_cloexec() {
+                        vfs.close(i);
+                    }
+                }
+            }
+        }
+
         // Create new PML4 for the exec'd process
         let new_pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
         let stack_size: u64 = 4096 * 8;
@@ -528,6 +541,7 @@ impl Process {
         }
 
         // Okay now, swap all the stuff into the current Process's inner!
+        let temp_inner = temp_process.inner.lock();
         let mut current_inner = self.inner.lock();
         current_inner.pml4_frame = new_pml4_frame;
         current_inner.entry_point = entry_point;
@@ -535,11 +549,10 @@ impl Process {
         current_inner.vma_set = VmaSet::new();
         current_inner.mmap_next_addr = mmap_base;
         current_inner.aslr_base = aslr_base;
+        current_inner.fd_table = temp_inner.fd_table.clone();
         current_inner.signal_mask = SignalSet::empty();
         current_inner.signal_handlers = [SignalAction::Default; 64];
         current_inner.pending_signals = SignalSet::empty();
-        // TODO: For fd_table, we need to close FDs marked O_CLOEXEC! But first, let's check what FileDescriptor has!
-        // For now, just keep them all, we'll handle O_CLOEXEC once we check what's in vfs.rs!
 
         Ok(())
     }
