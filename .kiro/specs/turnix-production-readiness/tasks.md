@@ -244,8 +244,8 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Increase the FD table limit from 16 to 1024 (replacing `MAX_OPEN_FILES = 16` in `kernel/src/vfs.rs`)
     - _Requirements: 17.4, 17.6, 16.4, 20.6_
 
-- [ ] 19. Implement the real VFS with mount points and `FsBackend` trait in `kernel/src/fs/vfs.rs`
-  - [ ] 19.1 Create `kernel/src/fs/vfs.rs` with the `FsBackend` trait (`root_inode`, `lookup`, `open`, `read`, `write`, `stat`, `readdir`, `mkdir`, `unlink`, `rename`, `sync`), `MountEntry`, and `Vfs` struct with a mount table sorted by mount-point length descending
+- [x] 19. Implement the real VFS with mount points and `FsBackend` trait in `kernel/src/fs/vfs.rs`
+  - [x] 19.1 Create `kernel/src/fs/vfs.rs` with the `FsBackend` trait (`root_inode`, `lookup`, `open`, `read`, `write`, `stat`, `readdir`, `mkdir`, `unlink`, `rename`, `sync`), `MountEntry`, and `Vfs` struct with a mount table sorted by mount-point length descending
     - Implement `Vfs::mount`, `Vfs::umount`, `Vfs::resolve` (path resolution with mount-point traversal), and `Vfs::open`
     - Implement `InodeId`, `InodeStat` (with `mode`, `uid`, `gid`, `nlink`, `atime`, `mtime`, `ctime`), and the new `FileDescriptor` (`inode`, `backend`, `offset: AtomicU64`, `flags: OpenFlags`, `kind: FdKind`)
     - Implement `FdKind` variants: `Regular`, `Directory`, `Pipe(Arc<PipeBuffer>)`, `UnixSocket(Arc<UnixSocketState>)`, `Device(DeviceKey)`, `Epoll`

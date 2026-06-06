@@ -1,7 +1,8 @@
 //! Filesystem module for Turnix OS
-//! Supports persistent filesystems like ext2
+//! Supports persistent filesystems like ext2 and the new VFS layer.
 
 pub mod ext2;
+pub mod vfs;
 
 use lazy_static::lazy_static;
 use alloc::string::String;
