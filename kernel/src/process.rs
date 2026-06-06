@@ -8,8 +8,72 @@ use x86_64::structures::paging::{
     Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB,
 };
 
+use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use spin::Mutex;
+
+// ---------------------------------------------------------------------------
+// Signal types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SignalSet(pub u64);
+
+impl SignalSet {
+    pub const fn empty() -> Self {
+        SignalSet(0)
+    }
+
+    pub fn contains(&self, sig: u8) -> bool {
+        self.0 & (1u64 << sig) != 0
+    }
+
+    pub fn insert(&mut self, sig: u8) {
+        self.0 |= 1u64 << sig;
+    }
+
+    pub fn remove(&mut self, sig: u8) {
+        self.0 &= !(1u64 << sig);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignalAction {
+    Default,
+    Ignore,
+    Handler(u64), // VirtAddr as u64
+}
+
+impl Default for SignalAction {
+    fn default() -> Self {
+        SignalAction::Default
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Process state
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockReason {
+    WaitingForChild,
+    WaitingForIo,
+    WaitingForLock,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessState {
+    Running,
+    Ready,
+    Blocked(BlockReason),
+    Zombie { exit_code: i32 },
+    Stopped,
+}
+
+// ---------------------------------------------------------------------------
+// ProcessId
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProcessId(pub usize);
@@ -23,24 +87,60 @@ impl ProcessId {
 }
 
 use crate::task::TaskId;
-use alloc::vec::Vec;
 
 pub const DEFAULT_MMAP_BASE: u64 = 0x0000_2000_0000_0000;
 
+// ---------------------------------------------------------------------------
+// Global process table
+// ---------------------------------------------------------------------------
+
+lazy_static::lazy_static! {
+    pub static ref PROCESS_TABLE: Mutex<BTreeMap<ProcessId, Arc<Mutex<ProcessControlBlock>>>> =
+        Mutex::new(BTreeMap::new());
+}
+
+/// Reparent an orphaned process to init (PID 1).
+///
+/// Called when a parent exits before its child. Looks up `orphan_pid` in
+/// `PROCESS_TABLE` and sets its `ppid` to `ProcessId(1)`.
+pub fn reparent_to_init(orphan_pid: ProcessId) {
+    let table = PROCESS_TABLE.lock();
+    if let Some(pcb) = table.get(&orphan_pid) {
+        pcb.lock().ppid = ProcessId(1);
+        crate::serial::println!("[process] reparented PID {:?} to init", orphan_pid);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ProcessControlBlock  (was ProcessInner)
+// ---------------------------------------------------------------------------
+
 #[derive(Debug)]
-pub struct ProcessInner {
+pub struct ProcessControlBlock {
     pub id: ProcessId,
+    pub ppid: ProcessId,
+    pub state: ProcessState,
     pub pml4_frame: PhysFrame<Size4KiB>,
     pub entry_point: VirtAddr,
     pub stack_top: VirtAddr,
     pub threads: Vec<TaskId>,
     pub vma_set: VmaSet,
     pub mmap_next_addr: VirtAddr,
+    pub aslr_base: VirtAddr,
+    /// Per-process file-descriptor table (1024 entries).
+    pub fd_table: [Option<crate::vfs::FileDescriptor>; 1024],
+    pub signal_mask: SignalSet,
+    pub signal_handlers: [SignalAction; 64],
+    pub pending_signals: SignalSet,
 }
+
+// ---------------------------------------------------------------------------
+// Process wrapper (Arc<Mutex<ProcessControlBlock>>)
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct Process {
-    inner: Arc<Mutex<ProcessInner>>,
+    inner: Arc<Mutex<ProcessControlBlock>>,
 }
 
 impl Process {
@@ -84,20 +184,37 @@ impl Process {
         f(&mut inner.vma_set)
     }
 
-    pub fn mmap_anon(&self, addr: Option<VirtAddr>, length: u64, prot: VmaProt, flags: VmaFlags) -> Result<VirtAddr, VmaError> {
+    pub fn mmap_anon(
+        &self,
+        addr: Option<VirtAddr>,
+        length: u64,
+        prot: VmaProt,
+        flags: VmaFlags,
+    ) -> Result<VirtAddr, VmaError> {
         let mut inner = self.inner.lock();
         let page_aligned_len = length.max(4096).next_multiple_of(4096);
         let actual_addr = match addr {
             Some(a) => a,
             None => {
                 let a = inner.mmap_next_addr;
-                inner.mmap_next_addr = VirtAddr::new(inner.mmap_next_addr.as_u64().checked_add(page_aligned_len).unwrap_or(u64::MAX));
+                inner.mmap_next_addr = VirtAddr::new(
+                    inner
+                        .mmap_next_addr
+                        .as_u64()
+                        .checked_add(page_aligned_len)
+                        .unwrap_or(u64::MAX),
+                );
                 a
             }
         };
         let vma = Vma {
             start: actual_addr,
-            end: VirtAddr::new(actual_addr.as_u64().checked_add(page_aligned_len).unwrap_or(u64::MAX)),
+            end: VirtAddr::new(
+                actual_addr
+                    .as_u64()
+                    .checked_add(page_aligned_len)
+                    .unwrap_or(u64::MAX),
+            ),
             prot,
             backing: VmaBacking::Anonymous,
             flags,
@@ -117,14 +234,21 @@ impl Process {
             static ref KERNEL_PROC: Process = {
                 let (pml4, _) = x86_64::registers::control::Cr3::read();
                 Process {
-                    inner: Arc::new(Mutex::new(ProcessInner {
+                    inner: Arc::new(Mutex::new(ProcessControlBlock {
                         id: ProcessId(0),
+                        ppid: ProcessId(0),
+                        state: ProcessState::Running,
                         pml4_frame: pml4,
                         entry_point: VirtAddr::zero(),
                         stack_top: VirtAddr::zero(),
                         threads: Vec::new(),
                         vma_set: VmaSet::new(),
                         mmap_next_addr: VirtAddr::new(DEFAULT_MMAP_BASE),
+                        aslr_base: VirtAddr::zero(),
+                        fd_table: core::array::from_fn(|_| None),
+                        signal_mask: SignalSet::empty(),
+                        signal_handlers: [SignalAction::Default; 64],
+                        pending_signals: SignalSet::empty(),
                     }))
                 }
             };
@@ -149,14 +273,21 @@ impl Process {
         let entry_point = aslr_base + header.entry;
         let mmap_base = aslr::randomise_heap_base();
 
-        let inner = ProcessInner {
+        let inner = ProcessControlBlock {
             id: ProcessId::new(),
+            ppid: ProcessId(0),
+            state: ProcessState::Ready,
             pml4_frame,
             entry_point,
             stack_top,
             threads: Vec::new(),
             vma_set: VmaSet::new(),
             mmap_next_addr: mmap_base,
+            aslr_base,
+            fd_table: core::array::from_fn(|_| None),
+            signal_mask: SignalSet::empty(),
+            signal_handlers: [SignalAction::Default; 64],
+            pending_signals: SignalSet::empty(),
         };
 
         let process = Self {
@@ -250,7 +381,12 @@ impl Process {
             // Finalise executable segments: strip WRITABLE and clear NO_EXECUTE
             // so they become R-X before the entry point runs (req 14.4).
             for (seg_start, seg_size) in &exec_segments {
-                wx::clear_write_and_allow_exec(pml4_frame, physical_memory_offset, *seg_start, *seg_size);
+                wx::clear_write_and_allow_exec(
+                    pml4_frame,
+                    physical_memory_offset,
+                    *seg_start,
+                    *seg_size,
+                );
             }
         }
         Ok(process)
@@ -271,15 +407,22 @@ impl Process {
             physical_memory_offset,
         );
 
-        let inner = self.inner.lock();
-        let new_inner = ProcessInner {
+        let parent = self.inner.lock();
+        let new_inner = ProcessControlBlock {
             id: ProcessId::new(),
+            ppid: parent.id,
+            state: ProcessState::Ready,
             pml4_frame,
-            entry_point: inner.entry_point,
+            entry_point: parent.entry_point,
             stack_top: aslr::randomise_stack_base(),
             threads: Vec::new(),
             vma_set: VmaSet::new(),
             mmap_next_addr: aslr::randomise_heap_base(),
+            aslr_base: parent.aslr_base,
+            fd_table: core::array::from_fn(|_| None),
+            signal_mask: parent.signal_mask,
+            signal_handlers: parent.signal_handlers,
+            pending_signals: SignalSet::empty(),
         };
 
         Self {
@@ -304,7 +447,8 @@ impl Process {
             // Apply W^X enforcement: strip WRITABLE if both WRITABLE and executable
             let mut enforced_flags = extra_flags;
             wx::enforce_wx_on_flags(&mut enforced_flags);
-            let flags = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | enforced_flags;
+            let flags =
+                PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | enforced_flags;
             let pages = Page::<Size4KiB>::range_inclusive(
                 Page::containing_address(virt_start),
                 Page::containing_address(virt_start + size - 1u64),

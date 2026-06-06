@@ -7,7 +7,7 @@ lazy_static! {
     pub static ref VFS: Mutex<Vfs> = Mutex::new(Vfs::new());
 }
 
-pub const MAX_OPEN_FILES: usize = 16;
+pub const MAX_OPEN_FILES: usize = 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileType {
@@ -63,7 +63,7 @@ impl Vfs {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
-            open_files: [const { None }; MAX_OPEN_FILES],
+            open_files: core::array::from_fn(|_| None),
             cwd: alloc::string::String::from("/"),
         }
     }

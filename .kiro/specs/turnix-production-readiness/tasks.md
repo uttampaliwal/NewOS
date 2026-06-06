@@ -237,8 +237,8 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
 
 ## Phase 3 — POSIX-Compatible System Services
 
-- [ ] 18. Extend the process control block and implement the full process table
-  - [ ] 18.1 Extend `kernel/src/process.rs` `ProcessInner` to become `ProcessControlBlock` with: `ppid`, `state: ProcessState` (`Running`, `Ready`, `Blocked(BlockReason)`, `Zombie { exit_code }`, `Stopped`), `vma_set: VmaSet`, `aslr_base: VirtAddr`, `fd_table: [Option<FileDescriptor>; 1024]`, `signal_mask: SignalSet`, `signal_handlers: [SignalAction; 64]`, `pending_signals: SignalSet`
+- [x] 18. Extend the process control block and implement the full process table
+  - [x] 18.1 Extend `kernel/src/process.rs` `ProcessInner` to become `ProcessControlBlock` with: `ppid`, `state: ProcessState` (`Running`, `Ready`, `Blocked(BlockReason)`, `Zombie { exit_code }`, `Stopped`), `vma_set: VmaSet`, `aslr_base: VirtAddr`, `fd_table: [Option<FileDescriptor>; 1024]`, `signal_mask: SignalSet`, `signal_handlers: [SignalAction; 64]`, `pending_signals: SignalSet`
     - Implement a global process table `PROCESS_TABLE: Mutex<BTreeMap<ProcessId, Arc<Mutex<ProcessControlBlock>>>>` in `kernel/src/process.rs`
     - Implement `reparent_to_init(orphan_pid)` called when a parent exits; wire into the exit path
     - Increase the FD table limit from 16 to 1024 (replacing `MAX_OPEN_FILES = 16` in `kernel/src/vfs.rs`)
