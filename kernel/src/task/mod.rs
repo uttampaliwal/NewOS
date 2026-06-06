@@ -260,6 +260,140 @@ impl Task {
         }
     }
 
+    /// Create a task for a forked child process.
+    ///
+    /// The child's kernel stack is initialised with a copy of `parent_frame`
+    /// (the parent's saved syscall context) but with `rax = 0` so that
+    /// `fork()` returns 0 in the child.
+    #[cfg(target_arch = "x86_64")]
+    pub fn new_forked_user(
+        process: Process,
+        parent_frame: &crate::arch::x86_64::syscall_arch::SyscallFrame,
+        mapper: &mut impl Mapper<Size4KiB>,
+        frame_allocator: &mut impl FrameAllocator<Size4KiB>,
+        physical_memory_offset: VirtAddr,
+    ) -> Self {
+        const STACK_PAGES: u64 = 8;
+        const GUARD_PAGES: u64 = 1;
+        const STACK_SIZE: u64 = STACK_PAGES * 4096;
+        const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
+
+        let id = TaskId::new();
+        let stack_region_base =
+            VirtAddr::new(KERNEL_STACK_REGION_BASE + (id.0 as u64) * STACK_STRIDE);
+        let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
+        let stack_top_virt = usable_stack_start + STACK_SIZE;
+
+        unsafe {
+            let pages = Page::<Size4KiB>::range_inclusive(
+                Page::containing_address(usable_stack_start),
+                Page::containing_address(stack_top_virt - 1u64),
+            );
+
+            for page in pages {
+                let frame = frame_allocator
+                    .allocate_frame()
+                    .expect("out of memory for forked-task kernel stack");
+
+                // Map into the current (kernel) address space for initialization.
+                if let Err(_) = mapper.map_to(
+                    page,
+                    frame,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                    frame_allocator,
+                ) {
+                    // Already mapped — ignore.
+                } else {
+                    use x86_64::instructions::tlb;
+                    tlb::flush(page.start_address());
+                }
+
+                // Also map into the child process's address space.
+                let pml4_ptr = (physical_memory_offset
+                    + process.pml4_frame().start_address().as_u64())
+                .as_mut_ptr::<PageTable>();
+                let mut process_mapper =
+                    OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+
+                if let Err(_) = process_mapper.map_to(
+                    page,
+                    frame,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                    frame_allocator,
+                ) {
+                    // Already mapped — ignore.
+                }
+            }
+        }
+
+        // Build the child's kernel stack as a copy of the parent's SyscallFrame
+        // but with rax = 0 (fork returns 0 to child).
+        //
+        // The frame layout on the kernel stack (low → high):
+        //   [r15, r14, r13, r12, r11, r10, r9, r8, rdi, rsi, rbp, rdx, rcx, rbx, rax] (15 × 8 bytes)
+        //   [user_rip, user_cs, user_rflags, user_rsp, user_ss] ( 5 × 8 bytes)
+        //
+        // The scheduler restores using the pop sequence in timer_tick / start_scheduling.
+
+        let mut stack_ptr = stack_top_virt.as_mut_ptr::<u64>();
+
+        unsafe {
+            // IRETQ frame (high addresses first — pushed last).
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.user_ss);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.user_rsp);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.user_rflags);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.user_cs);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.user_rip);
+
+            // General-purpose registers (pushed in reverse order of pop sequence).
+            // rax = 0 so fork() returns 0 to child; all others copied from parent.
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(0u64); // rax = 0
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.rbx);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.rcx);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.rdx);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.rbp);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.rsi);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.rdi);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.r8);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.r9);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.r10);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.r11);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.r12);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.r13);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.r14);
+            stack_ptr = stack_ptr.sub(1);
+            stack_ptr.write(parent_frame.r15);
+        }
+
+        process.add_thread(id);
+        Self {
+            id,
+            stack_ptr: stack_ptr as usize,
+            kernel_stack_top: stack_top_virt.as_u64() as usize,
+            process,
+            state: TaskState::Ready,
+        }
+    }
+
     pub fn switch_to(&self) {
         #[cfg(target_arch = "x86_64")]
         {

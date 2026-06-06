@@ -307,15 +307,67 @@ fn handle_exec(_args: SyscallArgs) -> SyscallResult {
     SyscallResult::Success(header.entry)
 }
 
-fn handle_fork(_args: SyscallArgs) -> SyscallResult {
-    // Basic fork implementation - creates a new kernel task
-    // This is a simplified version that demonstrates the concept
-    // In a real fork, we would copy the parent's address space
+pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::SyscallFrame) -> u64 {
+    // 1. Get the current (parent) process
+    let parent_process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return !0, // error
+    };
 
-    // For now, create a simple new task that will return 0 (child) or PID (parent)
-    // This is a placeholder - full fork requires address space duplication
-    crate::serial::print(format_args!("fork: simplified version - not fully implemented\n"));
-    SyscallResult::Error(1) // Return error until properly implemented
+    // 2. Get access to frame allocator and physical memory offset
+    let mut frame_allocator_guard = crate::boot::get_frame_allocator().lock();
+    let frame_allocator = match frame_allocator_guard.as_mut() {
+        Some(fa) => fa,
+        None => return !0, // error
+    };
+    let phys_mem_offset = crate::boot::get_phys_mem_offset();
+
+    // 3. Create child process via Process::fork
+    let child_process = parent_process.fork(frame_allocator, phys_mem_offset);
+    let child_pid = child_process.id().0 as u64;
+
+    // 4. Drop frame allocator guard before we try to get the mapper, since it's holding the lock
+    drop(frame_allocator_guard);
+
+    // 5. Create a new kernel task for the child process using new_forked_user
+    // To get a mapper, we need to get the current kernel page table
+    let (kernel_pml4_frame, _) = x86_64::registers::control::Cr3::read();
+    let mut mapper = unsafe {
+        let pml4_ptr = (phys_mem_offset + kernel_pml4_frame.start_address().as_u64()).as_mut_ptr::<x86_64::structures::paging::PageTable>();
+        x86_64::structures::paging::OffsetPageTable::new(
+            &mut *pml4_ptr,
+            phys_mem_offset,
+        )
+    };
+
+    // Lock frame allocator again
+    let mut frame_allocator_guard2 = crate::boot::get_frame_allocator().lock();
+    let frame_allocator2 = frame_allocator_guard2.as_mut().unwrap();
+
+    let child_task = crate::task::Task::new_forked_user(
+        child_process.clone(),
+        frame,
+        &mut mapper,
+        frame_allocator2,
+        phys_mem_offset,
+    );
+
+    // 6. Add child process to PROCESS_TABLE
+    {
+        let mut process_table = crate::process::PROCESS_TABLE.lock();
+        process_table.insert(child_process.id(), child_process.inner.clone());
+    }
+
+    // 7. Add the child task to the scheduler
+    crate::task::scheduler::add_task(child_task);
+
+    // 8. Return child PID to parent
+    child_pid
+}
+
+fn handle_fork(_args: SyscallArgs) -> SyscallResult {
+    // This is just a placeholder; the real implementation is in handle_fork_with_frame
+    SyscallResult::Error(0)
 }
 
 fn handle_wait(_args: SyscallArgs) -> SyscallResult {

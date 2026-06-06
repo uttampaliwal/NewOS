@@ -302,6 +302,12 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                 )
                 .expect("failed to load init process ELF");
 
+                // Add init process to PROCESS_TABLE
+                {
+                    let mut process_table = crate::process::PROCESS_TABLE.lock();
+                    process_table.insert(init_proc.id(), init_proc.inner.clone());
+                }
+
                 let init_task = crate::task::Task::new_user(
                     init_proc,
                     &mut mapper,
@@ -322,6 +328,12 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                             phys_mem_offset,
                         )
                         .expect("failed to load shell process ELF");
+
+                        // Add shell process to PROCESS_TABLE
+                        {
+                            let mut process_table = crate::process::PROCESS_TABLE.lock();
+                            process_table.insert(shell_proc.id(), shell_proc.inner.clone());
+                        }
 
                         crate::task::scheduler::add_task(crate::task::Task::new_user(
                             shell_proc,
@@ -344,6 +356,12 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                             phys_mem_offset,
                         )
                         .expect("failed to load fault-tester process ELF");
+
+                        // Add fault-tester process to PROCESS_TABLE
+                        {
+                            let mut process_table = crate::process::PROCESS_TABLE.lock();
+                            process_table.insert(fault_proc.id(), fault_proc.inner.clone());
+                        }
 
                         crate::task::scheduler::add_task(crate::task::Task::new_user(
                             fault_proc,

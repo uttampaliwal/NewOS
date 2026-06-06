@@ -127,6 +127,12 @@ pub extern "C" fn syscall_dispatch(frame: &mut SyscallFrame) -> u64 {
     };
 
     if let Some(syscall) = Syscall::from_u16(syscall_num) {
+        // Fork needs direct access to the saved frame so the child can
+        // be given an identical context with rax = 0.
+        if syscall == Syscall::Fork {
+            return crate::syscall::handler::handle_fork_with_frame(frame);
+        }
+
         let result = crate::syscall::handler::handle_syscall(syscall, args);
         match result {
             crate::syscall::handler::SyscallResult::Success(val) => val,

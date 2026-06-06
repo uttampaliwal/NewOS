@@ -140,7 +140,7 @@ pub struct ProcessControlBlock {
 
 #[derive(Debug, Clone)]
 pub struct Process {
-    inner: Arc<Mutex<ProcessControlBlock>>,
+    pub inner: Arc<Mutex<ProcessControlBlock>>,
 }
 
 impl Process {
@@ -408,6 +408,10 @@ impl Process {
         );
 
         let parent = self.inner.lock();
+        
+        // Clone fd table
+        let fd_table: [Option<crate::vfs::FileDescriptor>; 1024] = core::array::from_fn(|i| parent.fd_table[i].clone());
+
         let new_inner = ProcessControlBlock {
             id: ProcessId::new(),
             ppid: parent.id,
@@ -416,10 +420,10 @@ impl Process {
             entry_point: parent.entry_point,
             stack_top: aslr::randomise_stack_base(),
             threads: Vec::new(),
-            vma_set: VmaSet::new(),
+            vma_set: parent.vma_set.clone(),
             mmap_next_addr: aslr::randomise_heap_base(),
             aslr_base: parent.aslr_base,
-            fd_table: core::array::from_fn(|_| None),
+            fd_table,
             signal_mask: parent.signal_mask,
             signal_handlers: parent.signal_handlers,
             pending_signals: SignalSet::empty(),
