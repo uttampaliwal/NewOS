@@ -2,6 +2,8 @@
 //! Supports persistent filesystems like ext2 and the new VFS layer.
 
 pub mod ext2;
+pub mod ext4;
+pub mod tmpfs;
 pub mod vfs;
 
 use lazy_static::lazy_static;

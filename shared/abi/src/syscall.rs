@@ -36,6 +36,8 @@ pub enum Syscall {
     MmapFramebuffer = 21,
     Mmap = 22,
     Munmap = 23,
+    Mount = 24,
+    Umount = 25,
 }
 
 impl Syscall {
@@ -64,6 +66,8 @@ impl Syscall {
              21 => Some(Self::MmapFramebuffer),
              22 => Some(Self::Mmap),
              23 => Some(Self::Munmap),
+            24 => Some(Self::Mount),
+            25 => Some(Self::Umount),
             _ => None,
         }
     }
@@ -223,5 +227,25 @@ mod tests {
     #[test]
     fn munmap_syscall_round_trip() {
         assert_eq!(Syscall::from_u16(23), Some(Syscall::Munmap));
+    }
+
+    #[test]
+    fn mount_syscall_id_is_twenty_four() {
+        assert_eq!(Syscall::Mount as u16, 24);
+    }
+
+    #[test]
+    fn umount_syscall_id_is_twenty_five() {
+        assert_eq!(Syscall::Umount as u16, 25);
+    }
+
+    #[test]
+    fn mount_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(24), Some(Syscall::Mount));
+    }
+
+    #[test]
+    fn umount_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(25), Some(Syscall::Umount));
     }
 }

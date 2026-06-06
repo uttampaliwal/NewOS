@@ -9,6 +9,10 @@ use alloc::vec;
 use core::ptr;
 use alloc::string::String;
 
+use crate::fs::vfs::{
+    DirEntry, FsBackend, FsError, FileType, InodeId, InodeStat, OpenFlags,
+};
+
 /// ext2 superblock (offset 1024 in filesystem)
 #[repr(C, packed)]
 pub struct Ext2Superblock {
@@ -350,7 +354,7 @@ pub fn list_dir(device_id: usize, ino: u32) -> Vec<(u32, String, u8)> {
 
                 if name_len > 0 && name_len <= 255 {
                     let name_cow = String::from_utf8_lossy(&buffer[offset + 8..offset + 8 + name_len]);
-                    let name = String::from(&*name_cow); // Convert Cow<str> to String
+                    let name = String::from(&*name_cow);
                     result.push((inode_num, name, file_type));
                 }
 
@@ -360,4 +364,222 @@ pub fn list_dir(device_id: usize, ino: u32) -> Vec<(u32, String, u8)> {
     }
 
     result
+}
+
+// ---------------------------------------------------------------------------
+// Ext2Backend — FsBackend adapter (read-only)
+// ---------------------------------------------------------------------------
+
+/// Read-only [`FsBackend`] adapter for the ext2 filesystem.
+///
+/// Wraps the raw ext2 reader functions (`read_inode`, `list_dir`) and exposes
+/// them through the VFS [`FsBackend`] trait.
+///
+/// All write operations (`write`, `mkdir`, `unlink`, `rename`) return
+/// [`FsError::PermissionDenied`] because ext2 is mounted read-only.
+pub struct Ext2Backend {
+    /// The AHCI/SATA device index to read blocks from.
+    pub device_id: usize,
+}
+
+impl Ext2Backend {
+    /// Create a new `Ext2Backend` for the given device.
+    ///
+    /// Callers should call [`init`] on the device before constructing this.
+    pub fn new(device_id: usize) -> Self {
+        Ext2Backend { device_id }
+    }
+}
+
+/// Convert ext2 `mode` bits to a [`FileType`].
+fn mode_to_file_type(mode: u16) -> FileType {
+    let fmt = mode & 0xF000;
+    match fmt {
+        0x4000 => FileType::Directory,
+        0x8000 => FileType::Regular,
+        0x2000 => FileType::Device, // char device
+        0x6000 => FileType::Device, // block device
+        0x1000 => FileType::Pipe,
+        0xC000 => FileType::Socket,
+        0xA000 => FileType::Symlink,
+        _      => FileType::Regular,
+    }
+}
+
+/// Convert ext2 dir-entry file-type byte to [`FileType`].
+fn dir_ftype_to_file_type(ft: u8) -> FileType {
+    match ft {
+        1 => FileType::Regular,
+        2 => FileType::Directory,
+        3 => FileType::Device,  // char device
+        4 => FileType::Device,  // block device
+        5 => FileType::Pipe,
+        6 => FileType::Socket,
+        7 => FileType::Symlink,
+        _ => FileType::Regular,
+    }
+}
+
+impl FsBackend for Ext2Backend {
+    fn root_inode(&self) -> InodeId {
+        // ext2 root is always inode 2.
+        InodeId(2)
+    }
+
+    fn lookup(&self, parent: InodeId, name: &str) -> Result<InodeId, FsError> {
+        let entries = list_dir(self.device_id, parent.0 as u32);
+        for (ino, entry_name, _ft) in entries {
+            if entry_name == name {
+                return Ok(InodeId(ino as u64));
+            }
+        }
+        Err(FsError::NotFound)
+    }
+
+    fn open(&self, _inode: InodeId, flags: OpenFlags) -> Result<(), FsError> {
+        if flags.writable() {
+            return Err(FsError::PermissionDenied);
+        }
+        Ok(())
+    }
+
+    fn read(&self, inode: InodeId, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
+        let ino = inode.0 as u32;
+        let ext2_inode = read_inode(self.device_id, ino).ok_or(FsError::IoError)?;
+        let file_size = ext2_inode.size();
+
+        if offset >= file_size {
+            return Ok(0);
+        }
+
+        let block_size = {
+            let guard = EXT2_FS.lock();
+            guard.as_ref().map(|fs| fs.block_size).unwrap_or(1024)
+        };
+
+        let avail = (file_size - offset) as usize;
+        let to_read = buf.len().min(avail);
+        let mut bytes_read = 0;
+
+        while bytes_read < to_read {
+            let file_offset = offset as usize + bytes_read;
+            let block_idx = file_offset / block_size;
+            let block_off = file_offset % block_size;
+
+            if block_idx >= 12 {
+                // Only direct blocks supported for now.
+                break;
+            }
+
+            let block_num = ext2_inode.get_block(block_idx);
+            if block_num == 0 {
+                break;
+            }
+
+            let mut block_buf = vec![0u8; block_size];
+            let lba = block_num as u64 * (block_size / 512) as u64;
+            if !read_blocks(self.device_id, lba, block_size / 512, &mut block_buf) {
+                return Err(FsError::IoError);
+            }
+
+            let chunk = (block_size - block_off).min(to_read - bytes_read);
+            buf[bytes_read..bytes_read + chunk]
+                .copy_from_slice(&block_buf[block_off..block_off + chunk]);
+            bytes_read += chunk;
+        }
+
+        Ok(bytes_read)
+    }
+
+    fn write(&self, _inode: InodeId, _offset: u64, _buf: &[u8]) -> Result<usize, FsError> {
+        Err(FsError::PermissionDenied)
+    }
+
+    fn stat(&self, inode: InodeId) -> Result<InodeStat, FsError> {
+        let ino = inode.0 as u32;
+        let ext2_inode = read_inode(self.device_id, ino).ok_or(FsError::IoError)?;
+
+        let mode_val = {
+            let p = core::ptr::addr_of!(ext2_inode.mode);
+            unsafe { core::ptr::read_unaligned(p) }
+        };
+        let uid_val = {
+            let p = core::ptr::addr_of!(ext2_inode.uid);
+            unsafe { core::ptr::read_unaligned(p) }
+        };
+        let gid_val = {
+            let p = core::ptr::addr_of!(ext2_inode.gid);
+            unsafe { core::ptr::read_unaligned(p) }
+        };
+        let nlink_val = {
+            let p = core::ptr::addr_of!(ext2_inode.links_count);
+            unsafe { core::ptr::read_unaligned(p) }
+        };
+        let atime_val = {
+            let p = core::ptr::addr_of!(ext2_inode.atime);
+            unsafe { core::ptr::read_unaligned(p) }
+        };
+        let mtime_val = {
+            let p = core::ptr::addr_of!(ext2_inode.mtime);
+            unsafe { core::ptr::read_unaligned(p) }
+        };
+        let ctime_val = {
+            let p = core::ptr::addr_of!(ext2_inode.ctime);
+            unsafe { core::ptr::read_unaligned(p) }
+        };
+
+        Ok(InodeStat {
+            mode: mode_val as u32,
+            uid: uid_val as u32,
+            gid: gid_val as u32,
+            nlink: nlink_val as u32,
+            atime: atime_val as u64,
+            mtime: mtime_val as u64,
+            ctime: ctime_val as u64,
+            size: ext2_inode.size(),
+            file_type: mode_to_file_type(mode_val),
+        })
+    }
+
+    fn readdir(&self, inode: InodeId) -> Result<Vec<DirEntry>, FsError> {
+        let ino = inode.0 as u32;
+        let entries = list_dir(self.device_id, ino);
+        if entries.is_empty() {
+            let ext2_inode = read_inode(self.device_id, ino).ok_or(FsError::IoError)?;
+            if !ext2_inode.is_directory() {
+                return Err(FsError::NotADirectory);
+            }
+            return Ok(Vec::new());
+        }
+        Ok(entries
+            .into_iter()
+            .map(|(child_ino, name, ft)| DirEntry {
+                inode: InodeId(child_ino as u64),
+                name,
+                file_type: dir_ftype_to_file_type(ft),
+            })
+            .collect())
+    }
+
+    fn mkdir(&self, _parent: InodeId, _name: &str, _mode: u32) -> Result<InodeId, FsError> {
+        Err(FsError::PermissionDenied)
+    }
+
+    fn unlink(&self, _parent: InodeId, _name: &str) -> Result<(), FsError> {
+        Err(FsError::PermissionDenied)
+    }
+
+    fn rename(
+        &self,
+        _old_parent: InodeId,
+        _old_name: &str,
+        _new_parent: InodeId,
+        _new_name: &str,
+    ) -> Result<(), FsError> {
+        Err(FsError::PermissionDenied)
+    }
+
+    fn sync(&self) -> Result<(), FsError> {
+        Ok(())
+    }
 }

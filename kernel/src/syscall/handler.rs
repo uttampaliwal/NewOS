@@ -1,8 +1,12 @@
 use crate::elf;
 use crate::memory::vma::{VmaFlags, VmaProt};
 use crate::vfs::VFS;
+use crate::fs::tmpfs::TmpfsBackend;
+use crate::fs::ext4::Ext4Backend;
+use crate::fs::vfs::{FsBackend, MountFlags};
 use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
 use crate::drivers::gpu;
+use alloc::sync::Arc;
 use x86_64::VirtAddr;
 
 #[derive(Debug)]
@@ -49,6 +53,8 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::MmapFramebuffer => handle_mmap_framebuffer_syscall(args),
         Syscall::Mmap => handle_mmap(args),
         Syscall::Munmap => handle_munmap(args),
+        Syscall::Mount => handle_mount(args),
+        Syscall::Umount => handle_umount(args),
     }
 }
 
@@ -395,6 +401,75 @@ fn handle_munmap(args: SyscallArgs) -> SyscallResult {
     match process.munmap_range(VirtAddr::new(addr), length) {
         Ok(()) => SyscallResult::Success(0),
         Err(_) => SyscallResult::Error(1),
+    }
+}
+
+/// Filesystem type constants for the `mount` syscall (arg2).
+const FSTYPE_TMPFS: u64 = 0;
+const FSTYPE_EXT2:  u64 = 1;
+const FSTYPE_EXT4:  u64 = 2;
+
+fn handle_mount(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    let fs_type  = args.arg2;
+    // arg3: flags (reserved / future use — ignored for now)
+
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let mount_point = match core::str::from_utf8(path_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    let backend: Arc<dyn FsBackend> = match fs_type {
+        FSTYPE_TMPFS => Arc::new(TmpfsBackend::new()),
+        FSTYPE_EXT4  => Arc::new(Ext4Backend::new()),
+        FSTYPE_EXT2  => {
+            // ext2 requires a device id; we default to device 0 here.
+            // A more complete ABI would pass the device id in arg3.
+            let backend = crate::fs::ext2::Ext2Backend::new(0);
+            Arc::new(backend)
+        }
+        _ => return SyscallResult::Error(22), // EINVAL — unknown fs type
+    };
+
+    let mut vfs = VFS.lock();
+    match vfs.mount(mount_point, backend, MountFlags::default()) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(e) => {
+            crate::serial::println!("[mount] failed at '{}': {:?}", mount_point, e);
+            SyscallResult::Error(1)
+        }
+    }
+}
+
+fn handle_umount(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let mount_point = match core::str::from_utf8(path_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    let mut vfs = VFS.lock();
+    match vfs.umount(mount_point) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(crate::fs::vfs::FsError::BusyMounted) => SyscallResult::Error(16), // EBUSY
+        Err(crate::fs::vfs::FsError::NotFound)    => SyscallResult::Error(2),  // ENOENT
+        Err(e) => {
+            crate::serial::println!("[umount] failed at '{}': {:?}", mount_point, e);
+            SyscallResult::Error(1)
+        }
     }
 }
 

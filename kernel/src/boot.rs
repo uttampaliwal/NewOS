@@ -221,6 +221,56 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         .init_from_ramdisk(boot_info.ramdisk_addr, boot_info.ramdisk_size);
     let _ = writeln!(writer, "[STG: VFS_INIT]");
 
+    // 4.2 Mount tmpfs at "/" and ext4 stub at "/mnt"
+    {
+        let tmpfs: Arc<dyn crate::fs::vfs::FsBackend> =
+            Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        if let Err(e) = crate::vfs::VFS
+            .lock()
+            .mount("/", tmpfs, crate::fs::vfs::MountFlags::default())
+        {
+            crate::serial::println!("[FS] Failed to mount tmpfs at /: {:?}", e);
+        } else {
+            let _ = writeln!(writer, "[STG: TMPFS_MOUNTED]");
+        }
+
+        let ext4: Arc<dyn crate::fs::vfs::FsBackend> =
+            Arc::new(crate::fs::ext4::Ext4Backend::new());
+        if let Err(e) = crate::vfs::VFS
+            .lock()
+            .mount("/mnt", ext4, crate::fs::vfs::MountFlags::default())
+        {
+            crate::serial::println!("[FS] Failed to mount ext4 at /mnt: {:?}", e);
+        } else {
+            let _ = writeln!(writer, "[STG: EXT4_MOUNTED]");
+        }
+    }
+
+    // 4.2 Mount tmpfs at "/" and ext4 stub at "/mnt"
+    {
+        let tmpfs: Arc<dyn crate::fs::vfs::FsBackend> =
+            Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        if let Err(e) = crate::vfs::VFS
+            .lock()
+            .mount("/", tmpfs, crate::fs::vfs::MountFlags::default())
+        {
+            crate::serial::println!("[FS] Failed to mount tmpfs at /: {:?}", e);
+        } else {
+            let _ = writeln!(writer, "[STG: TMPFS_MOUNTED]");
+        }
+
+        let ext4: Arc<dyn crate::fs::vfs::FsBackend> =
+            Arc::new(crate::fs::ext4::Ext4Backend::new());
+        if let Err(e) = crate::vfs::VFS
+            .lock()
+            .mount("/mnt", ext4, crate::fs::vfs::MountFlags::default())
+        {
+            crate::serial::println!("[FS] Failed to mount ext4 at /mnt: {:?}", e);
+        } else {
+            let _ = writeln!(writer, "[STG: EXT4_MOUNTED]");
+        }
+    }
+
     // 4.1 Initialize Text Console with PSF font from VFS
     {
         let mut vfs = crate::vfs::VFS.lock();

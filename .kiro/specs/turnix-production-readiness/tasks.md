@@ -257,8 +257,8 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 21.5**
     - Use `proptest` to generate paths crossing mount point boundaries; assert VFS resolves them identically to single-filesystem resolution
 
-- [ ] 20. Implement the tmpfs and ext2/ext4 filesystem backends
-  - [ ] 20.1 Create `kernel/src/fs/tmpfs.rs` implementing `FsBackend` for an in-memory filesystem (migrating the existing flat VFS logic into the new trait)
+- [x] 20. Implement the tmpfs and ext2/ext4 filesystem backends
+  - [x] 20.1 Create `kernel/src/fs/tmpfs.rs` implementing `FsBackend` for an in-memory filesystem (migrating the existing flat VFS logic into the new trait)
     - Extend `kernel/src/fs/ext2.rs` to implement `FsBackend` (read-only); wire the existing superblock/inode reader into `lookup`, `open`, `read`, `stat`, `readdir`
     - Add the `ext4` crate to `kernel/Cargo.toml`; create `kernel/src/fs/ext4.rs` implementing `FsBackend` for read-write ext4 (using the `ext4` crate's block device abstraction backed by the NVMe driver)
     - Mount tmpfs at `/` and ext4 at `/mnt` during kernel init; wire `mount` and `umount` syscalls in `kernel/src/syscall/handler.rs`
