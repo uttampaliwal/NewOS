@@ -1,7 +1,7 @@
 use crate::elf;
 use crate::memory::aslr;
 use crate::memory::paging;
-use crate::memory::vma::{VmaSet, Vma, VmaProt, VmaFlags, VmaBacking, VmaError};
+use crate::memory::vma::{Vma, VmaBacking, VmaError, VmaFlags, VmaProt, VmaSet};
 use crate::memory::wx;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
@@ -38,17 +38,12 @@ impl SignalSet {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SignalAction {
+    #[default]
     Default,
     Ignore,
     Handler(u64), // VirtAddr as u64
-}
-
-impl Default for SignalAction {
-    fn default() -> Self {
-        SignalAction::Default
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +72,12 @@ pub enum ProcessState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProcessId(pub usize);
+
+impl Default for ProcessId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ProcessId {
     pub fn new() -> Self {
@@ -201,20 +202,14 @@ impl Process {
                     inner
                         .mmap_next_addr
                         .as_u64()
-                        .checked_add(page_aligned_len)
-                        .unwrap_or(u64::MAX),
+                        .saturating_add(page_aligned_len),
                 );
                 a
             }
         };
         let vma = Vma {
             start: actual_addr,
-            end: VirtAddr::new(
-                actual_addr
-                    .as_u64()
-                    .checked_add(page_aligned_len)
-                    .unwrap_or(u64::MAX),
-            ),
+            end: VirtAddr::new(actual_addr.as_u64().saturating_add(page_aligned_len)),
             prot,
             backing: VmaBacking::Anonymous,
             flags,
@@ -406,10 +401,10 @@ impl Process {
             let mut vfs = crate::vfs::VFS.lock();
             let fd_table = &self.inner.lock().fd_table;
             for (i, fd_opt) in fd_table.iter().enumerate() {
-                if let Some(fd) = fd_opt {
-                    if fd.flags.is_cloexec() {
-                        vfs.close(i);
-                    }
+                if let Some(fd) = fd_opt
+                    && fd.flags.is_cloexec()
+                {
+                    vfs.close(i);
                 }
             }
         }
@@ -439,12 +434,14 @@ impl Process {
                 mmap_next_addr: mmap_base,
                 aslr_base,
                 fd_table: core::array::from_fn(|i| {
-                    self.inner.lock().fd_table[i].clone().and_then(|fd| if fd.flags.is_cloexec() { None } else { Some(fd) })
+                    self.inner.lock().fd_table[i]
+                        .clone()
+                        .filter(|fd| !fd.flags.is_cloexec())
                 }),
                 signal_mask: SignalSet::empty(), // Reset signals on exec
                 signal_handlers: [SignalAction::Default; 64],
                 pending_signals: SignalSet::empty(),
-            }))
+            })),
         };
 
         unsafe {
@@ -501,8 +498,7 @@ impl Process {
                     let mut offset = 0u64;
                     while offset < ph.file_size {
                         let chunk_virt = virt_start + offset;
-                        let chunk_phys =
-                            temp_mapper.translate_addr(chunk_virt).expect("ELF map");
+                        let chunk_phys = temp_mapper.translate_addr(chunk_virt).expect("ELF map");
                         let dest_ptr =
                             (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
                         let copy_size =
@@ -517,8 +513,7 @@ impl Process {
                     // BSS
                     while offset < ph.memory_size {
                         let chunk_virt = virt_start + offset;
-                        let chunk_phys =
-                            temp_mapper.translate_addr(chunk_virt).expect("BSS map");
+                        let chunk_phys = temp_mapper.translate_addr(chunk_virt).expect("BSS map");
                         let dest_ptr =
                             (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
                         let copy_size =
@@ -573,9 +568,10 @@ impl Process {
         );
 
         let parent = self.inner.lock();
-        
+
         // Clone fd table
-        let fd_table: [Option<crate::vfs::FileDescriptor>; 1024] = core::array::from_fn(|i| parent.fd_table[i].clone());
+        let fd_table: [Option<crate::vfs::FileDescriptor>; 1024] =
+            core::array::from_fn(|i| parent.fd_table[i].clone());
 
         let new_inner = ProcessControlBlock {
             id: ProcessId::new(),
@@ -599,6 +595,9 @@ impl Process {
         }
     }
 
+    /// # Safety
+    ///
+    /// Page tables must be mapped at `physical_memory_offset` and the target region must be valid.
     pub unsafe fn map_user_region(
         &self,
         virt_start: VirtAddr,
@@ -616,8 +615,7 @@ impl Process {
             // Apply W^X enforcement: strip WRITABLE if both WRITABLE and executable
             let mut enforced_flags = extra_flags;
             wx::enforce_wx_on_flags(&mut enforced_flags);
-            let flags =
-                PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | enforced_flags;
+            let flags = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE | enforced_flags;
             let pages = Page::<Size4KiB>::range_inclusive(
                 Page::containing_address(virt_start),
                 Page::containing_address(virt_start + size - 1u64),
@@ -645,6 +643,10 @@ impl Process {
     }
 
     /// Maps a kernel-only region into this process's address space.
+    ///
+    /// # Safety
+    ///
+    /// Page tables must be mapped at `physical_memory_offset` and the target region must be valid.
     pub unsafe fn map_kernel_region(
         &self,
         virt_start: VirtAddr,

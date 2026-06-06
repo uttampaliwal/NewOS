@@ -1,9 +1,9 @@
 pub mod psf;
 
 use lazy_static::lazy_static;
-use turnix_abi::boot::BootFramebuffer;
-use spin::Mutex;
 use psf::Psf2Font;
+use spin::Mutex;
+use turnix_abi::boot::BootFramebuffer;
 
 lazy_static! {
     pub static ref FRAMEBUFFER: Mutex<Option<Framebuffer>> = Mutex::new(None);
@@ -48,15 +48,15 @@ impl<'a> TextConsole<'a> {
         if glyph_opt.is_none() {
             return;
         }
-        
+
         let glyph = glyph_opt.unwrap();
         let font_width = self.font.header.width;
         let font_height = self.font.header.height;
-        let bytes_per_line = (font_width + 7) / 8;
-        
+        let bytes_per_line = font_width.div_ceil(8);
+
         // Copy glyph data to avoid borrow issues
         let glyph_vec: alloc::vec::Vec<u8> = glyph.to_vec();
-        
+
         let mut fb_lock = FRAMEBUFFER.lock();
         if let Some(ref mut fb) = *fb_lock {
             if self.cursor_x + font_width > fb.width {
@@ -69,7 +69,11 @@ impl<'a> TextConsole<'a> {
                     let bit_idx = 7 - (col % 8);
                     let is_set = (glyph_vec[byte_idx] >> bit_idx) & 1 == 1;
 
-                    let color = if is_set { self.foreground } else { self.background };
+                    let color = if is_set {
+                        self.foreground
+                    } else {
+                        self.background
+                    };
                     fb.set_pixel(self.cursor_x + col, self.cursor_y + row, color);
                 }
             }
@@ -85,7 +89,13 @@ impl<'a> TextConsole<'a> {
             self.cursor_x -= font_width;
             let mut fb_lock = FRAMEBUFFER.lock();
             if let Some(ref mut fb) = *fb_lock {
-                fb.draw_rect(self.cursor_x, self.cursor_y, font_width, font_height, self.background);
+                fb.draw_rect(
+                    self.cursor_x,
+                    self.cursor_y,
+                    font_width,
+                    font_height,
+                    self.background,
+                );
             }
         }
     }

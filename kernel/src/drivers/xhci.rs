@@ -5,11 +5,11 @@
 //! enumeration, USB 2.0 and USB 3.x device detection, USB HID input delivery, and
 //! USB mass-storage block device exposure.
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::ptr::{read_volatile, write_volatile};
 use core::sync::atomic::{AtomicBool, Ordering};
 use spin::Mutex;
-use alloc::vec::Vec;
-use alloc::string::String;
 
 use crate::boot::get_phys_mem_offset;
 use crate::drivers::framework::{DeviceDriver, DeviceInfo};
@@ -77,8 +77,8 @@ const USBCMD_INTE: u32 = 1 << 2;
 const USBCMD_HSEE: u32 = 1 << 3;
 
 // USBSTS bits
-const USBSTS_HCH: u32 = 1 << 0;   // HC Halted
-const USBSTS_CNR: u32 = 1 << 11;  // Controller Not Ready
+const USBSTS_HCH: u32 = 1 << 0; // HC Halted
+const USBSTS_CNR: u32 = 1 << 11; // Controller Not Ready
 
 // ---------------------------------------------------------------------------
 // Port register set
@@ -89,15 +89,15 @@ const PORT_SIZE: u64 = 0x10;
 
 // PORTSC bits
 #[allow(dead_code)]
-const PORTSC_CCS: u32 = 1 << 0;       // Current Connect Status
+const PORTSC_CCS: u32 = 1 << 0; // Current Connect Status
 #[allow(dead_code)]
-const PORTSC_PED: u32 = 1 << 1;       // Port Enabled/Disabled
+const PORTSC_PED: u32 = 1 << 1; // Port Enabled/Disabled
 #[allow(dead_code)]
-const PORTSC_OCA: u32 = 1 << 3;       // Over-Current Active
+const PORTSC_OCA: u32 = 1 << 3; // Over-Current Active
 #[allow(dead_code)]
-const PORTSC_PR: u32 = 1 << 4;        // Port Reset
+const PORTSC_PR: u32 = 1 << 4; // Port Reset
 #[allow(dead_code)]
-const PORTSC_PLS_SHIFT: u32 = 5;      // Port Link State
+const PORTSC_PLS_SHIFT: u32 = 5; // Port Link State
 #[allow(dead_code)]
 const PORTSC_PLS_MASK: u32 = 0xF << 5;
 #[allow(dead_code)]
@@ -105,42 +105,42 @@ const PORTSC_SPEED_SHIFT: u32 = 10;
 #[allow(dead_code)]
 const PORTSC_SPEED_MASK: u32 = 0xF << 10;
 #[allow(dead_code)]
-const PORTSC_PIC_SHIFT: u32 = 14;     // Port Indicator Control
+const PORTSC_PIC_SHIFT: u32 = 14; // Port Indicator Control
 #[allow(dead_code)]
 const PORTSC_PIC_MASK: u32 = 0x3 << 14;
 #[allow(dead_code)]
-const PORTSC_CSC: u32 = 1 << 17;      // Connect Status Change
+const PORTSC_CSC: u32 = 1 << 17; // Connect Status Change
 #[allow(dead_code)]
-const PORTSC_PEC: u32 = 1 << 18;      // Port Enable/Disable Change
+const PORTSC_PEC: u32 = 1 << 18; // Port Enable/Disable Change
 #[allow(dead_code)]
-const PORTSC_WRC: u32 = 1 << 19;      // Warm Reset Change
+const PORTSC_WRC: u32 = 1 << 19; // Warm Reset Change
 #[allow(dead_code)]
-const PORTSC_OCC: u32 = 1 << 20;      // Over-Current Change
+const PORTSC_OCC: u32 = 1 << 20; // Over-Current Change
 #[allow(dead_code)]
-const PORTSC_PRC: u32 = 1 << 21;      // Port Reset Change
+const PORTSC_PRC: u32 = 1 << 21; // Port Reset Change
 #[allow(dead_code)]
-const PORTSC_PLC: u32 = 1 << 22;      // Port Link State Change
+const PORTSC_PLC: u32 = 1 << 22; // Port Link State Change
 #[allow(dead_code)]
-const PORTSC_CEC: u32 = 1 << 23;      // Config Error Change
+const PORTSC_CEC: u32 = 1 << 23; // Config Error Change
 #[allow(dead_code)]
-const PORTSC_CAS: u32 = 1 << 24;      // Cold Attach Status
+const PORTSC_CAS: u32 = 1 << 24; // Cold Attach Status
 #[allow(dead_code)]
-const PORTSC_CSC_WO: u32 = 1 << 17;   // Write-1-to-clear bits for PORTSC
+const PORTSC_CSC_WO: u32 = 1 << 17; // Write-1-to-clear bits for PORTSC
 #[allow(dead_code)]
-const PORTSC_WPR: u32 = 1 << 31;      // Warm Port Reset
+const PORTSC_WPR: u32 = 1 << 31; // Warm Port Reset
 
 // Change bits that are cleared by writing 1
-const PORTSC_CHANGE_BITS: u32 = PORTSC_CSC | PORTSC_PEC | PORTSC_WRC
-    | PORTSC_OCC | PORTSC_PRC | PORTSC_PLC | PORTSC_CEC;
+const PORTSC_CHANGE_BITS: u32 =
+    PORTSC_CSC | PORTSC_PEC | PORTSC_WRC | PORTSC_OCC | PORTSC_PRC | PORTSC_PLC | PORTSC_CEC;
 
 // ---------------------------------------------------------------------------
 // USB speeds
 // ---------------------------------------------------------------------------
 
-const SPEED_FULL: u32 = 1;   // USB 1.1 (12 Mbps)
-const SPEED_LOW: u32 = 2;    // USB 1.0 (1.5 Mbps)
-const SPEED_HIGH: u32 = 3;   // USB 2.0 (480 Mbps)
-const SPEED_SUPER: u32 = 4;  // USB 3.x (5 Gbps+)
+const SPEED_FULL: u32 = 1; // USB 1.1 (12 Mbps)
+const SPEED_LOW: u32 = 2; // USB 1.0 (1.5 Mbps)
+const SPEED_HIGH: u32 = 3; // USB 2.0 (480 Mbps)
+const SPEED_SUPER: u32 = 4; // USB 3.x (5 Gbps+)
 
 #[allow(dead_code)]
 fn speed_name(speed: u32) -> &'static str {
@@ -247,7 +247,10 @@ impl PortSpeed {
     }
 
     fn is_usb2(&self) -> bool {
-        matches!(self, PortSpeed::Usb10Low | PortSpeed::Usb11Full | PortSpeed::Usb20High)
+        matches!(
+            self,
+            PortSpeed::Usb10Low | PortSpeed::Usb11Full | PortSpeed::Usb20High
+        )
     }
 
     fn is_usb3(&self) -> bool {
@@ -510,7 +513,10 @@ impl DeviceDriver for XhciDriver {
 
         crate::serial::println!(
             "[XHCI] Probing XHCI controller at {:02x}:{:02x}.{:02x} (BAR0 phys={:#x})",
-            info.bus, info.device, info.function, bar0_phys,
+            info.bus,
+            info.device,
+            info.function,
+            bar0_phys,
         );
 
         // ---- Read capability registers ----
@@ -529,7 +535,11 @@ impl DeviceDriver for XhciDriver {
 
         crate::serial::println!(
             "[XHCI] XHCI spec {}.{}, max_slots={}, max_ports={}, caplength={}",
-            major, minor, max_slots, max_ports, caplength,
+            major,
+            minor,
+            max_slots,
+            max_ports,
+            caplength,
         );
 
         // ---- Extended capabilities: Supported Protocol ----
@@ -540,9 +550,9 @@ impl DeviceDriver for XhciDriver {
         let mut usb3_port_end: u32 = 0;
 
         while xecp_base != 0 {
-            let cap_id = mmio_read8(bar0, (xecp_base as u64) + 0) & 0x3F;
-            let next_raw = mmio_read8(bar0, (xecp_base as u64) + 1);
-            let next_cap = (xecp_base as u32) + (next_raw as u32) * 4;
+            let cap_id = mmio_read8(bar0, xecp_base as u64) & 0x3F;
+            let next_raw = mmio_read8(bar0, xecp_base as u64 + 1);
+            let next_cap = xecp_base + next_raw as u32 * 4;
 
             if cap_id == XECP_SUPPORTED_PROTOCOL {
                 let rev_major = mmio_read8(bar0, (xecp_base as u64) + 3);
@@ -558,7 +568,7 @@ impl DeviceDriver for XhciDriver {
                 }
             }
 
-            if next_cap == 0 || next_cap == xecp_base as u32 {
+            if next_cap == 0 || next_cap == xecp_base {
                 break;
             }
             xecp_base = next_cap;
@@ -566,8 +576,10 @@ impl DeviceDriver for XhciDriver {
 
         crate::serial::println!(
             "[XHCI] USB2 ports {}-{}, USB3 ports {}-{}",
-            usb2_port_start, usb2_port_end,
-            usb3_port_start, usb3_port_end,
+            usb2_port_start,
+            usb2_port_end,
+            usb3_port_start,
+            usb3_port_end,
         );
 
         // ---- Controller reset ----
@@ -583,7 +595,9 @@ impl DeviceDriver for XhciDriver {
             if timeout == 0 {
                 crate::serial::println!(
                     "[XHCI] Controller reset timed out at {:02x}:{:02x}.{:02x} — marking unavailable",
-                    info.bus, info.device, info.function,
+                    info.bus,
+                    info.device,
+                    info.function,
                 );
                 return Err(XhciError::ResetTimeout);
             }
@@ -598,7 +612,9 @@ impl DeviceDriver for XhciDriver {
             if timeout == 0 {
                 crate::serial::println!(
                     "[XHCI] Controller failed to become ready at {:02x}:{:02x}.{:02x} — marking unavailable",
-                    info.bus, info.device, info.function,
+                    info.bus,
+                    info.device,
+                    info.function,
                 );
                 return Err(XhciError::ControllerNotReady);
             }
@@ -611,7 +627,11 @@ impl DeviceDriver for XhciDriver {
 
         // ---- Start the controller: write RUN to USBCMD ----
         let cmd_reg = mmio_read32(bar0, op_offset + OP_USBCMD);
-        mmio_write32(bar0, op_offset + OP_USBCMD, cmd_reg | USBCMD_RUN | USBCMD_INTE);
+        mmio_write32(
+            bar0,
+            op_offset + OP_USBCMD,
+            cmd_reg | USBCMD_RUN | USBCMD_INTE,
+        );
 
         // ---- Wait for HCH (HC Halted) to clear ----
         timeout = RESET_TIMEOUT_ITER;
@@ -620,7 +640,9 @@ impl DeviceDriver for XhciDriver {
             if timeout == 0 {
                 crate::serial::println!(
                     "[XHCI] Controller failed to start at {:02x}:{:02x}.{:02x} — marking unavailable",
-                    info.bus, info.device, info.function,
+                    info.bus,
+                    info.device,
+                    info.function,
                 );
                 return Err(XhciError::ControllerNotReady);
             }
@@ -658,7 +680,9 @@ impl DeviceDriver for XhciDriver {
                 }
                 crate::serial::println!(
                     "[XHCI] Port {}: connected, speed={:?}, enabled={}",
-                    ps.port_num, ps.speed, ps.enabled,
+                    ps.port_num,
+                    ps.speed,
+                    ps.enabled,
                 );
 
                 // Reset the port to enable it
@@ -667,13 +691,11 @@ impl DeviceDriver for XhciDriver {
                     if reset_ok {
                         crate::serial::println!(
                             "[XHCI] Port {}: reset completed, speed={:?}",
-                            ps.port_num, ctrl.port_speed(port_num_to_index(ps.port_num)),
+                            ps.port_num,
+                            ctrl.port_speed(port_num_to_index(ps.port_num)),
                         );
                     } else {
-                        crate::serial::println!(
-                            "[XHCI] Port {}: reset timed out",
-                            ps.port_num,
-                        );
+                        crate::serial::println!("[XHCI] Port {}: reset timed out", ps.port_num,);
                     }
                 }
             }
@@ -681,7 +703,10 @@ impl DeviceDriver for XhciDriver {
 
         crate::serial::println!(
             "[XHCI] Enumerated {} port(s), {} connected (USB2: {}, USB3: {})",
-            max_ports, connected_count, usb2_count, usb3_count,
+            max_ports,
+            connected_count,
+            usb2_count,
+            usb3_count,
         );
 
         // Store controller in global static
@@ -762,14 +787,12 @@ where
 pub fn reinit() -> bool {
     let device_registry = crate::drivers::DEVICE_REGISTRY.lock();
     for (_, info) in device_registry.iter_device_infos() {
-        if info.class_code == XHCI_CLASS && info.subclass == XHCI_SUBCLASS {
-            match XhciDriver::probe(info) {
-                Ok(_) => {
-                    crate::serial::println!("[XHCI] Re-initialisation succeeded");
-                    return true;
-                }
-                Err(_) => {}
-            }
+        if info.class_code == XHCI_CLASS
+            && info.subclass == XHCI_SUBCLASS
+            && XhciDriver::probe(info).is_ok()
+        {
+            crate::serial::println!("[XHCI] Re-initialisation succeeded");
+            return true;
         }
     }
     crate::serial::println!("[XHCI] Re-initialisation failed: no XHCI device found");
@@ -793,12 +816,15 @@ pub fn deliver_hid_input(port_num: u8, keycode: u8, pressed: bool) {
         crate::input::add_char(ch);
         crate::serial::println!(
             "[XHCI:HID] Port {}: key 0x{:02x} -> '{}'",
-            port_num, keycode, ch,
+            port_num,
+            keycode,
+            ch,
         );
     } else {
         crate::serial::println!(
             "[XHCI:HID] Port {}: unmapped key 0x{:02x}",
-            port_num, keycode,
+            port_num,
+            keycode,
         );
     }
 }
@@ -842,11 +868,11 @@ fn hid_usage_to_ascii(usage: u8) -> Option<char> {
         0x25 => Some('8'),
         0x26 => Some('9'),
         0x27 => Some('0'),
-        0x28 => Some('\n'), // Enter
+        0x28 => Some('\n'),         // Enter
         0x29 => Some(0x1B as char), // Escape
         0x2A => Some(0x08 as char), // Backspace
-        0x2B => Some('\t'), // Tab
-        0x2C => Some(' '), // Space
+        0x2B => Some('\t'),         // Tab
+        0x2C => Some(' '),          // Space
         0x2D => Some('-'),
         0x2E => Some('='),
         0x2F => Some('['),
@@ -890,7 +916,9 @@ pub fn register_mass_storage_device(device: UsbMassStorageDevice) {
         #[cfg(not(test))]
         crate::serial::println!(
             "[XHCI:STORAGE] USB mass-storage device on port {}: {} blocks x {} bytes",
-            device.port_num, device.block_count, device.block_size,
+            device.port_num,
+            device.block_count,
+            device.block_size,
         );
         devices.push(device);
     }
@@ -908,9 +936,9 @@ pub fn get_mass_storage_devices() -> Vec<UsbMassStorageDevice> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
-    use alloc::format;
     use crate::drivers::framework::Bar;
+    use alloc::format;
+    use alloc::vec;
 
     // -----------------------------------------------------------------------
     // Port speed detection tests
@@ -1017,8 +1045,8 @@ mod tests {
     fn test_xhci_port_status_extracted_from_portsc() {
         // Simulate a USB 2.0 High-Speed connected port with
         // Connect Status Change and Port Reset Change bits set.
-        let raw = PORTSC_CCS | PORTSC_PED | (SPEED_HIGH << PORTSC_SPEED_SHIFT)
-            | PORTSC_CSC | PORTSC_PRC;
+        let raw =
+            PORTSC_CCS | PORTSC_PED | (SPEED_HIGH << PORTSC_SPEED_SHIFT) | PORTSC_CSC | PORTSC_PRC;
         let status = XhciController::parse_port_status(0, raw);
         assert!(status.connected);
         assert!(status.enabled);
@@ -1355,7 +1383,12 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Helper to build a synthetic XhciPortStatus for testing the logic.
-    fn make_port_status(port_num: u8, connected: bool, enabled: bool, speed: PortSpeed) -> XhciPortStatus {
+    fn make_port_status(
+        port_num: u8,
+        connected: bool,
+        enabled: bool,
+        speed: PortSpeed,
+    ) -> XhciPortStatus {
         XhciPortStatus {
             port_num,
             connected,
@@ -1395,11 +1428,18 @@ mod tests {
             bus: 0,
             device: 0x14,
             function: 0,
-            bars: [Some(Bar::Memory32 {
-                base: 0xF000_0000,
-                size: 0x10000,
-                prefetchable: false,
-            }), None, None, None, None, None],
+            bars: [
+                Some(Bar::Memory32 {
+                    base: 0xF000_0000,
+                    size: 0x10000,
+                    prefetchable: false,
+                }),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
             interrupt_line: None,
             interrupt_pin: None,
             irq: None,
@@ -1416,7 +1456,11 @@ mod tests {
         };
         // We can't actually call XhciDriver::probe in unit tests because
         // it touches MMIO registers. Instead we verify the class check logic.
-        assert!(info.class_code != XHCI_CLASS || info.subclass != XHCI_SUBCLASS || info.prog_if != XHCI_PROG_IF);
+        assert!(
+            info.class_code != XHCI_CLASS
+                || info.subclass != XHCI_SUBCLASS
+                || info.prog_if != XHCI_PROG_IF
+        );
     }
 
     #[test]

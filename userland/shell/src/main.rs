@@ -9,13 +9,13 @@ use core::panic::PanicInfo;
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     let tty_fd = open("tty").expect("failed to open /dev/tty");
-    
+
     // Helper to print to tty
     let tty_print = |s: &str| {
         write(tty_fd, s.as_bytes());
     };
 
-        tty_print("Turnix Interactive Shell (Phase 6)\n");
+    tty_print("Turnix Interactive Shell (Phase 6)\n");
     tty_print("System PID: ");
     print_u64(getpid(), &tty_print);
     tty_print("\nType 'help' for commands.\n\n");
@@ -26,7 +26,9 @@ pub extern "C" fn _start() -> ! {
         tty_print("> ");
         if let Some(len) = read(tty_fd, &mut line_buf) {
             if len > 0 {
-                let line = core::str::from_utf8(&line_buf[..len as usize]).unwrap_or("").trim();
+                let line = core::str::from_utf8(&line_buf[..len as usize])
+                    .unwrap_or("")
+                    .trim();
                 if !line.is_empty() {
                     handle_command(line, tty_fd, &tty_print);
                 }

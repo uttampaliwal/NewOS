@@ -6,16 +6,13 @@
 //! - **Virtio-gpu** (QEMU `-device virtio-gpu`): stub that falls back to the
 //!   UEFI framebuffer.
 
-use core::fmt::Debug;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::fmt::Debug;
 
+use super::{Connector, ConnectorType, DisplayMode, DrmDevice, DrmError, DrmFramebuffer};
 use crate::drivers::framework::DeviceInfo;
-use super::{
-    DrmDevice, DrmError, Connector, ConnectorType, DisplayMode,
-    DrmFramebuffer,
-};
 
 // ---------------------------------------------------------------------------
 // VBE DISPI constants for bochs-display
@@ -120,7 +117,7 @@ impl BochsDisplayDriver {
         }
         // SAFETY: only called during kernel boot when VBE I/O ports are accessible.
         let id = unsafe { Self::vbe_read_index(VBE_DISPI_INDEX_ID) };
-        id >= VBE_DISPI_VERSION_MIN && id <= VBE_DISPI_VERSION_MAX
+        (VBE_DISPI_VERSION_MIN..=VBE_DISPI_VERSION_MAX).contains(&id)
     }
 
     /// Write to a VBE DISPI index register.
@@ -222,7 +219,12 @@ impl DrmDevice for BochsDisplayDriver {
         }])
     }
 
-    fn set_mode(&mut self, _connector_id: u32, _crtc_id: u32, mode: &DisplayMode) -> Result<(), DrmError> {
+    fn set_mode(
+        &mut self,
+        _connector_id: u32,
+        _crtc_id: u32,
+        mode: &DisplayMode,
+    ) -> Result<(), DrmError> {
         if mode.width > 4096 || mode.height > 4096 {
             return Err(DrmError::InvalidMode);
         }
@@ -238,7 +240,12 @@ impl DrmDevice for BochsDisplayDriver {
         Ok(())
     }
 
-    fn create_framebuffer(&mut self, width: u32, height: u32, _format: u32) -> Result<DrmFramebuffer, DrmError> {
+    fn create_framebuffer(
+        &mut self,
+        width: u32,
+        height: u32,
+        _format: u32,
+    ) -> Result<DrmFramebuffer, DrmError> {
         let needed = DrmFramebuffer::calc_size(width, height);
         // For bochs-display, the BAR2 is the framebuffer; we must fit.
         if needed > self.fb_bar_size && self.fb_bar_size > 0 {
@@ -321,13 +328,23 @@ impl DrmDevice for VirtioGpuDriver {
         }])
     }
 
-    fn set_mode(&mut self, _connector_id: u32, _crtc_id: u32, _mode: &DisplayMode) -> Result<(), DrmError> {
+    fn set_mode(
+        &mut self,
+        _connector_id: u32,
+        _crtc_id: u32,
+        _mode: &DisplayMode,
+    ) -> Result<(), DrmError> {
         // Stub: virtio-gpu mode setting requires virtqueue commands.
         // Current implementation relies on UEFI GOP for initial mode.
         Ok(())
     }
 
-    fn create_framebuffer(&mut self, _width: u32, _height: u32, _format: u32) -> Result<DrmFramebuffer, DrmError> {
+    fn create_framebuffer(
+        &mut self,
+        _width: u32,
+        _height: u32,
+        _format: u32,
+    ) -> Result<DrmFramebuffer, DrmError> {
         Ok(DrmFramebuffer {
             id: 1,
             width: 1920,
@@ -387,7 +404,9 @@ pub fn probe_gpu(info: &DeviceInfo) -> Result<Box<dyn DrmDevice>, super::GpuErro
                 if driver.set_mode(1, 1, &mode).is_ok() {
                     crate::serial::println!(
                         "[GPU] bochs-display: {}x{} 32bpp mode set @ BAR2=0x{:016x}",
-                        mode.width, mode.height, driver.fb_addr
+                        mode.width,
+                        mode.height,
+                        driver.fb_addr
                     );
                 }
             } else {
@@ -409,7 +428,8 @@ pub fn probe_gpu(info: &DeviceInfo) -> Result<Box<dyn DrmDevice>, super::GpuErro
                 };
                 crate::serial::println!(
                     "[GPU] virtio-gpu: stub driver (vendor=0x{:04x}, device=0x{:04x})",
-                    info.vendor_id, info.device_id
+                    info.vendor_id,
+                    info.device_id
                 );
                 Ok(Box::new(drv))
             } else {

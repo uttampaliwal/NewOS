@@ -5,10 +5,10 @@
 //! identify namespace to discover namespace capacity and LBA size (512/4096 bytes),
 //! read and write NVM commands using PRPs, and 30-second command timeout.
 
+use alloc::vec::Vec;
 use core::ptr::{read_volatile, write_volatile};
 use core::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use spin::Mutex;
-use alloc::vec::Vec;
 
 use crate::boot::get_phys_mem_offset;
 use crate::drivers::framework::{DeviceDriver, DeviceInfo};
@@ -285,6 +285,7 @@ impl NvmeController {
     }
 
     /// Submit an admin command and wait for completion.
+    #[allow(clippy::too_many_arguments)]
     fn admin_command(
         &mut self,
         opcode: u8,
@@ -339,7 +340,7 @@ impl NvmeController {
         // Advance CQ head; toggle expected phase on wrap-around
         let new_head = cq_head.wrapping_add(1);
         self.admin_cq_head.store(new_head, Ordering::Relaxed);
-        if new_head as usize % cq_entry_count == 0 && new_head != 0 {
+        if (new_head as usize).is_multiple_of(cq_entry_count) && new_head != 0 {
             self.cq_expected_phase[0].store(
                 !self.cq_expected_phase[0].load(Ordering::Relaxed),
                 Ordering::Relaxed,
@@ -422,16 +423,7 @@ impl NvmeController {
 
     /// Abort a command by its ID.
     fn abort_command(&mut self, cid: u16) -> Result<(), &'static str> {
-        let _ = self.admin_command(
-            ADMIN_ABORT,
-            0,
-            0,
-            0,
-            cid as u32,
-            0,
-            0,
-            0,
-        );
+        let _ = self.admin_command(ADMIN_ABORT, 0, 0, 0, cid as u32, 0, 0, 0);
         crate::serial::println!("[NVMe] Aborted command CID={}", cid);
         Ok(())
     }
@@ -442,16 +434,7 @@ impl NvmeController {
         let cdw10 = (size as u32) << 16 | qid as u32;
         // Bit 0 = physically contiguous, Bit 1 = interrupts enabled
         let cdw11 = (irq_vector as u32) << 16 | 0x0001;
-        self.admin_command(
-            ADMIN_CREATE_IO_CQ,
-            0,
-            cq_phys,
-            0,
-            cdw10,
-            cdw11,
-            0,
-            0,
-        )?;
+        self.admin_command(ADMIN_CREATE_IO_CQ, 0, cq_phys, 0, cdw10, cdw11, 0, 0)?;
         crate::serial::println!("[NVMe] Created I/O CQ qid={} size={}", qid, size);
         Ok(())
     }
@@ -462,17 +445,13 @@ impl NvmeController {
         let cdw10 = (size as u32) << 16 | qid as u32;
         // Bit 0 = physically contiguous, CQ ID in upper 16 bits
         let cdw11 = (cq_id as u32) << 16 | 0x0001;
-        self.admin_command(
-            ADMIN_CREATE_IO_SQ,
-            0,
-            sq_phys,
-            0,
-            cdw10,
-            cdw11,
-            0,
-            0,
-        )?;
-        crate::serial::println!("[NVMe] Created I/O SQ qid={} size={} cq_id={}", qid, size, cq_id);
+        self.admin_command(ADMIN_CREATE_IO_SQ, 0, sq_phys, 0, cdw10, cdw11, 0, 0)?;
+        crate::serial::println!(
+            "[NVMe] Created I/O SQ qid={} size={} cq_id={}",
+            qid,
+            size,
+            cq_id
+        );
         Ok(())
     }
 }
@@ -519,7 +498,10 @@ impl DeviceDriver for NvmeDriver {
 
         crate::serial::println!(
             "[NVMe] Probing NVMe controller at {:02x}:{:02x}.{:02x} (BAR0 phys={:#x})",
-            info.bus, info.device, info.function, bar0_phys,
+            info.bus,
+            info.device,
+            info.function,
+            bar0_phys,
         );
 
         // Read version
@@ -539,7 +521,9 @@ impl DeviceDriver for NvmeDriver {
             while mmio_read32(bar0, REG_CSTS) & CSTS_RDY != 0 {
                 timeout -= 1;
                 if timeout == 0 {
-                    return Err(NvmeError::ProbeFailed("controller failed to become not-ready"));
+                    return Err(NvmeError::ProbeFailed(
+                        "controller failed to become not-ready",
+                    ));
                 }
                 core::hint::spin_loop();
             }
@@ -553,7 +537,9 @@ impl DeviceDriver for NvmeDriver {
 
         crate::serial::println!(
             "[NVMe] CAP_TO={}ms DSTRD={} doorbell_stride={}",
-            cap_to * 500, dstrd, doorbell_stride,
+            cap_to * 500,
+            dstrd,
+            doorbell_stride,
         );
 
         // ---- Allocate Admin Queue memory ----
@@ -647,10 +633,22 @@ impl DeviceDriver for NvmeDriver {
                             let lba_size = match flbas {
                                 0..=15 => {
                                     let formats = [
-                                        &ns_data.lbaf0, &ns_data.lbaf1, &ns_data.lbaf2, &ns_data.lbaf3,
-                                        &ns_data.lbaf4, &ns_data.lbaf5, &ns_data.lbaf6, &ns_data.lbaf7,
-                                        &ns_data.lbaf8, &ns_data.lbaf9, &ns_data.lbaf10, &ns_data.lbaf11,
-                                        &ns_data.lbaf12, &ns_data.lbaf13, &ns_data.lbaf14, &ns_data.lbaf15,
+                                        &ns_data.lbaf0,
+                                        &ns_data.lbaf1,
+                                        &ns_data.lbaf2,
+                                        &ns_data.lbaf3,
+                                        &ns_data.lbaf4,
+                                        &ns_data.lbaf5,
+                                        &ns_data.lbaf6,
+                                        &ns_data.lbaf7,
+                                        &ns_data.lbaf8,
+                                        &ns_data.lbaf9,
+                                        &ns_data.lbaf10,
+                                        &ns_data.lbaf11,
+                                        &ns_data.lbaf12,
+                                        &ns_data.lbaf13,
+                                        &ns_data.lbaf14,
+                                        &ns_data.lbaf15,
                                     ];
                                     formats[flbas as usize].lba_data_size()
                                 }
@@ -666,7 +664,10 @@ impl DeviceDriver for NvmeDriver {
 
                             crate::serial::println!(
                                 "[NVMe] Namespace {}: size={} LBAs, LBA size={}, capacity={} bytes",
-                                nsid, ns.nsze, lba_size, ns.capacity,
+                                nsid,
+                                ns.nsze,
+                                lba_size,
+                                ns.capacity,
                             );
                             ctrl.namespaces.push(ns);
                         } else {
@@ -683,11 +684,11 @@ impl DeviceDriver for NvmeDriver {
 
         // ---- Create I/O Completion Queue ----
         ctrl.create_io_cq(1, IO_QUEUE_SIZE, 0)
-            .map_err(|e| NvmeError::InitFailed(e))?;
+            .map_err(NvmeError::InitFailed)?;
 
         // ---- Create I/O Submission Queue ----
         ctrl.create_io_sq(1, IO_QUEUE_SIZE, 1)
-            .map_err(|e| NvmeError::InitFailed(e))?;
+            .map_err(NvmeError::InitFailed)?;
 
         crate::serial::println!(
             "[NVMe] Initialised with {} namespace(s)",
@@ -765,7 +766,11 @@ pub fn read_blocks(nsid: u32, lba: u64, count: u64, buffer: &mut [u8]) -> Result
     let mut guard = NVME_CONTROLLER.lock();
     let ctrl = guard.as_mut().ok_or(IoError::Timeout)?;
 
-    let ns = ctrl.namespaces.iter().find(|ns| ns.nsid == nsid).ok_or(IoError::InvalidNamespace)?;
+    let ns = ctrl
+        .namespaces
+        .iter()
+        .find(|ns| ns.nsid == nsid)
+        .ok_or(IoError::InvalidNamespace)?;
     let lba_size = ns.lba_size;
     let needed = count * lba_size;
 
@@ -816,7 +821,7 @@ pub fn read_blocks(nsid: u32, lba: u64, count: u64, buffer: &mut [u8]) -> Result
 
             let new_head = cq_head.wrapping_add(1);
             ctrl.io_cq_head.store(new_head, Ordering::Relaxed);
-            if new_head as usize % IO_QUEUE_SIZE as usize == 0 && new_head != 0 {
+            if (new_head as usize).is_multiple_of(IO_QUEUE_SIZE as usize) && new_head != 0 {
                 ctrl.cq_expected_phase[1].store(
                     !ctrl.cq_expected_phase[1].load(Ordering::Relaxed),
                     Ordering::Relaxed,
@@ -841,7 +846,11 @@ pub fn write_blocks(nsid: u32, lba: u64, count: u64, buffer: &[u8]) -> Result<()
     let mut guard = NVME_CONTROLLER.lock();
     let ctrl = guard.as_mut().ok_or(IoError::Timeout)?;
 
-    let ns = ctrl.namespaces.iter().find(|ns| ns.nsid == nsid).ok_or(IoError::InvalidNamespace)?;
+    let ns = ctrl
+        .namespaces
+        .iter()
+        .find(|ns| ns.nsid == nsid)
+        .ok_or(IoError::InvalidNamespace)?;
     let lba_size = ns.lba_size;
     let needed = count * lba_size;
 
@@ -891,7 +900,7 @@ pub fn write_blocks(nsid: u32, lba: u64, count: u64, buffer: &[u8]) -> Result<()
 
             let new_head = cq_head.wrapping_add(1);
             ctrl.io_cq_head.store(new_head, Ordering::Relaxed);
-            if new_head as usize % IO_QUEUE_SIZE as usize == 0 && new_head != 0 {
+            if (new_head as usize).is_multiple_of(IO_QUEUE_SIZE as usize) && new_head != 0 {
                 ctrl.cq_expected_phase[1].store(
                     !ctrl.cq_expected_phase[1].load(Ordering::Relaxed),
                     Ordering::Relaxed,
@@ -919,14 +928,12 @@ pub fn write_blocks(nsid: u32, lba: u64, count: u64, buffer: &[u8]) -> Result<()
 pub fn reinit() -> bool {
     let device_registry = crate::drivers::DEVICE_REGISTRY.lock();
     for (_, info) in device_registry.iter_device_infos() {
-        if info.class_code == NVME_CLASS && info.subclass == NVME_SUBCLASS {
-            match NvmeDriver::probe(info) {
-                Ok(_) => {
-                    crate::serial::println!("[NVMe] Re-initialisation succeeded");
-                    return true;
-                }
-                Err(_) => {}
-            }
+        if info.class_code == NVME_CLASS
+            && info.subclass == NVME_SUBCLASS
+            && NvmeDriver::probe(info).is_ok()
+        {
+            crate::serial::println!("[NVMe] Re-initialisation succeeded");
+            return true;
         }
     }
     crate::serial::println!("[NVMe] Re-initialisation failed: no NVMe device found");
@@ -1198,7 +1205,11 @@ mod tests {
 
     #[test]
     fn test_nvme_error_debug() {
-        let err = NvmeError::IoTimeout { nsid: 1, lba: 100, count: 8 };
+        let err = NvmeError::IoTimeout {
+            nsid: 1,
+            lba: 100,
+            count: 8,
+        };
         let debug_str = format!("{:?}", err);
         assert!(debug_str.contains("IoTimeout"));
     }
@@ -1342,7 +1353,8 @@ mod tests {
             ctrl.admin_sq_tail.load(Ordering::Relaxed),
             expected_tail,
             "unwrapped tail should be {} after {} submissions",
-            expected_tail, submissions,
+            expected_tail,
+            submissions,
         );
 
         // After 2 full wraps, the last-written slot index should be valid.
@@ -1416,8 +1428,10 @@ mod tests {
         if new_head as usize % cq_size == 0 && new_head != 0 {
             ctrl.cq_expected_phase[0].store(!old_phase, Ordering::Relaxed);
         }
-        assert!(!ctrl.cq_expected_phase[0].load(Ordering::Relaxed),
-            "expected_phase should have toggled from true to false after wrap");
+        assert!(
+            !ctrl.cq_expected_phase[0].load(Ordering::Relaxed),
+            "expected_phase should have toggled from true to false after wrap"
+        );
 
         // Now simulate the device writing new completions with phase=false
         // (toggled because it wrapped too).
@@ -1425,8 +1439,11 @@ mod tests {
 
         // poll_cq should detect CID=200 at the wrapped-around head position.
         let cq_head = ctrl.admin_cq_head.load(Ordering::Relaxed);
-        assert_eq!(cq_head as usize % cq_size, 0,
-            "head should point to slot 0 after wrap");
+        assert_eq!(
+            cq_head as usize % cq_size,
+            0,
+            "head should point to slot 0 after wrap"
+        );
         assert!(ctrl.poll_cq(0, 200, 100_000).is_ok());
 
         // Advance head past entry 0 at the wrapped position.
@@ -1435,8 +1452,10 @@ mod tests {
 
         // A CID with wrong phase should NOT be detected.
         write_admin_cqe(&mut ctrl, 1, 300, true); // wrong phase for second wrap
-        assert!(ctrl.poll_cq(0, 300, 1000).is_err(),
-            "should NOT detect CID=300 with wrong phase bit");
+        assert!(
+            ctrl.poll_cq(0, 300, 1000).is_err(),
+            "should NOT detect CID=300 with wrong phase bit"
+        );
     }
 
     #[test]
@@ -1470,7 +1489,8 @@ mod tests {
                 cdw15: 0,
             };
 
-            ctrl.io_sq_tail.store(tail_before.wrapping_add(1), Ordering::Relaxed);
+            ctrl.io_sq_tail
+                .store(tail_before.wrapping_add(1), Ordering::Relaxed);
         }
 
         let final_tail = ctrl.io_sq_tail.load(Ordering::Relaxed);
@@ -1500,8 +1520,11 @@ mod tests {
         for i in 0..cq_size {
             let cid = (i + 1) as u16;
             ctrl.admin_cq_head.store(i as u16, Ordering::Relaxed);
-            assert!(ctrl.poll_cq(0, cid, 100_000).is_ok(),
-                "should detect CID={} in first pass", cid);
+            assert!(
+                ctrl.poll_cq(0, cid, 100_000).is_ok(),
+                "should detect CID={} in first pass",
+                cid
+            );
             // Advance head (simulating admin_command post-poll).
             let new_head = (i + 1) as u16;
             ctrl.admin_cq_head.store(new_head, Ordering::Relaxed);
@@ -1514,8 +1537,10 @@ mod tests {
             ctrl.cq_expected_phase[0].store(!old_phase, Ordering::Relaxed);
         }
         ctrl.admin_cq_head.store(wrap_head, Ordering::Relaxed);
-        assert!(!ctrl.cq_expected_phase[0].load(Ordering::Relaxed),
-            "expected_phase should be false after first wrap");
+        assert!(
+            !ctrl.cq_expected_phase[0].load(Ordering::Relaxed),
+            "expected_phase should be false after first wrap"
+        );
 
         // --- Second pass: fill CQ with phase=false entries ---
         for i in 0..cq_size {
@@ -1528,8 +1553,12 @@ mod tests {
             // Head points to slot (wrap_head + i) % cq_size which should be slot i.
             let head_val = wrap_head + i as u16;
             ctrl.admin_cq_head.store(head_val, Ordering::Relaxed);
-            assert!(ctrl.poll_cq(0, cid, 100_000).is_ok(),
-                "should detect CID={} in second pass at head={}", cid, head_val);
+            assert!(
+                ctrl.poll_cq(0, cid, 100_000).is_ok(),
+                "should detect CID={} in second pass at head={}",
+                cid,
+                head_val
+            );
             // Advance head.
             let new_head = head_val.wrapping_add(1);
             ctrl.admin_cq_head.store(new_head, Ordering::Relaxed);
@@ -1542,14 +1571,18 @@ mod tests {
             ctrl.cq_expected_phase[0].store(!old_phase2, Ordering::Relaxed);
         }
         ctrl.admin_cq_head.store(wrap_head2, Ordering::Relaxed);
-        assert!(ctrl.cq_expected_phase[0].load(Ordering::Relaxed),
-            "expected_phase should toggle back to true after second wrap");
+        assert!(
+            ctrl.cq_expected_phase[0].load(Ordering::Relaxed),
+            "expected_phase should toggle back to true after second wrap"
+        );
 
         // --- Third pass: write and detect a completion with phase=true ---
         write_admin_cqe(&mut ctrl, 0, 500, true);
         ctrl.admin_cq_head.store(wrap_head2, Ordering::Relaxed);
-        assert!(ctrl.poll_cq(0, 500, 100_000).is_ok(),
-            "should detect CID=500 with phase=true after second wrap");
+        assert!(
+            ctrl.poll_cq(0, 500, 100_000).is_ok(),
+            "should detect CID=500 with phase=true after second wrap"
+        );
     }
 
     #[test]

@@ -23,20 +23,20 @@ impl UserSpace {
         &mut self,
         mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl X86FrameAllocator<Size4KiB>,
-    ) -> Result<u64, ()> {
-        let page_size = Size4KiB::SIZE as u64;
+    ) -> Result<u64, &'static str> {
+        let page_size = Size4KiB::SIZE;
         let stack_base = USER_STACK_BASE;
         for i in 0..USER_STACK_SIZE_PAGES {
-            let frame = frame_allocator.allocate_frame().ok_or(())?;
+            let frame = frame_allocator.allocate_frame().ok_or("out of memory")?;
             let virt = VirtAddr::new(stack_base - (i as u64 * page_size));
-            let page = Page::from_start_address(virt).map_err(|_| ())?;
+            let page = Page::from_start_address(virt).map_err(|_| "invalid page")?;
             let flags = PageTableFlags::PRESENT
                 | PageTableFlags::WRITABLE
                 | PageTableFlags::USER_ACCESSIBLE;
             unsafe {
                 let _ = mapper
                     .map_to(page, frame, flags, frame_allocator)
-                    .map_err(|_| ())?;
+                    .map_err(|_| "map failed")?;
             }
             self.page_tables.push(frame);
         }

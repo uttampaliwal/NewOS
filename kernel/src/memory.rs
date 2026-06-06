@@ -11,8 +11,8 @@ pub mod heap;
 pub mod oom;
 pub mod page_cache;
 pub mod paging;
-pub mod user;
 pub mod swap;
+pub mod user;
 pub mod vma;
 pub mod wx;
 
@@ -41,17 +41,15 @@ impl<'a> FrameAllocator<'a> {
     }
 
     pub fn allocate_physical_frame(&mut self) -> Option<PhysFrame> {
-        use turnix_abi::boot::{
-            MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA,
-        };
+        use turnix_abi::boot::{MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA};
 
         for descriptor in self.boot_info.memory_map.iter() {
-            let is_usable = match descriptor.ty {
-                MEMORY_TYPE_CONVENTIONAL => true,
-                MEMORY_TYPE_BOOT_SERVICES_CODE => true,
-                MEMORY_TYPE_BOOT_SERVICES_DATA => true,
-                _ => false,
-            };
+            let is_usable = matches!(
+                descriptor.ty,
+                MEMORY_TYPE_CONVENTIONAL
+                    | MEMORY_TYPE_BOOT_SERVICES_CODE
+                    | MEMORY_TYPE_BOOT_SERVICES_DATA
+            );
 
             if !is_usable {
                 continue;
@@ -72,12 +70,12 @@ impl<'a> FrameAllocator<'a> {
         if crate::memory::oom::oom_kill().is_some() {
             // Retry the allocation after reclaim
             for descriptor in self.boot_info.memory_map.iter() {
-                let is_usable = match descriptor.ty {
-                    MEMORY_TYPE_CONVENTIONAL => true,
-                    MEMORY_TYPE_BOOT_SERVICES_CODE => true,
-                    MEMORY_TYPE_BOOT_SERVICES_DATA => true,
-                    _ => false,
-                };
+                let is_usable = matches!(
+                    descriptor.ty,
+                    MEMORY_TYPE_CONVENTIONAL
+                        | MEMORY_TYPE_BOOT_SERVICES_CODE
+                        | MEMORY_TYPE_BOOT_SERVICES_DATA
+                );
 
                 if !is_usable {
                     continue;
@@ -199,4 +197,3 @@ mod tests {
         );
     }
 }
-

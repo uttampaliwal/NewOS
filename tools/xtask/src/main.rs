@@ -61,7 +61,9 @@ fn print_doctor() {
     );
     match find_ovmf_code() {
         Some(path) => println!("[ok] EDK2 firmware found at {}", path.display()),
-        None => println!("[missing] EDK2 firmware image not found. Set TURNIX_OVMF_CODE if needed."),
+        None => {
+            println!("[missing] EDK2 firmware image not found. Set TURNIX_OVMF_CODE if needed.")
+        }
     }
     match find_ovmf_vars() {
         Some(path) => println!("[ok] EDK2 vars image found at {}", path.display()),
@@ -84,7 +86,9 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some("status") | None => Command::Status,
         Some(other) => {
             eprintln!("Unknown xtask command: {other}");
-            eprintln!("Available commands: status, doctor, build-uefi, run-uefi, test-qemu, uefi-loader");
+            eprintln!(
+                "Available commands: status, doctor, build-uefi, run-uefi, test-qemu, uefi-loader"
+            );
             std::process::exit(2);
         }
     }
@@ -452,7 +456,8 @@ fn find_ovmf_code() -> Option<PathBuf> {
 
     let mut candidates = Vec::new();
     if let Some(qemu_path) = find_command_path("qemu-system-x86_64")
-        && let Some(base) = qemu_path.parent().and_then(Path::parent) {
+        && let Some(base) = qemu_path.parent().and_then(Path::parent)
+    {
         candidates.push(base.join("share").join("qemu").join("edk2-x86_64-code.fd"));
         candidates.push(base.join("share").join("ovmf").join("OVMF.fd"));
     }
@@ -480,7 +485,8 @@ fn find_ovmf_vars() -> Option<PathBuf> {
 
     let mut candidates = Vec::new();
     if let Some(qemu_path) = find_command_path("qemu-system-x86_64")
-        && let Some(base) = qemu_path.parent().and_then(Path::parent) {
+        && let Some(base) = qemu_path.parent().and_then(Path::parent)
+    {
         let share = base.join("share").join("qemu");
         candidates.push(share.join("edk2-x86_64-vars.fd"));
         candidates.push(share.join("edk2-i386-vars.fd"));

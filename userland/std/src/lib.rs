@@ -11,8 +11,8 @@ pub mod io {
 
     /// Write trait for output
     pub trait Write {
-        fn write_str(&mut self, s: &str) -> Result<(), ()>;
-        fn write_fmt(&mut self, args: fmt::Arguments<'_>) -> Result<(), ()> {
+        fn write_str(&mut self, s: &str) -> fmt::Result;
+        fn write_fmt(&mut self, args: fmt::Arguments<'_>) -> fmt::Result {
             let s = alloc::format!("{}", args);
             self.write_str(&s)
         }
@@ -22,7 +22,7 @@ pub mod io {
     pub struct Stdout;
 
     impl Write for Stdout {
-        fn write_str(&mut self, s: &str) -> Result<(), ()> {
+        fn write_str(&mut self, s: &str) -> fmt::Result {
             // Use libturnix to write to stdout (fd=1)
             let fd = 1u64;
             let _ = libturnix::write(fd, s.as_bytes());

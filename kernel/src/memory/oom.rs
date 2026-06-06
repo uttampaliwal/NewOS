@@ -43,9 +43,9 @@ pub fn set_priority(pid: ProcessId, priority: u64) {
 /// Higher score = more likely to be killed.
 /// RSS is estimated by summing VMA sizes (upper bound, no page-table walk).
 fn score_entry(entry: &ProcessEntry) -> u64 {
-    let rss = entry.process.with_vma_set(|vmas| {
-        vmas.iter().map(|vma| vma.size()).sum::<u64>()
-    });
+    let rss = entry
+        .process
+        .with_vma_set(|vmas| vmas.iter().map(|vma| vma.size()).sum::<u64>());
     rss / crate::memory::PAGE_SIZE + entry.priority * 100
 }
 
@@ -93,11 +93,11 @@ fn kill_process(pid: ProcessId) -> bool {
     // The scheduler will pick up zombie tasks and halt if the last one dies.
     // We queue an exit for the current task if it matches.
     let maybe_current = scheduler::get_current_process();
-    if let Some(current) = maybe_current {
-        if current.id() == pid {
-            scheduler::exit_current_task();
-            // unreachable
-        }
+    if let Some(current) = maybe_current
+        && current.id() == pid
+    {
+        scheduler::exit_current_task();
+        // unreachable
     }
 
     // For other processes, we rely on the fact that they will be detected
@@ -118,14 +118,10 @@ pub fn oom_kill() -> Option<ProcessId> {
     let victim = select_victim()?;
     let score = {
         let table = PROCESS_TABLE.lock();
-        table.get(&victim).map(|e| score_entry(e)).unwrap_or(0)
+        table.get(&victim).map(score_entry).unwrap_or(0)
     };
 
-    crate::serial::println!(
-        "[OOM] Killing PID {} (score: {})",
-        victim.0,
-        score,
-    );
+    crate::serial::println!("[OOM] Killing PID {} (score: {})", victim.0, score,);
 
     if kill_process(victim) {
         // Remove from process table

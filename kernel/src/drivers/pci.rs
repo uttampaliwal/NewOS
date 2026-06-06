@@ -1,5 +1,5 @@
-use x86_64::instructions::port::Port;
 use x86_64::VirtAddr;
+use x86_64::instructions::port::Port;
 
 const CONFIG_ADDRESS: u16 = 0xCF8;
 const CONFIG_DATA: u16 = 0xCFC;
@@ -56,10 +56,15 @@ fn enumerate_pci(phys_mem_offset: VirtAddr) {
                 let device = get_device_id(bus, slot, 0);
                 let class = get_class_code(bus, slot, 0);
                 let subclass = get_subclass(bus, slot, 0);
-                
+
                 crate::serial::println!(
                     "[PCI] Found device: Bus {:02X}, Slot {:02X}, Func 00 - Vendor: {:04X}, Device: {:04X}, Class: {:02X}, Subclass: {:02X}",
-                    bus, slot, vendor, device, class, subclass
+                    bus,
+                    slot,
+                    vendor,
+                    device,
+                    class,
+                    subclass
                 );
 
                 if class == 0x01 && subclass == 0x06 {

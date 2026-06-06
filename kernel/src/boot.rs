@@ -81,8 +81,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     {
         use crate::memory::swap::{InMemorySwapDevice, SwapDevice, SwapManager};
         let swap_device: Arc<dyn SwapDevice> = Arc::new(
-            InMemorySwapDevice::new(256, "memswap")
-                .expect("failed to allocate swap device memory"),
+            InMemorySwapDevice::new(256, "memswap").expect("failed to allocate swap device memory"),
         );
         SwapManager::init(swap_device, 1024);
     }
@@ -123,7 +122,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         use crate::drivers::framework::{DeviceDriver, DeviceKey};
         let device_infos: alloc::vec::Vec<(DeviceKey, crate::drivers::framework::DeviceInfo)> = {
             let registry = crate::drivers::DEVICE_REGISTRY.lock();
-            registry.iter_device_infos().map(|(k, v)| (k.clone(), v.clone())).collect()
+            registry
+                .iter_device_infos()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
         };
         for (key, info) in &device_infos {
             match crate::drivers::virtio_net::VirtioNetDriver::probe(info) {
@@ -144,7 +146,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         use crate::drivers::framework::{DeviceDriver, DeviceKey};
         let device_infos: alloc::vec::Vec<(DeviceKey, crate::drivers::framework::DeviceInfo)> = {
             let registry = crate::drivers::DEVICE_REGISTRY.lock();
-            registry.iter_device_infos().map(|(k, v)| (k.clone(), v.clone())).collect()
+            registry
+                .iter_device_infos()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
         };
         for (key, info) in &device_infos {
             match crate::drivers::nvme::NvmeDriver::probe(info) {
@@ -165,7 +170,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         use crate::drivers::framework::{DeviceDriver, DeviceKey};
         let device_infos: alloc::vec::Vec<(DeviceKey, crate::drivers::framework::DeviceInfo)> = {
             let registry = crate::drivers::DEVICE_REGISTRY.lock();
-            registry.iter_device_infos().map(|(k, v)| (k.clone(), v.clone())).collect()
+            registry
+                .iter_device_infos()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
         };
         for (key, info) in &device_infos {
             match crate::drivers::xhci::XhciDriver::probe(info) {
@@ -186,7 +194,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         use crate::drivers::framework::{DeviceDriver, DeviceKey};
         let device_infos: alloc::vec::Vec<(DeviceKey, crate::drivers::framework::DeviceInfo)> = {
             let registry = crate::drivers::DEVICE_REGISTRY.lock();
-            registry.iter_device_infos().map(|(k, v)| (k.clone(), v.clone())).collect()
+            registry
+                .iter_device_infos()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
         };
         for (key, info) in &device_infos {
             match crate::drivers::gpu::GpuDriver::probe(info) {
@@ -225,9 +236,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     {
         let tmpfs: Arc<dyn crate::fs::vfs::FsBackend> =
             Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
-        if let Err(e) = crate::vfs::VFS
-            .lock()
-            .mount("/", tmpfs, crate::fs::vfs::MountFlags::default())
+        if let Err(e) =
+            crate::vfs::VFS
+                .lock()
+                .mount("/", tmpfs, crate::fs::vfs::MountFlags::default())
         {
             crate::serial::println!("[FS] Failed to mount tmpfs at /: {:?}", e);
         } else {
@@ -236,9 +248,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
 
         let ext4: Arc<dyn crate::fs::vfs::FsBackend> =
             Arc::new(crate::fs::ext4::Ext4Backend::new());
-        if let Err(e) = crate::vfs::VFS
-            .lock()
-            .mount("/mnt", ext4, crate::fs::vfs::MountFlags::default())
+        if let Err(e) =
+            crate::vfs::VFS
+                .lock()
+                .mount("/mnt", ext4, crate::fs::vfs::MountFlags::default())
         {
             crate::serial::println!("[FS] Failed to mount ext4 at /mnt: {:?}", e);
         } else {
@@ -250,9 +263,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     {
         let tmpfs: Arc<dyn crate::fs::vfs::FsBackend> =
             Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
-        if let Err(e) = crate::vfs::VFS
-            .lock()
-            .mount("/", tmpfs, crate::fs::vfs::MountFlags::default())
+        if let Err(e) =
+            crate::vfs::VFS
+                .lock()
+                .mount("/", tmpfs, crate::fs::vfs::MountFlags::default())
         {
             crate::serial::println!("[FS] Failed to mount tmpfs at /: {:?}", e);
         } else {
@@ -261,9 +275,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
 
         let ext4: Arc<dyn crate::fs::vfs::FsBackend> =
             Arc::new(crate::fs::ext4::Ext4Backend::new());
-        if let Err(e) = crate::vfs::VFS
-            .lock()
-            .mount("/mnt", ext4, crate::fs::vfs::MountFlags::default())
+        if let Err(e) =
+            crate::vfs::VFS
+                .lock()
+                .mount("/mnt", ext4, crate::fs::vfs::MountFlags::default())
         {
             crate::serial::println!("[FS] Failed to mount ext4 at /mnt: {:?}", e);
         } else {
@@ -423,7 +438,7 @@ extern "sysv64" fn heartbeat_task() -> ! {
 
     loop {
         counter = counter.wrapping_add(1);
-        if counter % 64 == 0 {
+        if counter.is_multiple_of(64) {
             crate::serial::print(format_args!("[task:heartbeat {}]\n", counter));
         }
 
@@ -439,7 +454,7 @@ extern "sysv64" fn worker_task() -> ! {
     let mut counter = 0u64;
     loop {
         counter = counter.wrapping_add(1);
-        if counter % 256 == 0 {
+        if counter.is_multiple_of(256) {
             crate::serial::print(format_args!("w"));
         }
 
@@ -469,7 +484,7 @@ fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
     if boot_info.memory_map.descriptors.is_null() {
         return Err("Memory map descriptors pointer is null");
     }
-    if (boot_info.memory_map.descriptors as usize) % 8 != 0 {
+    if !(boot_info.memory_map.descriptors as usize).is_multiple_of(8) {
         return Err("Memory map descriptors must be 8-byte aligned");
     }
     if boot_info.memory_map.map_size == 0 {

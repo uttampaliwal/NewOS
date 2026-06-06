@@ -128,21 +128,21 @@ pub enum FileType {
 pub struct OpenFlags(pub u32);
 
 impl OpenFlags {
-    pub const RDONLY:   OpenFlags = OpenFlags(0);
-    pub const WRONLY:   OpenFlags = OpenFlags(1);
-    pub const RDWR:     OpenFlags = OpenFlags(2);
-    pub const CREAT:    OpenFlags = OpenFlags(0o100);
-    pub const TRUNC:    OpenFlags = OpenFlags(0o1000);
-    pub const APPEND:   OpenFlags = OpenFlags(0o2000);
-    pub const CLOEXEC:  OpenFlags = OpenFlags(0o2000000);
-    pub const DIRECTORY:OpenFlags = OpenFlags(0o200000);
+    pub const RDONLY: OpenFlags = OpenFlags(0);
+    pub const WRONLY: OpenFlags = OpenFlags(1);
+    pub const RDWR: OpenFlags = OpenFlags(2);
+    pub const CREAT: OpenFlags = OpenFlags(0o100);
+    pub const TRUNC: OpenFlags = OpenFlags(0o1000);
+    pub const APPEND: OpenFlags = OpenFlags(0o2000);
+    pub const CLOEXEC: OpenFlags = OpenFlags(0o2000000);
+    pub const DIRECTORY: OpenFlags = OpenFlags(0o200000);
 
     pub fn readable(&self) -> bool {
-        self.0 & 3 != 1  // not WRONLY
+        self.0 & 3 != 1 // not WRONLY
     }
 
     pub fn writable(&self) -> bool {
-        self.0 & 3 != 0  // WRONLY or RDWR
+        self.0 & 3 != 0 // WRONLY or RDWR
     }
 
     pub fn is_append(&self) -> bool {
@@ -170,7 +170,7 @@ impl MountFlags {
     pub const RDONLY: MountFlags = MountFlags(1);
     pub const NOSUID: MountFlags = MountFlags(2);
     pub const NOEXEC: MountFlags = MountFlags(4);
-    pub const NODEV:  MountFlags = MountFlags(8);
+    pub const NODEV: MountFlags = MountFlags(8);
 }
 
 // ---------------------------------------------------------------------------
@@ -218,13 +218,19 @@ impl FileStat {
             FileType::Socket => FILE_TYPE_REGULAR, // no ABI constant yet
             FileType::Symlink => FILE_TYPE_REGULAR, // no ABI constant yet
         };
-        turnix_abi::syscall::Stat { size: self.size, file_type: abi_type }
+        turnix_abi::syscall::Stat {
+            size: self.size,
+            file_type: abi_type,
+        }
     }
 }
 
 impl From<InodeStat> for FileStat {
     fn from(s: InodeStat) -> Self {
-        FileStat { size: s.size, file_type: s.file_type }
+        FileStat {
+            size: s.size,
+            file_type: s.file_type,
+        }
     }
 }
 
@@ -549,7 +555,8 @@ impl Vfs {
             open_fd_count: 0,
         });
         // Sort by path length descending for longest-prefix matching.
-        self.mounts.sort_by(|a, b| b.mount_point.len().cmp(&a.mount_point.len()));
+        self.mounts
+            .sort_by_key(|m| core::cmp::Reverse(m.mount_point.len()));
         Ok(())
     }
 
@@ -558,7 +565,8 @@ impl Vfs {
     /// Returns [`FsError::BusyMounted`] if any open file descriptors still
     /// reference the backend (requirement 21.3).
     pub fn umount(&mut self, mount_point: &str) -> Result<(), FsError> {
-        let idx = self.mounts
+        let idx = self
+            .mounts
             .iter()
             .position(|m| m.mount_point == mount_point)
             .ok_or(FsError::NotFound)?;
@@ -578,17 +586,14 @@ impl Vfs {
     /// Uses longest-prefix matching on mount points (requirement 21.5).
     ///
     /// Returns `FsError::NotFound` if no mount covers the path.
-    pub fn resolve<'a>(
-        &'a self,
-        path: &'a str,
-    ) -> Result<(&'a MountEntry, &'a str), FsError> {
+    pub fn resolve<'a>(&'a self, path: &'a str) -> Result<(&'a MountEntry, &'a str), FsError> {
         // The mount table is already sorted by path length descending, so the
         // first entry whose mount_point is a prefix of `path` is the longest match.
         for entry in &self.mounts {
             let mp = entry.mount_point.as_str();
             if path.starts_with(mp) {
                 // The remainder after stripping the mount-point prefix.
-                let raw_rel = &path[mp.len()..];
+                let raw_rel = path.strip_prefix(mp).unwrap_or("");
                 // Determine the relative path within the backend:
                 //  - If the mount point IS "/" the rel path is simply the
                 //    original path (we don't strip the slash).
@@ -625,10 +630,7 @@ impl Vfs {
         let mut current = start;
         // Split on '/' and skip empty components (handles leading '/' and
         // duplicate slashes).
-        let components: Vec<&str> = rel_path
-            .split('/')
-            .filter(|c| !c.is_empty())
-            .collect();
+        let components: Vec<&str> = rel_path.split('/').filter(|c| !c.is_empty()).collect();
         for component in components {
             current = backend.lookup(current, component)?;
         }
@@ -660,8 +662,12 @@ impl Vfs {
 
         // Determine required permission bits.
         let mut access: u8 = 0;
-        if flags.readable() { access |= 0x4; } // read
-        if flags.writable() { access |= 0x2; } // write
+        if flags.readable() {
+            access |= 0x4;
+        } // read
+        if flags.writable() {
+            access |= 0x2;
+        } // write
 
         if access != 0 && !check_permission(&stat, uid, gid, access) {
             return Err(FsError::PermissionDenied);
@@ -676,21 +682,19 @@ impl Vfs {
 
         let kind = match stat.file_type {
             FileType::Directory => FdKind::Directory,
-            FileType::Pipe     => FdKind::Pipe(Arc::new(PipeBuffer)),
-            FileType::Socket   => FdKind::UnixSocket(Arc::new(UnixSocketState)),
-            _                  => FdKind::Regular,
+            FileType::Pipe => FdKind::Pipe(Arc::new(PipeBuffer)),
+            FileType::Socket => FdKind::UnixSocket(Arc::new(UnixSocketState)),
+            _ => FdKind::Regular,
         };
 
-        let fd = FileDescriptor::new(
-            inode,
-            backend,
-            flags,
-            kind,
-            String::from(path),
-        );
+        let fd = FileDescriptor::new(inode, backend, flags, kind, String::from(path));
         let fd_idx = self.alloc_fd();
         // Increment open_fd_count for the relevant mount.
-        if let Some(me) = self.mounts.iter_mut().find(|m| path.starts_with(m.mount_point.as_str())) {
+        if let Some(me) = self
+            .mounts
+            .iter_mut()
+            .find(|m| path.starts_with(m.mount_point.as_str()))
+        {
             me.open_fd_count += 1;
         }
         self.open_files.insert(fd_idx, fd);
@@ -704,12 +708,13 @@ impl Vfs {
         if let Some(fd) = self.open_files.remove(&fd_idx) {
             let name = fd.name.clone();
             // Decrement open_fd_count for the matching mount.
-            if let Some(me) = self.mounts.iter_mut().find(|m| {
-                name.starts_with(m.mount_point.as_str())
-            }) {
-                if me.open_fd_count > 0 {
-                    me.open_fd_count -= 1;
-                }
+            if let Some(me) = self
+                .mounts
+                .iter_mut()
+                .find(|m| name.starts_with(m.mount_point.as_str()))
+                && me.open_fd_count > 0
+            {
+                me.open_fd_count -= 1;
             }
             true
         } else {
@@ -906,20 +911,20 @@ impl Vfs {
             let idx = (fd.inode.0 as usize).wrapping_sub(1);
             (idx, fd.get_offset())
         };
-        if let Some(entry) = self.entries.get(inode_idx) {
-            if let Some(data) = &entry.data {
-                let start = offset as usize;
-                if start >= data.len() {
-                    return Some(0);
-                }
-                let avail = data.len() - start;
-                let len = buf.len().min(avail);
-                buf[..len].copy_from_slice(&data[start..start + len]);
-                if let Some(fd) = self.open_files.get(&fd_idx) {
-                    fd.set_offset(offset + len as u64);
-                }
-                return Some(len);
+        if let Some(entry) = self.entries.get(inode_idx)
+            && let Some(data) = &entry.data
+        {
+            let start = offset as usize;
+            if start >= data.len() {
+                return Some(0);
             }
+            let avail = data.len() - start;
+            let len = buf.len().min(avail);
+            buf[..len].copy_from_slice(&data[start..start + len]);
+            if let Some(fd) = self.open_files.get(&fd_idx) {
+                fd.set_offset(offset + len as u64);
+            }
+            return Some(len);
         }
         None
     }
@@ -949,19 +954,19 @@ impl Vfs {
             let idx = (fd.inode.0 as usize).wrapping_sub(1);
             (idx, fd.get_offset())
         };
-        if let Some(entry) = self.entries.get_mut(inode_idx) {
-            if let Some(data) = &mut entry.data {
-                let start = offset as usize;
-                if start > data.len() {
-                    data.resize(start, 0);
-                }
-                data.extend_from_slice(buf);
-                let written = buf.len();
-                if let Some(fd) = self.open_files.get(&fd_idx) {
-                    fd.set_offset(offset + written as u64);
-                }
-                return Some(written);
+        if let Some(entry) = self.entries.get_mut(inode_idx)
+            && let Some(data) = &mut entry.data
+        {
+            let start = offset as usize;
+            if start > data.len() {
+                data.resize(start, 0);
             }
+            data.extend_from_slice(buf);
+            let written = buf.len();
+            if let Some(fd) = self.open_files.get(&fd_idx) {
+                fd.set_offset(offset + written as u64);
+            }
+            return Some(written);
         }
         None
     }
@@ -1140,18 +1145,24 @@ impl Default for Vfs {
 struct NullBackend;
 
 impl FsBackend for NullBackend {
-    fn root_inode(&self) -> InodeId { InodeId(1) }
+    fn root_inode(&self) -> InodeId {
+        InodeId(1)
+    }
     fn lookup(&self, _parent: InodeId, _name: &str) -> Result<InodeId, FsError> {
         Err(FsError::NotFound)
     }
-    fn open(&self, _inode: InodeId, _flags: OpenFlags) -> Result<(), FsError> { Ok(()) }
+    fn open(&self, _inode: InodeId, _flags: OpenFlags) -> Result<(), FsError> {
+        Ok(())
+    }
     fn read(&self, _inode: InodeId, _offset: u64, _buf: &mut [u8]) -> Result<usize, FsError> {
         Ok(0)
     }
     fn write(&self, _inode: InodeId, _offset: u64, _buf: &[u8]) -> Result<usize, FsError> {
         Ok(0)
     }
-    fn stat(&self, _inode: InodeId) -> Result<InodeStat, FsError> { Err(FsError::NotFound) }
+    fn stat(&self, _inode: InodeId) -> Result<InodeStat, FsError> {
+        Err(FsError::NotFound)
+    }
     fn readdir(&self, _inode: InodeId) -> Result<Vec<DirEntry>, FsError> {
         Err(FsError::NotFound)
     }
@@ -1161,12 +1172,12 @@ impl FsBackend for NullBackend {
     fn unlink(&self, _parent: InodeId, _name: &str) -> Result<(), FsError> {
         Err(FsError::NotSupported)
     }
-    fn rename(
-        &self, _op: InodeId, _on: &str, _np: InodeId, _nn: &str
-    ) -> Result<(), FsError> {
+    fn rename(&self, _op: InodeId, _on: &str, _np: InodeId, _nn: &str) -> Result<(), FsError> {
         Err(FsError::NotSupported)
     }
-    fn sync(&self) -> Result<(), FsError> { Ok(()) }
+    fn sync(&self) -> Result<(), FsError> {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1181,7 +1192,7 @@ fn split_parent_name(rel: &str) -> (&str, &str) {
     // Strip trailing slash.
     let rel = rel.trim_end_matches('/');
     match rel.rfind('/') {
-        Some(pos) if pos == 0 => ("/", &rel[1..]),
+        Some(0) => ("/", &rel[1..]),
         Some(pos) => (&rel[..pos], &rel[pos + 1..]),
         None => ("/", rel),
     }
@@ -1218,32 +1229,42 @@ mod tests {
                 "hello.txt".to_string(),
                 (InodeId(2), b"hello world".to_vec()),
             );
-            files.insert(
-                "dir".to_string(),
-                (InodeId(3), Vec::new()),
-            );
+            files.insert("dir".to_string(), (InodeId(3), Vec::new()));
             MemBackend {
-                inner: Mutex::new(MemBackendInner { files, next_inode: 4 }),
+                inner: Mutex::new(MemBackendInner {
+                    files,
+                    next_inode: 4,
+                }),
             }
         }
     }
 
     impl FsBackend for MemBackend {
-        fn root_inode(&self) -> InodeId { InodeId(1) }
+        fn root_inode(&self) -> InodeId {
+            InodeId(1)
+        }
 
         fn lookup(&self, _parent: InodeId, name: &str) -> Result<InodeId, FsError> {
             let inner = self.inner.lock();
-            inner.files.get(name).map(|(id, _)| *id).ok_or(FsError::NotFound)
+            inner
+                .files
+                .get(name)
+                .map(|(id, _)| *id)
+                .ok_or(FsError::NotFound)
         }
 
-        fn open(&self, _inode: InodeId, _flags: OpenFlags) -> Result<(), FsError> { Ok(()) }
+        fn open(&self, _inode: InodeId, _flags: OpenFlags) -> Result<(), FsError> {
+            Ok(())
+        }
 
         fn read(&self, inode: InodeId, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
             let inner = self.inner.lock();
             for (_, (id, data)) in &inner.files {
                 if *id == inode {
                     let start = offset as usize;
-                    if start >= data.len() { return Ok(0); }
+                    if start >= data.len() {
+                        return Ok(0);
+                    }
                     let avail = data.len() - start;
                     let len = buf.len().min(avail);
                     buf[..len].copy_from_slice(&data[start..start + len]);
@@ -1258,9 +1279,13 @@ mod tests {
             for (_, (id, data)) in &mut inner.files {
                 if *id == inode {
                     let start = offset as usize;
-                    if start > data.len() { data.resize(start, 0); }
+                    if start > data.len() {
+                        data.resize(start, 0);
+                    }
                     let end = start + buf.len();
-                    if end > data.len() { data.resize(end, 0); }
+                    if end > data.len() {
+                        data.resize(end, 0);
+                    }
                     data[start..end].copy_from_slice(buf);
                     return Ok(buf.len());
                 }
@@ -1272,8 +1297,12 @@ mod tests {
             if inode == InodeId(1) {
                 return Ok(InodeStat {
                     mode: 0o755,
-                    uid: 0, gid: 0, nlink: 2,
-                    atime: 0, mtime: 0, ctime: 0,
+                    uid: 0,
+                    gid: 0,
+                    nlink: 2,
+                    atime: 0,
+                    mtime: 0,
+                    ctime: 0,
                     size: 0,
                     file_type: FileType::Directory,
                 });
@@ -1288,8 +1317,12 @@ mod tests {
                     };
                     return Ok(InodeStat {
                         mode: 0o644,
-                        uid: 1000, gid: 1000, nlink: 1,
-                        atime: 0, mtime: 0, ctime: 0,
+                        uid: 1000,
+                        gid: 1000,
+                        nlink: 1,
+                        atime: 0,
+                        mtime: 0,
+                        ctime: 0,
                         size: data.len() as u64,
                         file_type: ft,
                     });
@@ -1299,10 +1332,14 @@ mod tests {
         }
 
         fn readdir(&self, inode: InodeId) -> Result<Vec<DirEntry>, FsError> {
-            if inode != InodeId(1) { return Err(FsError::NotADirectory); }
+            if inode != InodeId(1) {
+                return Err(FsError::NotADirectory);
+            }
             let inner = self.inner.lock();
-            Ok(inner.files.iter().map(|(name, (id, data))| {
-                DirEntry {
+            Ok(inner
+                .files
+                .iter()
+                .map(|(name, (id, data))| DirEntry {
                     inode: *id,
                     name: name.clone(),
                     file_type: if data.is_empty() && name == "dir" {
@@ -1310,13 +1347,15 @@ mod tests {
                     } else {
                         FileType::Regular
                     },
-                }
-            }).collect())
+                })
+                .collect())
         }
 
         fn mkdir(&self, _parent: InodeId, name: &str, _mode: u32) -> Result<InodeId, FsError> {
             let mut inner = self.inner.lock();
-            if inner.files.contains_key(name) { return Err(FsError::AlreadyExists); }
+            if inner.files.contains_key(name) {
+                return Err(FsError::AlreadyExists);
+            }
             let id = InodeId(inner.next_inode);
             inner.next_inode += 1;
             inner.files.insert(name.to_string(), (id, Vec::new()));
@@ -1329,16 +1368,16 @@ mod tests {
             Ok(())
         }
 
-        fn rename(&self, _op: InodeId, old: &str, _np: InodeId, new: &str)
-            -> Result<(), FsError>
-        {
+        fn rename(&self, _op: InodeId, old: &str, _np: InodeId, new: &str) -> Result<(), FsError> {
             let mut inner = self.inner.lock();
             let val = inner.files.remove(old).ok_or(FsError::NotFound)?;
             inner.files.insert(new.to_string(), val);
             Ok(())
         }
 
-        fn sync(&self) -> Result<(), FsError> { Ok(()) }
+        fn sync(&self) -> Result<(), FsError> {
+            Ok(())
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1347,8 +1386,13 @@ mod tests {
 
     fn make_stat(mode: u32, uid: u32, gid: u32) -> InodeStat {
         InodeStat {
-            mode, uid, gid, nlink: 1,
-            atime: 0, mtime: 0, ctime: 0,
+            mode,
+            uid,
+            gid,
+            nlink: 1,
+            atime: 0,
+            mtime: 0,
+            ctime: 0,
             size: 0,
             file_type: FileType::Regular,
         }
@@ -1405,7 +1449,8 @@ mod tests {
         let root_backend: Arc<dyn FsBackend> = Arc::new(MemBackend::new());
         let mnt_backend: Arc<dyn FsBackend> = Arc::new(MemBackend::new());
         vfs.mount("/", root_backend, MountFlags::default()).unwrap();
-        vfs.mount("/mnt", mnt_backend, MountFlags::default()).unwrap();
+        vfs.mount("/mnt", mnt_backend, MountFlags::default())
+            .unwrap();
         vfs
     }
 
@@ -1428,7 +1473,9 @@ mod tests {
     #[test]
     fn resolve_file_under_mnt_uses_mnt_backend() {
         let vfs = make_vfs_with_backends();
-        let (entry, rel) = vfs.resolve("/mnt/hello.txt").expect("resolve /mnt/hello.txt");
+        let (entry, rel) = vfs
+            .resolve("/mnt/hello.txt")
+            .expect("resolve /mnt/hello.txt");
         assert_eq!(entry.mount_point, "/mnt");
         assert_eq!(rel, "/hello.txt");
     }
@@ -1474,7 +1521,9 @@ mod tests {
         let b: Arc<dyn FsBackend> = Arc::new(MemBackend::new());
         vfs.mount("/", b, MountFlags::default()).unwrap();
         // Open a file, which increments open_fd_count.
-        let _fd = vfs.open_with_creds("/hello.txt", OpenFlags::RDONLY, 1000, 1000).unwrap();
+        let _fd = vfs
+            .open_with_creds("/hello.txt", OpenFlags::RDONLY, 1000, 1000)
+            .unwrap();
         assert_eq!(vfs.umount("/").unwrap_err(), FsError::BusyMounted);
     }
 
@@ -1483,7 +1532,9 @@ mod tests {
         let mut vfs = Vfs::new();
         let b: Arc<dyn FsBackend> = Arc::new(MemBackend::new());
         vfs.mount("/", b, MountFlags::default()).unwrap();
-        let fd = vfs.open_with_creds("/hello.txt", OpenFlags::RDONLY, 1000, 1000).unwrap();
+        let fd = vfs
+            .open_with_creds("/hello.txt", OpenFlags::RDONLY, 1000, 1000)
+            .unwrap();
         vfs.close_fd(fd);
         assert!(vfs.umount("/").is_ok());
     }
@@ -1498,7 +1549,8 @@ mod tests {
         let b: Arc<dyn FsBackend> = Arc::new(MemBackend::new());
         vfs.mount("/", b, MountFlags::default()).unwrap();
 
-        let fd = vfs.open_with_creds("/hello.txt", OpenFlags::RDONLY, 1000, 1000)
+        let fd = vfs
+            .open_with_creds("/hello.txt", OpenFlags::RDONLY, 1000, 1000)
             .expect("open");
         let mut buf = [0u8; 11];
         let n = vfs.read_fd(fd, &mut buf).expect("read");
@@ -1515,7 +1567,10 @@ mod tests {
         // File mode 0o644, owned by uid 1000 / gid 1000.
         // Open as uid 9999, gid 9999 — read should still work (world-readable).
         let fd = vfs.open_with_creds("/hello.txt", OpenFlags::RDONLY, 9999, 9999);
-        assert!(fd.is_ok(), "world-readable file should be openable by others");
+        assert!(
+            fd.is_ok(),
+            "world-readable file should be openable by others"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1607,19 +1662,25 @@ mod prop_tests {
     }
 
     impl FsBackend for PropMemBackend {
-        fn root_inode(&self) -> InodeId { InodeId(1) }
+        fn root_inode(&self) -> InodeId {
+            InodeId(1)
+        }
 
         fn lookup(&self, _parent: InodeId, name: &str) -> Result<InodeId, FsError> {
             self.inode_for(name).ok_or(FsError::NotFound)
         }
 
-        fn open(&self, _inode: InodeId, _flags: OpenFlags) -> Result<(), FsError> { Ok(()) }
+        fn open(&self, _inode: InodeId, _flags: OpenFlags) -> Result<(), FsError> {
+            Ok(())
+        }
 
         fn read(&self, inode: InodeId, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
             let idx = inode.0.checked_sub(2).ok_or(FsError::NotFound)? as usize;
             let data = &self.files.get(idx).ok_or(FsError::NotFound)?.1;
             let start = offset as usize;
-            if start >= data.len() { return Ok(0); }
+            if start >= data.len() {
+                return Ok(0);
+            }
             let avail = data.len() - start;
             let len = buf.len().min(avail);
             buf[..len].copy_from_slice(&data[start..start + len]);
@@ -1633,40 +1694,63 @@ mod prop_tests {
         fn stat(&self, inode: InodeId) -> Result<InodeStat, FsError> {
             if inode == InodeId(1) {
                 return Ok(InodeStat {
-                    mode: 0o755, uid: 0, gid: 0, nlink: 2,
-                    atime: 0, mtime: 0, ctime: 0, size: 0,
+                    mode: 0o755,
+                    uid: 0,
+                    gid: 0,
+                    nlink: 2,
+                    atime: 0,
+                    mtime: 0,
+                    ctime: 0,
+                    size: 0,
                     file_type: FileType::Directory,
                 });
             }
             let idx = inode.0.checked_sub(2).ok_or(FsError::NotFound)? as usize;
             let (_, data) = self.files.get(idx).ok_or(FsError::NotFound)?;
             Ok(InodeStat {
-                mode: 0o644, uid: 1000, gid: 1000, nlink: 1,
-                atime: 0, mtime: 0, ctime: 0, size: data.len() as u64,
+                mode: 0o644,
+                uid: 1000,
+                gid: 1000,
+                nlink: 1,
+                atime: 0,
+                mtime: 0,
+                ctime: 0,
+                size: data.len() as u64,
                 file_type: FileType::Regular,
             })
         }
 
         fn readdir(&self, inode: InodeId) -> Result<alloc::vec::Vec<DirEntry>, FsError> {
-            if inode != InodeId(1) { return Err(FsError::NotADirectory); }
-            Ok(self.files.iter().enumerate().map(|(i, (name, _))| DirEntry {
-                inode: InodeId(i as u64 + 2),
-                name: name.clone(),
-                file_type: FileType::Regular,
-            }).collect())
+            if inode != InodeId(1) {
+                return Err(FsError::NotADirectory);
+            }
+            Ok(self
+                .files
+                .iter()
+                .enumerate()
+                .map(|(i, (name, _))| DirEntry {
+                    inode: InodeId(i as u64 + 2),
+                    name: name.clone(),
+                    file_type: FileType::Regular,
+                })
+                .collect())
         }
 
-        fn mkdir(&self, _parent: InodeId, _name: &str, _mode: u32)
-            -> Result<InodeId, FsError> { Err(FsError::NotSupported) }
+        fn mkdir(&self, _parent: InodeId, _name: &str, _mode: u32) -> Result<InodeId, FsError> {
+            Err(FsError::NotSupported)
+        }
 
         fn unlink(&self, _parent: InodeId, _name: &str) -> Result<(), FsError> {
             Err(FsError::NotSupported)
         }
 
-        fn rename(&self, _op: InodeId, _on: &str, _np: InodeId, _nn: &str)
-            -> Result<(), FsError> { Err(FsError::NotSupported) }
+        fn rename(&self, _op: InodeId, _on: &str, _np: InodeId, _nn: &str) -> Result<(), FsError> {
+            Err(FsError::NotSupported)
+        }
 
-        fn sync(&self) -> Result<(), FsError> { Ok(()) }
+        fn sync(&self) -> Result<(), FsError> {
+            Ok(())
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1686,8 +1770,7 @@ mod prop_tests {
 
     /// Generate a simple file name (no slashes, non-empty, valid ASCII).
     fn arb_filename() -> impl Strategy<Value = String> {
-        "[a-z][a-z0-9]{0,7}(\\.[a-z]{1,3})?"
-            .prop_map(|s: String| s)
+        "[a-z][a-z0-9]{0,7}(\\.[a-z]{1,3})?".prop_map(|s: String| s)
     }
 
     /// Generate small arbitrary content for a file.
@@ -1697,24 +1780,21 @@ mod prop_tests {
 
     /// Generate 1–4 files as `(name, content)` pairs with unique names.
     fn arb_files() -> impl Strategy<Value = alloc::vec::Vec<(String, alloc::vec::Vec<u8>)>> {
-        proptest::collection::vec(
-            (arb_filename(), arb_content()),
-            1..=4,
-        )
-        .prop_map(|mut v| {
-            // Deduplicate names (keep first occurrence).
-            let mut seen = alloc::vec::Vec::<String>::new();
-            v.retain(|(name, _)| {
-                if seen.contains(name) {
-                    false
-                } else {
-                    seen.push(name.clone());
-                    true
-                }
-            });
-            v
-        })
-        .prop_filter("need at least one file", |v| !v.is_empty())
+        proptest::collection::vec((arb_filename(), arb_content()), 1..=4)
+            .prop_map(|mut v| {
+                // Deduplicate names (keep first occurrence).
+                let mut seen = alloc::vec::Vec::<String>::new();
+                v.retain(|(name, _)| {
+                    if seen.contains(name) {
+                        false
+                    } else {
+                        seen.push(name.clone());
+                        true
+                    }
+                });
+                v
+            })
+            .prop_filter("need at least one file", |v| !v.is_empty())
     }
 
     // -----------------------------------------------------------------------

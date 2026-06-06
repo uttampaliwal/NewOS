@@ -8,10 +8,10 @@
 
 pub mod drm;
 
-use core::sync::atomic::{AtomicU64, Ordering};
-use spin::Mutex;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicU64, Ordering};
+use spin::Mutex;
 
 use crate::drivers::framework::{DeviceDriver, DeviceInfo};
 
@@ -164,10 +164,20 @@ pub trait DrmDevice: Send + Sync {
     fn enumerate_connectors(&self) -> Result<Vec<Connector>, DrmError>;
 
     /// Set a display mode on a connector/CRTC combination.
-    fn set_mode(&mut self, connector_id: u32, crtc_id: u32, mode: &DisplayMode) -> Result<(), DrmError>;
+    fn set_mode(
+        &mut self,
+        connector_id: u32,
+        crtc_id: u32,
+        mode: &DisplayMode,
+    ) -> Result<(), DrmError>;
 
     /// Create a framebuffer from a buffer allocation.
-    fn create_framebuffer(&mut self, width: u32, height: u32, format: u32) -> Result<DrmFramebuffer, DrmError>;
+    fn create_framebuffer(
+        &mut self,
+        width: u32,
+        height: u32,
+        format: u32,
+    ) -> Result<DrmFramebuffer, DrmError>;
 
     /// Flip to a new framebuffer on the next vertical blank.
     fn page_flip(&mut self, crtc_id: u32, fb_id: u32) -> Result<(), DrmError>;
@@ -200,6 +210,12 @@ pub struct DrmManager {
     resolution_changed: bool,
 }
 
+impl Default for DrmManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DrmManager {
     pub const fn new() -> Self {
         Self {
@@ -222,11 +238,19 @@ impl DrmManager {
 
     /// Enumerate connectors from the active driver.
     pub fn enumerate_connectors(&self) -> Result<Vec<Connector>, DrmError> {
-        self.driver.as_ref().ok_or(DrmError::NotSupported)?.enumerate_connectors()
+        self.driver
+            .as_ref()
+            .ok_or(DrmError::NotSupported)?
+            .enumerate_connectors()
     }
 
     /// Set a display mode.
-    pub fn set_mode(&mut self, connector_id: u32, crtc_id: u32, mode: &DisplayMode) -> Result<(), DrmError> {
+    pub fn set_mode(
+        &mut self,
+        connector_id: u32,
+        crtc_id: u32,
+        mode: &DisplayMode,
+    ) -> Result<(), DrmError> {
         let driver = self.driver.as_mut().ok_or(DrmError::NotSupported)?;
         driver.set_mode(connector_id, crtc_id, mode)?;
         // Create a matching framebuffer
@@ -238,7 +262,10 @@ impl DrmManager {
 
     /// Perform a page flip to a framebuffer.
     pub fn page_flip(&mut self, crtc_id: u32, fb_id: u32) -> Result<(), DrmError> {
-        self.driver.as_mut().ok_or(DrmError::NotSupported)?.page_flip(crtc_id, fb_id)
+        self.driver
+            .as_mut()
+            .ok_or(DrmError::NotSupported)?
+            .page_flip(crtc_id, fb_id)
     }
 
     /// Get the physical framebuffer address for mapping.
@@ -314,7 +341,9 @@ impl DeviceDriver for GpuDriver {
 
         crate::serial::println!(
             "[GPU] GPU driver initialised for device {:02x}:{:02x}.{:02x}",
-            info.bus, info.device, info.function,
+            info.bus,
+            info.device,
+            info.function,
         );
         Ok(GpuDriver)
     }
@@ -394,24 +423,29 @@ mod tests {
 
     impl DrmDevice for MockDrmDevice {
         fn enumerate_connectors(&self) -> Result<Vec<Connector>, DrmError> {
-            Ok(vec![
-                Connector {
-                    id: 1,
-                    connector_type: ConnectorType::Hdmi,
-                    connected: true,
-                    modes: vec![
-                        DisplayMode::new(1920, 1080),
-                        DisplayMode::new(1280, 720),
-                    ],
-                },
-            ])
+            Ok(vec![Connector {
+                id: 1,
+                connector_type: ConnectorType::Hdmi,
+                connected: true,
+                modes: vec![DisplayMode::new(1920, 1080), DisplayMode::new(1280, 720)],
+            }])
         }
 
-        fn set_mode(&mut self, _connector_id: u32, _crtc_id: u32, _mode: &DisplayMode) -> Result<(), DrmError> {
+        fn set_mode(
+            &mut self,
+            _connector_id: u32,
+            _crtc_id: u32,
+            _mode: &DisplayMode,
+        ) -> Result<(), DrmError> {
             Ok(())
         }
 
-        fn create_framebuffer(&mut self, width: u32, height: u32, _format: u32) -> Result<DrmFramebuffer, DrmError> {
+        fn create_framebuffer(
+            &mut self,
+            width: u32,
+            height: u32,
+            _format: u32,
+        ) -> Result<DrmFramebuffer, DrmError> {
             let size = DrmFramebuffer::calc_size(width, height);
             Ok(DrmFramebuffer {
                 id: 1,
@@ -602,7 +636,13 @@ mod tests {
 
     #[test]
     fn test_connector_types() {
-        assert_ne!(ConnectorType::Hdmi as u32, ConnectorType::DisplayPort as u32);
-        assert_ne!(ConnectorType::Vga as u32, ConnectorType::EmbeddedDisplayPort as u32);
+        assert_ne!(
+            ConnectorType::Hdmi as u32,
+            ConnectorType::DisplayPort as u32
+        );
+        assert_ne!(
+            ConnectorType::Vga as u32,
+            ConnectorType::EmbeddedDisplayPort as u32
+        );
     }
 }

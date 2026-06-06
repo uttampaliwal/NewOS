@@ -24,10 +24,8 @@ extern crate alloc;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use crate::fs::vfs::{
-    DirEntry, FsBackend, FsError, InodeId, InodeStat, OpenFlags,
-};
 use crate::fs::tmpfs::TmpfsBackend;
+use crate::fs::vfs::{DirEntry, FsBackend, FsError, InodeId, InodeStat, OpenFlags};
 
 // ---------------------------------------------------------------------------
 // Ext4Backend
@@ -117,7 +115,8 @@ impl FsBackend for Ext4Backend {
         new_parent: InodeId,
         new_name: &str,
     ) -> Result<(), FsError> {
-        self.inner.rename(old_parent, old_name, new_parent, new_name)
+        self.inner
+            .rename(old_parent, old_name, new_parent, new_name)
     }
 
     fn sync(&self) -> Result<(), FsError> {
@@ -134,9 +133,9 @@ impl FsBackend for Ext4Backend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::sync::Arc;
-    use crate::fs::vfs::{FsBackend, MountFlags, Vfs};
     use crate::fs::tmpfs::TmpfsBackend;
+    use crate::fs::vfs::{FsBackend, MountFlags, Vfs};
+    use alloc::sync::Arc;
 
     #[test]
     fn root_inode_is_one() {
@@ -181,8 +180,10 @@ mod tests {
         let mut vfs = Vfs::new();
         let root: Arc<dyn FsBackend> = Arc::new(TmpfsBackend::new());
         let ext4: Arc<dyn FsBackend> = Arc::new(Ext4Backend::new());
-        vfs.mount("/", root, MountFlags::default()).expect("mount /");
-        vfs.mount("/mnt", ext4, MountFlags::default()).expect("mount /mnt");
+        vfs.mount("/", root, MountFlags::default())
+            .expect("mount /");
+        vfs.mount("/mnt", ext4, MountFlags::default())
+            .expect("mount /mnt");
         // Resolve /mnt — must go to the ext4 backend.
         let (entry, rel) = vfs.resolve("/mnt").expect("resolve /mnt");
         assert_eq!(entry.mount_point, "/mnt");

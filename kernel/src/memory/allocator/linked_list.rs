@@ -25,6 +25,12 @@ pub struct LinkedListAllocator {
     head: ListNode,
 }
 
+impl Default for LinkedListAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LinkedListAllocator {
     pub const fn new() -> Self {
         Self {
@@ -32,6 +38,9 @@ impl LinkedListAllocator {
         }
     }
 
+    /// # Safety
+    ///
+    /// `heap_start` must point to a valid, unused memory region of at least `heap_size` bytes.
     pub unsafe fn init(&mut self, heap_start: usize, heap_size: usize) {
         unsafe {
             self.add_free_region(heap_start, heap_size);

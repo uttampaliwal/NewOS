@@ -175,7 +175,11 @@ fn apply_relocations(
 
     // Read the section name string table (.shstrtab)
     let strtab_off = shoff
-        .checked_add(shstrndx.checked_mul(shentsize).ok_or(LoadError::ProgramHeaderOutOfBounds)?)
+        .checked_add(
+            shstrndx
+                .checked_mul(shentsize)
+                .ok_or(LoadError::ProgramHeaderOutOfBounds)?,
+        )
         .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
     let strtab_end = strtab_off
         .checked_add(shentsize)
@@ -190,7 +194,10 @@ fn apply_relocations(
     // Iterate through all section headers looking for SHT_RELA
     for i in 0..shnum {
         let sh_off = shoff
-            .checked_add(i.checked_mul(shentsize).ok_or(LoadError::ProgramHeaderOutOfBounds)?)
+            .checked_add(
+                i.checked_mul(shentsize)
+                    .ok_or(LoadError::ProgramHeaderOutOfBounds)?,
+            )
             .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
         let sh_end = sh_off
             .checked_add(shentsize)
@@ -219,7 +226,10 @@ fn apply_relocations(
 
         for j in 0..num_entries {
             let entry_off = sh_offset
-                .checked_add(j.checked_mul(sh_entsize).ok_or(LoadError::ProgramHeaderOutOfBounds)?)
+                .checked_add(
+                    j.checked_mul(sh_entsize)
+                        .ok_or(LoadError::ProgramHeaderOutOfBounds)?,
+                )
                 .ok_or(LoadError::ProgramHeaderOutOfBounds)?;
             let entry_end = entry_off
                 .checked_add(24)
@@ -228,9 +238,9 @@ fn apply_relocations(
                 return Err(LoadError::ProgramHeaderOutOfBounds);
             }
 
-            let r_offset = read_u64(image, entry_off)?;                  // location to fix
-            let r_info = read_u64(image, entry_off + 8)?;                // symbol index + type
-            let r_addend = read_u64(image, entry_off + 16)?;             // addend
+            let r_offset = read_u64(image, entry_off)?; // location to fix
+            let r_info = read_u64(image, entry_off + 8)?; // symbol index + type
+            let r_addend = read_u64(image, entry_off + 16)?; // addend
 
             let r_type = (r_info & 0xffff_ffff) as u32;
 

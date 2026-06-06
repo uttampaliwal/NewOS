@@ -3,6 +3,10 @@ use x86_64::registers::control::{Cr0, Cr0Flags, Cr3};
 use x86_64::structures::paging::{OffsetPageTable, PageTable, PageTableFlags, PhysFrame, Size4KiB};
 
 /// Initialize a new OffsetPageTable using the mapping provided by the loader.
+///
+/// # Safety
+///
+/// `physical_memory_offset` must be a valid offset for the active page tables.
 pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
     let (pml4_frame, _) = Cr3::read();
 
@@ -145,8 +149,8 @@ pub fn clone_user_mappings_cow(
     frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
     physical_memory_offset: VirtAddr,
 ) {
-    let src_pml4_ptr = (physical_memory_offset + src_pml4_frame.start_address().as_u64())
-        .as_ptr::<PageTable>();
+    let src_pml4_ptr =
+        (physical_memory_offset + src_pml4_frame.start_address().as_u64()).as_ptr::<PageTable>();
     let dst_pml4_ptr = (physical_memory_offset + dst_pml4_frame.start_address().as_u64())
         .as_mut_ptr::<PageTable>();
 
@@ -176,6 +180,10 @@ pub fn clone_user_mappings_cow(
 }
 /// Ensure a virtual address range is accessible to user mode (Ring 3).
 /// This sets the USER_ACCESSIBLE bit on all page table levels.
+///
+/// # Safety
+///
+/// Page tables must be mapped at `physical_mem_offset` and `virt_addr`/`size` must be valid.
 pub unsafe fn set_user_accessible(virt_addr: VirtAddr, size: u64, physical_mem_offset: VirtAddr) {
     // Disable write protection to allow modifying RO page tables inherited from UEFI
     unsafe {

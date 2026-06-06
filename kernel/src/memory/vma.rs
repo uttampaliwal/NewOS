@@ -98,15 +98,15 @@ impl VmaSet {
     }
 
     pub fn insert(&mut self, vma: Vma) -> Result<(), VmaError> {
-        if let Some((_, pred)) = self.vmas.range(..vma.start).next_back() {
-            if vma.start < pred.end {
-                return Err(VmaError::Conflict);
-            }
+        if let Some((_, pred)) = self.vmas.range(..vma.start).next_back()
+            && vma.start < pred.end
+        {
+            return Err(VmaError::Conflict);
         }
-        if let Some((succ_start, _)) = self.vmas.range(vma.start..).next() {
-            if *succ_start < vma.end {
-                return Err(VmaError::Conflict);
-            }
+        if let Some((succ_start, _)) = self.vmas.range(vma.start..).next()
+            && *succ_start < vma.end
+        {
+            return Err(VmaError::Conflict);
         }
         self.vmas.insert(vma.start, vma);
         Ok(())
@@ -188,11 +188,7 @@ mod tests {
             .into_iter()
             .map(|v| (VmaOp::Mmap(v.clone()), VmaOp::Munmap(v.start)))
             .collect();
-        pc::vec(
-            prop::sample::select(pairs),
-            0..len.saturating_mul(2).max(5),
-        )
-        .prop_map(|selected| {
+        pc::vec(prop::sample::select(pairs), 0..len.saturating_mul(2).max(5)).prop_map(|selected| {
             let mut ops = Vec::new();
             for (mmap, munmap) in selected {
                 ops.push(mmap);

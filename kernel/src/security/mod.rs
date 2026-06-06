@@ -62,7 +62,7 @@ pub fn init() {
     crate::serial::println!("[SEC] Initializing security subsystem...");
 
     *CURRENT_CONTEXT.lock() = Some(SecurityContext {
-        uid: 0,      // Root user
+        uid: 0, // Root user
         gid: 0,
         caps: Capabilities::full(),
         is_privileged: true,

@@ -1,9 +1,9 @@
 use x86_64::VirtAddr;
+use x86_64::instructions::tlb;
 use x86_64::registers::control::Cr3;
 use x86_64::structures::paging::{
     OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB,
 };
-use x86_64::instructions::tlb;
 
 // ---------------------------------------------------------------------------
 // W^X enforcement helpers
@@ -29,11 +29,7 @@ pub fn enforce_wx_on_flags(flags: &mut PageTableFlags) -> bool {
 ///
 /// `level` is the depth (4 = PML4, 1 = P1 / leaf).  Returns the number
 /// of leaf entries that are both `WRITABLE` and executable (no `NO_EXECUTE`).
-fn count_wx_violations(
-    table: &PageTable,
-    level: u8,
-    phys_mem_offset: VirtAddr,
-) -> usize {
+fn count_wx_violations(table: &PageTable, level: u8, phys_mem_offset: VirtAddr) -> usize {
     let mut violations = 0;
 
     for i in 0..512 {
@@ -59,8 +55,7 @@ fn count_wx_violations(
                 violations += 1;
             }
         } else if let Ok(frame) = entry.frame() {
-            let next_ptr = (phys_mem_offset + frame.start_address().as_u64())
-                .as_ptr::<PageTable>();
+            let next_ptr = (phys_mem_offset + frame.start_address().as_u64()).as_ptr::<PageTable>();
             let next_table = unsafe { &*next_ptr };
             violations += count_wx_violations(next_table, level - 1, phys_mem_offset);
         }
@@ -75,11 +70,7 @@ fn count_wx_violations(
 /// Returns `(passed, violation_count)` — if `passed` is `false` the caller
 /// should log the count and may choose to panic or continue.
 pub fn check_wx_invariant(mapper: &OffsetPageTable) -> (bool, usize) {
-    let violations = count_wx_violations(
-        mapper.level_4_table(),
-        4,
-        mapper.phys_offset(),
-    );
+    let violations = count_wx_violations(mapper.level_4_table(), 4, mapper.phys_offset());
     (violations == 0, violations)
 }
 
@@ -97,8 +88,8 @@ pub fn clear_write_and_allow_exec(
     virt_start: VirtAddr,
     size: u64,
 ) {
-    let pml4_ptr = (phys_mem_offset + pml4_frame.start_address().as_u64())
-        .as_mut_ptr::<PageTable>();
+    let pml4_ptr =
+        (phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     let pml4 = unsafe { &mut *pml4_ptr };
 
     let end_addr = virt_start + size - 1u64;
@@ -115,17 +106,15 @@ pub fn clear_write_and_allow_exec(
         if p4e.is_unused() {
             continue;
         }
-        let p3_ptr =
-            (phys_mem_offset + p4e.frame().unwrap().start_address().as_u64())
-                .as_mut_ptr::<PageTable>();
+        let p3_ptr = (phys_mem_offset + p4e.frame().unwrap().start_address().as_u64())
+            .as_mut_ptr::<PageTable>();
         let p3 = unsafe { &mut *p3_ptr };
         let p3e = &p3[vaddr.p3_index()];
         if p3e.is_unused() {
             continue;
         }
-        let p2_ptr =
-            (phys_mem_offset + p3e.frame().unwrap().start_address().as_u64())
-                .as_mut_ptr::<PageTable>();
+        let p2_ptr = (phys_mem_offset + p3e.frame().unwrap().start_address().as_u64())
+            .as_mut_ptr::<PageTable>();
         let p2 = unsafe { &mut *p2_ptr };
         let p2e = &p2[vaddr.p2_index()];
         if p2e.is_unused() {
@@ -137,9 +126,8 @@ pub fn clear_write_and_allow_exec(
             continue;
         }
 
-        let p1_ptr =
-            (phys_mem_offset + p2e.frame().unwrap().start_address().as_u64())
-                .as_mut_ptr::<PageTable>();
+        let p1_ptr = (phys_mem_offset + p2e.frame().unwrap().start_address().as_u64())
+            .as_mut_ptr::<PageTable>();
         let p1 = unsafe { &mut *p1_ptr };
         let p1e = &mut p1[vaddr.p1_index()];
 
@@ -155,8 +143,8 @@ pub fn clear_write_and_allow_exec(
 /// Called once during early boot (after paging is initialised).
 pub fn boot_self_check(phys_mem_offset: VirtAddr) -> usize {
     let (pml4_frame, _) = Cr3::read();
-    let pml4_ptr = (phys_mem_offset + pml4_frame.start_address().as_u64())
-        .as_mut_ptr::<PageTable>();
+    let pml4_ptr =
+        (phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     let mapper = unsafe { OffsetPageTable::new(&mut *pml4_ptr, phys_mem_offset) };
 
     let (passed, count) = check_wx_invariant(&mapper);
@@ -232,8 +220,14 @@ mod tests {
                 PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
                 PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
             ),
-            (PageTableFlags::PRESENT | PageTableFlags::NO_EXECUTE, PageTableFlags::PRESENT | PageTableFlags::NO_EXECUTE),
-            (PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE, PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE),
+            (
+                PageTableFlags::PRESENT | PageTableFlags::NO_EXECUTE,
+                PageTableFlags::PRESENT | PageTableFlags::NO_EXECUTE,
+            ),
+            (
+                PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE,
+                PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE,
+            ),
         ];
 
         for (input, expected) in &cases {
@@ -245,10 +239,14 @@ mod tests {
 
     #[test]
     fn enforce_wx_strips_writable_from_wx() {
-        let mut f = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+        let mut f =
+            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
         let was = enforce_wx_on_flags(&mut f);
         assert!(was, "W+X violation must be detected");
-        assert!(!f.contains(PageTableFlags::WRITABLE), "WRITABLE must be stripped");
+        assert!(
+            !f.contains(PageTableFlags::WRITABLE),
+            "WRITABLE must be stripped"
+        );
         assert!(f.contains(PageTableFlags::PRESENT));
         assert!(f.contains(PageTableFlags::USER_ACCESSIBLE));
     }

@@ -1,6 +1,6 @@
+use core::arch::global_asm;
 use x86_64::VirtAddr;
 use x86_64::registers::model_specific::{LStar, Msr, SFMask};
-use core::arch::global_asm;
 
 #[repr(C, align(16))]
 pub struct SyscallFrame {

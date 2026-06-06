@@ -1,5 +1,5 @@
-use spin::Mutex;
 use lazy_static::lazy_static;
+use spin::Mutex;
 
 pub struct NetworkState {
     pub initialized: bool,
@@ -16,7 +16,8 @@ lazy_static! {
 pub fn init() {
     crate::serial::println!("[NET] Initializing network stack...");
 
-    let mac = crate::drivers::virtio_net::get_mac_address().unwrap_or([0x02, 0x00, 0xAD, 0xDE, 0x00, 0x01]);
+    let mac = crate::drivers::virtio_net::get_mac_address()
+        .unwrap_or([0x02, 0x00, 0xAD, 0xDE, 0x00, 0x01]);
 
     let mut state = NET_STATE.lock();
     state.mac_address = mac;
@@ -24,13 +25,18 @@ pub fn init() {
 
     crate::serial::println!(
         "[NET] MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+        mac[0],
+        mac[1],
+        mac[2],
+        mac[3],
+        mac[4],
+        mac[5]
     );
     crate::serial::println!("[NET] Network stack initialized");
 }
 
 pub fn poll() {
-    if !NET_STATE.lock().initialized {
-        return;
+    if NET_STATE.lock().initialized {
+        // Network polling will be wired up when the stack is active.
     }
 }

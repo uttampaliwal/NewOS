@@ -4,8 +4,8 @@ use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use spin::Mutex;
 
-use crate::memory::vma::InodeId;
 use crate::memory::PhysFrame;
+use crate::memory::vma::InodeId;
 
 lazy_static! {
     /// Global page cache instance.
@@ -86,12 +86,12 @@ impl PageCache {
 
     pub fn mark_dirty(&mut self, inode: InodeId, page_idx: u64, now: u64) {
         let key = (inode, page_idx);
-        if let Some(cached) = self.pages.get_mut(&key) {
-            if !cached.dirty {
-                cached.dirty = true;
-                cached.dirty_since = Some(now);
-                self.dirty_pages += 1;
-            }
+        if let Some(cached) = self.pages.get_mut(&key)
+            && !cached.dirty
+        {
+            cached.dirty = true;
+            cached.dirty_since = Some(now);
+            self.dirty_pages += 1;
         }
     }
 
@@ -115,14 +115,15 @@ impl PageCache {
         while evicted.len() < count && checked < max_checks {
             if let Some(key) = self.lru.pop_front() {
                 checked += 1;
-                if let Some(cached) = self.pages.get(&key) {
-                    if cached.ref_count == 0 && !cached.dirty {
-                        let frame_addr = cached.frame.start_address;
-                        self.pages.remove(&key);
-                        self.total_pages = self.total_pages.saturating_sub(1);
-                        evicted.push((key, frame_addr));
-                        continue;
-                    }
+                if let Some(cached) = self.pages.get(&key)
+                    && cached.ref_count == 0
+                    && !cached.dirty
+                {
+                    let frame_addr = cached.frame.start_address;
+                    self.pages.remove(&key);
+                    self.total_pages = self.total_pages.saturating_sub(1);
+                    evicted.push((key, frame_addr));
+                    continue;
                 }
                 self.lru.push_back(key);
             } else {
@@ -146,19 +147,19 @@ impl PageCache {
                 cached.dirty
                     && cached
                         .dirty_since
-                        .map_or(false, |ts| now.saturating_sub(ts) >= max_age_ticks)
+                        .is_some_and(|ts| now.saturating_sub(ts) >= max_age_ticks)
             })
             .map(|(key, _)| *key)
             .collect();
 
         for key in expired_keys {
-            if let Some(cached) = self.pages.get_mut(&key) {
-                if cached.dirty {
-                    cached.dirty = false;
-                    cached.dirty_since = None;
-                    self.dirty_pages = self.dirty_pages.saturating_sub(1);
-                    written.push((key.0, key.1, cached.frame.start_address));
-                }
+            if let Some(cached) = self.pages.get_mut(&key)
+                && cached.dirty
+            {
+                cached.dirty = false;
+                cached.dirty_since = None;
+                self.dirty_pages = self.dirty_pages.saturating_sub(1);
+                written.push((key.0, key.1, cached.frame.start_address));
             }
         }
 
@@ -501,8 +502,8 @@ mod tests {
         let mut cache = PageCache::new(usize::MAX);
         cache.insert(InodeId(1), 0, fake_frame(0x1000), 0);
         cache.insert(InodeId(1), 1, fake_frame(0x2000), 1);
-        cache.mark_dirty(InodeId(1), 0, 10);  // dirty at tick 10
-        cache.mark_dirty(InodeId(1), 1, 30);  // dirty at tick 30
+        cache.mark_dirty(InodeId(1), 0, 10); // dirty at tick 10
+        cache.mark_dirty(InodeId(1), 1, 30); // dirty at tick 30
 
         // now=59, max_age=50 → page 0: 59-10=49 < 50 → not expired
         //                       page 1: 59-30=29 < 50 → not expired

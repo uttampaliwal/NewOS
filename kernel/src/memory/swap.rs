@@ -1,7 +1,7 @@
 use core::sync::atomic::{AtomicU64, Ordering};
+use x86_64::VirtAddr;
 use x86_64::instructions::tlb;
 use x86_64::structures::paging::{PageTable, PageTableFlags, PhysFrame, Size4KiB};
-use x86_64::VirtAddr;
 
 use alloc::collections::BTreeSet;
 use alloc::sync::Arc;
@@ -30,6 +30,12 @@ pub struct SwapSlotAllocator {
     hand: usize,
     capacity: usize,
     wrapped: bool,
+}
+
+impl Default for SwapSlotAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SwapSlotAllocator {
@@ -455,14 +461,16 @@ pub(crate) fn read_pte(
         return None;
     }
 
-    let p3_ptr = (phys_mem_offset + p4e.frame().ok()?.start_address().as_u64()).as_ptr::<PageTable>();
+    let p3_ptr =
+        (phys_mem_offset + p4e.frame().ok()?.start_address().as_u64()).as_ptr::<PageTable>();
     let p3 = unsafe { &*p3_ptr };
     let p3e = &p3[vaddr.p3_index()];
     if p3e.is_unused() {
         return None;
     }
 
-    let p2_ptr = (phys_mem_offset + p3e.frame().ok()?.start_address().as_u64()).as_ptr::<PageTable>();
+    let p2_ptr =
+        (phys_mem_offset + p3e.frame().ok()?.start_address().as_u64()).as_ptr::<PageTable>();
     let p2 = unsafe { &*p2_ptr };
     let p2e = &p2[vaddr.p2_index()];
     if p2e.is_unused() {
@@ -472,7 +480,8 @@ pub(crate) fn read_pte(
         return None;
     }
 
-    let p1_ptr = (phys_mem_offset + p2e.frame().ok()?.start_address().as_u64()).as_ptr::<PageTable>();
+    let p1_ptr =
+        (phys_mem_offset + p2e.frame().ok()?.start_address().as_u64()).as_ptr::<PageTable>();
     let p1 = unsafe { &*p1_ptr };
     let p1e = &p1[vaddr.p1_index()];
 
@@ -515,7 +524,10 @@ fn write_pte_raw(
     if p2[vaddr.p2_index()].is_unused() {
         return;
     }
-    if p2[vaddr.p2_index()].flags().contains(PageTableFlags::HUGE_PAGE) {
+    if p2[vaddr.p2_index()]
+        .flags()
+        .contains(PageTableFlags::HUGE_PAGE)
+    {
         return;
     }
     let p1_ptr = (phys_mem_offset
@@ -533,11 +545,7 @@ fn write_pte_raw(
 }
 
 /// Clear the Accessed (A) bit on a PTE without modifying other bits.
-fn clear_accessed_bit(
-    pml4_frame: PhysFrame<Size4KiB>,
-    phys_mem_offset: VirtAddr,
-    vaddr: VirtAddr,
-) {
+fn clear_accessed_bit(pml4_frame: PhysFrame<Size4KiB>, phys_mem_offset: VirtAddr, vaddr: VirtAddr) {
     let pml4_ptr =
         (phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     let pml4 = unsafe { &mut *pml4_ptr };
@@ -566,7 +574,10 @@ fn clear_accessed_bit(
     if p2[vaddr.p2_index()].is_unused() {
         return;
     }
-    if p2[vaddr.p2_index()].flags().contains(PageTableFlags::HUGE_PAGE) {
+    if p2[vaddr.p2_index()]
+        .flags()
+        .contains(PageTableFlags::HUGE_PAGE)
+    {
         return;
     }
     let p1_ptr = (phys_mem_offset

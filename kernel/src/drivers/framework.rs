@@ -104,13 +104,7 @@ pub struct DeviceKey {
 
 impl DeviceKey {
     /// Construct a new [`DeviceKey`].
-    pub const fn new(
-        bus: u8,
-        device: u8,
-        function: u8,
-        vendor_id: u16,
-        device_id: u16,
-    ) -> Self {
+    pub const fn new(bus: u8, device: u8, function: u8, vendor_id: u16, device_id: u16) -> Self {
         Self {
             bus,
             device,
@@ -492,7 +486,10 @@ mod tests {
 
         assert_eq!(reg.len(), 1, "replacing should not grow the registry");
         let retrieved = reg.get::<MockDriver>(&key).unwrap();
-        assert!(retrieved.initialised, "should be the second (initialised) driver");
+        assert!(
+            retrieved.initialised,
+            "should be the second (initialised) driver"
+        );
     }
 
     #[test]
@@ -543,7 +540,12 @@ mod tests {
             size: 0x1000,
             prefetchable: false,
         };
-        if let Bar::Memory32 { base, size, prefetchable } = bar {
+        if let Bar::Memory32 {
+            base,
+            size,
+            prefetchable,
+        } = bar
+        {
             assert_eq!(base, 0xFEBC_0000);
             assert_eq!(size, 0x1000);
             assert!(!prefetchable);
@@ -559,7 +561,12 @@ mod tests {
             size: 0x10_0000,
             prefetchable: true,
         };
-        if let Bar::Memory64 { base, size, prefetchable } = bar {
+        if let Bar::Memory64 {
+            base,
+            size,
+            prefetchable,
+        } = bar
+        {
             assert_eq!(base, 0x0000_0001_0000_0000);
             assert_eq!(size, 0x10_0000);
             assert!(prefetchable);
@@ -570,7 +577,10 @@ mod tests {
 
     #[test]
     fn bar_io_fields_are_accessible() {
-        let bar = Bar::Io { port: 0x3F8, size: 8 };
+        let bar = Bar::Io {
+            port: 0x3F8,
+            size: 8,
+        };
         if let Bar::Io { port, size } = bar {
             assert_eq!(port, 0x3F8);
             assert_eq!(size, 8);
@@ -655,7 +665,11 @@ mod tests {
     impl DeviceSpec {
         fn device_info(&self) -> DeviceInfo {
             DeviceInfo {
-                vendor_id: if self.fail_probe { 0xFFFF } else { self.vendor_id },
+                vendor_id: if self.fail_probe {
+                    0xFFFF
+                } else {
+                    self.vendor_id
+                },
                 device_id: self.device_id,
                 class_code: 0x01,
                 subclass: 0x00,
@@ -675,7 +689,11 @@ mod tests {
                 self.bus,
                 self.device_slot,
                 self.function,
-                if self.fail_probe { 0xFFFF } else { self.vendor_id },
+                if self.fail_probe {
+                    0xFFFF
+                } else {
+                    self.vendor_id
+                },
                 self.device_id,
             )
         }
@@ -688,11 +706,11 @@ mod tests {
         // Generate between 1 and 16 devices.
         proptest::collection::vec(
             (
-                0u8..=3u8,   // bus
-                0u8..=7u8,   // device_slot (0-31 in real PCI, keep small)
-                0u8..=3u8,   // function
-                1u16..=0xFFFEu16, // vendor_id (exclude 0x0000 and 0xFFFF sentinel)
-                0u16..=0xFFFFu16, // device_id
+                0u8..=3u8,           // bus
+                0u8..=7u8,           // device_slot (0-31 in real PCI, keep small)
+                0u8..=3u8,           // function
+                1u16..=0xFFFEu16,    // vendor_id (exclude 0x0000 and 0xFFFF sentinel)
+                0u16..=0xFFFFu16,    // device_id
                 proptest::bool::ANY, // fail_probe
             ),
             1..=16,
@@ -701,21 +719,23 @@ mod tests {
             // Deduplicate by (bus, device_slot, function) — keep first occurrence.
             let mut seen = std::collections::BTreeSet::new();
             raw.into_iter()
-                .filter_map(|(bus, device_slot, function, vendor_id, device_id, fail_probe)| {
-                    let triple = (bus, device_slot, function);
-                    if seen.insert(triple) {
-                        Some(DeviceSpec {
-                            bus,
-                            device_slot,
-                            function,
-                            vendor_id,
-                            device_id,
-                            fail_probe,
-                        })
-                    } else {
-                        None
-                    }
-                })
+                .filter_map(
+                    |(bus, device_slot, function, vendor_id, device_id, fail_probe)| {
+                        let triple = (bus, device_slot, function);
+                        if seen.insert(triple) {
+                            Some(DeviceSpec {
+                                bus,
+                                device_slot,
+                                function,
+                                vendor_id,
+                                device_id,
+                                fail_probe,
+                            })
+                        } else {
+                            None
+                        }
+                    },
+                )
                 .collect()
         })
     }

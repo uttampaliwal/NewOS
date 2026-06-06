@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::VirtAddr;
 
-use crate::elf::{ElfHeader, ELF_TYPE_DYN};
+use crate::elf::{ELF_TYPE_DYN, ElfHeader};
 
 /// Number of bits of page-offset entropy for ASLR (requirement: >= 28).
 const ASLR_PAGE_ENTROPY: u64 = 28;
@@ -98,17 +98,23 @@ pub fn randomise_load_base(elf: &ElfHeader) -> VirtAddr {
         );
         return VirtAddr::zero();
     }
-    ASLR_RNG.lock().next_page_aligned(PIE_LOAD_BASE_MIN, ASLR_RANGE_PAGES)
+    ASLR_RNG
+        .lock()
+        .next_page_aligned(PIE_LOAD_BASE_MIN, ASLR_RANGE_PAGES)
 }
 
 /// Return a randomised stack base address for a new process (or fork child).
 pub fn randomise_stack_base() -> VirtAddr {
-    ASLR_RNG.lock().next_page_aligned(STACK_BASE_MIN, ASLR_RANGE_PAGES)
+    ASLR_RNG
+        .lock()
+        .next_page_aligned(STACK_BASE_MIN, ASLR_RANGE_PAGES)
 }
 
 /// Return a randomised heap (mmap) base address for a new process (or fork child).
 pub fn randomise_heap_base() -> VirtAddr {
-    ASLR_RNG.lock().next_page_aligned(HEAP_BASE_MIN, ASLR_RANGE_PAGES)
+    ASLR_RNG
+        .lock()
+        .next_page_aligned(HEAP_BASE_MIN, ASLR_RANGE_PAGES)
 }
 
 // ---------------------------------------------------------------------------

@@ -26,6 +26,12 @@ pub enum TaskState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TaskId(pub usize);
 
+impl Default for TaskId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaskId {
     pub fn new() -> Self {
         use core::sync::atomic::{AtomicUsize, Ordering};
@@ -194,12 +200,15 @@ impl Task {
 
                 // 1. Map the kernel stack into the CURRENT (kernel) address space.
                 // This allows us to initialize the stack contents below.
-                if let Err(_) = mapper.map_to(
-                    page,
-                    frame,
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                    frame_allocator,
-                ) {
+                if mapper
+                    .map_to(
+                        page,
+                        frame,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        frame_allocator,
+                    )
+                    .is_err()
+                {
                     // Already mapped, ignore
                 } else {
                     use x86_64::instructions::tlb;
@@ -213,12 +222,15 @@ impl Task {
                 let mut process_mapper =
                     OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
 
-                if let Err(_) = process_mapper.map_to(
-                    page,
-                    frame,
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                    frame_allocator,
-                ) {
+                if process_mapper
+                    .map_to(
+                        page,
+                        frame,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        frame_allocator,
+                    )
+                    .is_err()
+                {
                     // Already mapped, ignore
                 }
             }
@@ -296,12 +308,15 @@ impl Task {
                     .expect("out of memory for forked-task kernel stack");
 
                 // Map into the current (kernel) address space for initialization.
-                if let Err(_) = mapper.map_to(
-                    page,
-                    frame,
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                    frame_allocator,
-                ) {
+                if mapper
+                    .map_to(
+                        page,
+                        frame,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        frame_allocator,
+                    )
+                    .is_err()
+                {
                     // Already mapped — ignore.
                 } else {
                     use x86_64::instructions::tlb;
@@ -315,12 +330,15 @@ impl Task {
                 let mut process_mapper =
                     OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
 
-                if let Err(_) = process_mapper.map_to(
-                    page,
-                    frame,
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                    frame_allocator,
-                ) {
+                if process_mapper
+                    .map_to(
+                        page,
+                        frame,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        frame_allocator,
+                    )
+                    .is_err()
+                {
                     // Already mapped — ignore.
                 }
             }
@@ -427,12 +445,15 @@ impl Task {
                     .expect("out of memory for exec-task kernel stack");
 
                 // Map into current (kernel) address space
-                if let Err(_) = mapper.map_to(
-                    page,
-                    frame,
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                    frame_allocator,
-                ) {
+                if mapper
+                    .map_to(
+                        page,
+                        frame,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        frame_allocator,
+                    )
+                    .is_err()
+                {
                     // Already mapped
                 } else {
                     use x86_64::instructions::tlb;
@@ -440,16 +461,21 @@ impl Task {
                 }
 
                 // Map into new process address space
-                let pml4_ptr = (physical_memory_offset + process.pml4_frame().start_address().as_u64())
-                    .as_mut_ptr::<PageTable>();
-                let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+                let pml4_ptr = (physical_memory_offset
+                    + process.pml4_frame().start_address().as_u64())
+                .as_mut_ptr::<PageTable>();
+                let mut process_mapper =
+                    OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
 
-                if let Err(_) = process_mapper.map_to(
-                    page,
-                    frame,
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                    frame_allocator,
-                ) {
+                if process_mapper
+                    .map_to(
+                        page,
+                        frame,
+                        PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                        frame_allocator,
+                    )
+                    .is_err()
+                {
                     // Already mapped
                 }
             }

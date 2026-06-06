@@ -6,9 +6,9 @@ pub mod ext4;
 pub mod tmpfs;
 pub mod vfs;
 
-use lazy_static::lazy_static;
 use alloc::string::String;
 use alloc::vec::Vec;
+use lazy_static::lazy_static;
 use spin::Mutex;
 
 /// Filesystem types supported
@@ -21,10 +21,10 @@ pub enum FsType {
 
 /// Filesystem mount information
 pub struct Mount {
-    pub device: usize,  // Block device number
+    pub device: usize, // Block device number
     pub fs_type: FsType,
     pub mount_point: String,
-    pub root_inode: u32,  // Root inode number (for ext2)
+    pub root_inode: u32, // Root inode number (for ext2)
 }
 
 lazy_static! {
@@ -42,16 +42,18 @@ pub fn init() {
 pub fn mount(device: usize, fs_type: FsType, mount_point: &str) -> bool {
     crate::serial::println!(
         "[FS] Mounting {:?} filesystem from device {} at {}",
-        fs_type, device, mount_point
+        fs_type,
+        device,
+        mount_point
     );
-    
+
     let mount = Mount {
         device,
         fs_type,
         mount_point: String::from(mount_point),
         root_inode: 2, // ext2 root inode is usually 2
     };
-    
+
     MOUNTS.lock().push(mount);
     crate::serial::println!("[FS] Mount complete");
     true

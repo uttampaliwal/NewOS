@@ -53,8 +53,8 @@ fn main() -> Status {
         let kernel_bytes = file_system
             .read(KERNEL_IMAGE_PATH)
             .expect("kernel image should be readable");
-        let loaded_kernel =
-            elf::load_kernel(&kernel_bytes, kaslr_offset).expect("kernel ELF should load successfully");
+        let loaded_kernel = elf::load_kernel(&kernel_bytes, kaslr_offset)
+            .expect("kernel ELF should load successfully");
         serial_println!("kernel loaded: entry=0x{:016x}", loaded_kernel.entry_point);
 
         let ramdisk_bytes = file_system.read(RAMDISK_IMAGE_PATH).unwrap_or_else(|_| {
@@ -202,7 +202,10 @@ fn main() -> Status {
         );
 
         serial_println!("Jumping to kernel...");
-        jump_to_kernel(loaded_kernel.entry_point + kaslr_offset, boot_info as *const BootInfo)
+        jump_to_kernel(
+            loaded_kernel.entry_point + kaslr_offset,
+            boot_info as *const BootInfo,
+        )
     }
 }
 

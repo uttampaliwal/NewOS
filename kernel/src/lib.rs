@@ -15,9 +15,9 @@ pub mod arch;
 // Re-export arch-specific modules at their original paths so
 // existing `crate::gdt::*` and `crate::interrupts::*` references
 // continue to compile without changes.
+pub use arch::context;
 pub use arch::gdt;
 pub use arch::interrupts;
-pub use arch::context;
 
 #[cfg(feature = "arch-x86_64")]
 pub mod acpi;
@@ -47,7 +47,6 @@ pub mod task;
 pub mod tty;
 #[cfg(feature = "arch-x86_64")]
 pub mod vfs;
-
 
 use turnix_abi::version::{ABI_VERSION, PROJECT_NAME};
 

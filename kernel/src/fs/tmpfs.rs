@@ -18,7 +18,7 @@ use alloc::vec::Vec;
 use spin::Mutex;
 
 use crate::fs::vfs::{
-    DirEntry, FsBackend, FsError, FileType, InodeId, InodeStat, OpenFlags, Timestamp,
+    DirEntry, FileType, FsBackend, FsError, InodeId, InodeStat, OpenFlags, Timestamp,
 };
 
 // ---------------------------------------------------------------------------
@@ -57,6 +57,7 @@ impl TmpfsInode {
         }
     }
 
+    #[allow(dead_code)]
     fn new_file(mode: u32) -> Self {
         TmpfsInode {
             mode,
@@ -114,7 +115,13 @@ impl TmpfsInner {
     }
 
     /// Insert a regular file directly — used by tests and the ext4 stub.
-    pub(crate) fn create_file(&mut self, parent: InodeId, name: &str, mode: u32) -> Option<InodeId> {
+    #[allow(dead_code)]
+    pub(crate) fn create_file(
+        &mut self,
+        parent: InodeId,
+        name: &str,
+        mode: u32,
+    ) -> Option<InodeId> {
         let parent_node = self.inodes.get_mut(&parent)?;
         if parent_node.file_type != FileType::Directory {
             return None;
@@ -169,7 +176,11 @@ impl FsBackend for TmpfsBackend {
         if parent_node.file_type != FileType::Directory {
             return Err(FsError::NotADirectory);
         }
-        parent_node.children.get(name).copied().ok_or(FsError::NotFound)
+        parent_node
+            .children
+            .get(name)
+            .copied()
+            .ok_or(FsError::NotFound)
     }
 
     fn open(&self, inode: InodeId, flags: OpenFlags) -> Result<(), FsError> {
@@ -325,8 +336,8 @@ impl FsBackend for TmpfsBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::sync::Arc;
     use crate::fs::vfs::{MountFlags, Vfs};
+    use alloc::sync::Arc;
 
     fn make_tmpfs() -> TmpfsBackend {
         TmpfsBackend::new()
@@ -523,10 +534,18 @@ mod tests {
         // Insert a file only in tmp_backend.
         insert_file(&tmp_backend, InodeId(1), "only_in_tmp.txt");
 
-        vfs.mount("/", Arc::new(root_backend) as Arc<dyn FsBackend>, MountFlags::default())
-            .expect("mount /");
-        vfs.mount("/tmp", Arc::new(tmp_backend) as Arc<dyn FsBackend>, MountFlags::default())
-            .expect("mount /tmp");
+        vfs.mount(
+            "/",
+            Arc::new(root_backend) as Arc<dyn FsBackend>,
+            MountFlags::default(),
+        )
+        .expect("mount /");
+        vfs.mount(
+            "/tmp",
+            Arc::new(tmp_backend) as Arc<dyn FsBackend>,
+            MountFlags::default(),
+        )
+        .expect("mount /tmp");
 
         // File is accessible under /tmp.
         let fd = vfs

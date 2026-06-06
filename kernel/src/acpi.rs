@@ -1,14 +1,11 @@
 use acpi::{
+    AcpiHandler, AcpiTables, PhysicalMapping, PlatformInfo,
     fadt::Fadt,
     platform::{
         address::{AddressSpace, GenericAddress},
         interrupt::{InterruptModel, IoApic as AcpiIoApic},
     },
     sdt::Signature,
-    AcpiHandler,
-    AcpiTables,
-    PhysicalMapping,
-    PlatformInfo,
 };
 use alloc::{
     collections::{BTreeMap, BTreeSet},
@@ -16,18 +13,14 @@ use alloc::{
     vec::Vec,
 };
 use aml::{
-    pci_routing::{Pin, PciRoutingTable},
+    AmlContext, AmlName, DebugVerbosity, Handler, LevelType,
+    pci_routing::{PciRoutingTable, Pin},
     value::{AmlValue, Args},
-    AmlContext,
-    LevelType,
-    AmlName,
-    DebugVerbosity,
-    Handler,
 };
 use core::ptr::NonNull;
 use lazy_static::lazy_static;
 use spin::Mutex;
-use x86_64::{instructions::port::Port, VirtAddr};
+use x86_64::{VirtAddr, instructions::port::Port};
 
 macro_rules! acpi_log {
     ($($arg:tt)*) => {{
@@ -183,7 +176,13 @@ impl AmlAcpiHandler {
         (self.phys_mem_offset + physical_address as u64).as_u64() as usize
     }
 
-    fn pci_config_address(segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> Option<u32> {
+    fn pci_config_address(
+        segment: u16,
+        bus: u8,
+        device: u8,
+        function: u8,
+        offset: u16,
+    ) -> Option<u32> {
         if segment != 0 || device >= 32 || function >= 8 {
             return None;
         }
@@ -315,26 +314,12 @@ impl Handler for AmlAcpiHandler {
         ((value >> ((offset & 0x3) * 8)) & 0xff) as u8
     }
 
-    fn read_pci_u16(
-        &self,
-        segment: u16,
-        bus: u8,
-        device: u8,
-        function: u8,
-        offset: u16,
-    ) -> u16 {
+    fn read_pci_u16(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u16 {
         let value = self.read_pci_config_u32(segment, bus, device, function, offset);
         ((value >> ((offset & 0x2) * 8)) & 0xffff) as u16
     }
 
-    fn read_pci_u32(
-        &self,
-        segment: u16,
-        bus: u8,
-        device: u8,
-        function: u8,
-        offset: u16,
-    ) -> u32 {
+    fn read_pci_u32(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u32 {
         self.read_pci_config_u32(segment, bus, device, function, offset)
     }
 
@@ -460,8 +445,8 @@ impl PmTimerClock {
     fn snapshot_raw(&self) -> Result<u64, &'static str> {
         let raw = match self.register.address_space {
             AddressSpace::SystemIo => {
-                let port =
-                    u16::try_from(self.register.address).map_err(|_| "PM timer port out of range")?;
+                let port = u16::try_from(self.register.address)
+                    .map_err(|_| "PM timer port out of range")?;
                 match self.register.bit_width {
                     24 | 32 => {
                         let mut port = Port::<u32>::new(port);
@@ -478,9 +463,10 @@ impl PmTimerClock {
                     _ => return Err("unsupported PM timer width"),
                 }
             }
-            AddressSpace::SystemMemory => {
-                HardwareRegisterAccess::read_memory_timer(self.register.address, self.register.bit_width)
-            }
+            AddressSpace::SystemMemory => HardwareRegisterAccess::read_memory_timer(
+                self.register.address,
+                self.register.bit_width,
+            ),
             _ => return Err("unsupported PM timer address space"),
         };
 
@@ -497,7 +483,9 @@ impl AmlMethodClock for PmTimerClock {
         let delta_ticks = if end >= start {
             end - start
         } else {
-            (self.counter_mask + 1).checked_sub(start)?.checked_add(end)?
+            (self.counter_mask + 1)
+                .checked_sub(start)?
+                .checked_add(end)?
         };
         Some(delta_ticks.saturating_mul(1000) / 3_579_545)
     }
@@ -557,19 +545,17 @@ pub fn invoke_method_with_timeout<C: AmlMethodClock>(
         .invoke_method(path, Args::default())
         .map_err(|_| AmlMethodError::Evaluation)?;
 
-    if let Some(start) = start {
-        if let Some(end) = clock.snapshot() {
-            if let Some(elapsed) = clock.elapsed_millis(start, end) {
-                if elapsed > AML_METHOD_TIMEOUT_MS {
-                    acpi_log!(
-                        "[ACPI] AML method {} exceeded {} ms; ignoring result.",
-                        path.as_string(),
-                        AML_METHOD_TIMEOUT_MS
-                    );
-                    return Err(AmlMethodError::Timeout);
-                }
-            }
-        }
+    if let Some(start) = start
+        && let Some(end) = clock.snapshot()
+        && let Some(elapsed) = clock.elapsed_millis(start, end)
+        && elapsed > AML_METHOD_TIMEOUT_MS
+    {
+        acpi_log!(
+            "[ACPI] AML method {} exceeded {} ms; ignoring result.",
+            path.as_string(),
+            AML_METHOD_TIMEOUT_MS
+        );
+        return Err(AmlMethodError::Timeout);
     }
 
     Ok(result)
@@ -621,8 +607,8 @@ pub fn resolve_pci_routes_for_registry<C: AmlMethodClock>(
             .unwrap()
             .resolve(&bridge.path)
             .map_err(|_| "failed to resolve _PRT path")?;
-        let prt =
-            PciRoutingTable::from_prt_path(&prt_path, context).map_err(|_| "failed to parse _PRT")?;
+        let prt = PciRoutingTable::from_prt_path(&prt_path, context)
+            .map_err(|_| "failed to parse _PRT")?;
 
         for (key, info) in devices.iter().filter(|(key, _)| key.bus == bridge.bus) {
             let Some(pin) = info.interrupt_pin.and_then(pin_from_index) else {
@@ -634,7 +620,8 @@ pub fn resolve_pci_routes_for_registry<C: AmlMethodClock>(
                 Err(_) => continue,
             };
 
-            let Some((ioapic_address, ioapic_input)) = resolve_ioapic_for_gsi(io_apics, descriptor.irq)
+            let Some((ioapic_address, ioapic_input)) =
+                resolve_ioapic_for_gsi(io_apics, descriptor.irq)
             else {
                 acpi_log!(
                     "[ACPI] No IOAPIC found for GSI {} ({}:{:02x}.{} pin {}).",
@@ -676,8 +663,14 @@ pub fn resolve_pci_routes_for_registry<C: AmlMethodClock>(
                 vector,
                 ioapic_address,
                 ioapic_input,
-                active_low: matches!(descriptor.polarity, aml::resource::InterruptPolarity::ActiveLow),
-                level_triggered: matches!(descriptor.trigger, aml::resource::InterruptTrigger::Level),
+                active_low: matches!(
+                    descriptor.polarity,
+                    aml::resource::InterruptPolarity::ActiveLow
+                ),
+                level_triggered: matches!(
+                    descriptor.trigger,
+                    aml::resource::InterruptTrigger::Level
+                ),
             });
         }
     }
@@ -714,7 +707,10 @@ pub fn handle_sci_interrupt() {
 }
 
 pub fn enter_soft_off() -> Result<(), &'static str> {
-    let power = ACPI_STATE.lock().power.ok_or("ACPI power management unavailable")?;
+    let power = ACPI_STATE
+        .lock()
+        .power
+        .ok_or("ACPI power management unavailable")?;
     let sleep = power.sleep_values.ok_or("ACPI S5 state unavailable")?;
     let mut access = HardwareRegisterAccess;
 
@@ -788,7 +784,8 @@ pub fn init(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
         if let Err(error) = enable_power_button_events(power_info) {
             acpi_log!("[ACPI] Failed to enable power button events: {}", error);
         }
-        if let Some((ioapic_address, ioapic_input)) = resolve_ioapic_for_gsi(&io_apics, power_info.sci_gsi)
+        if let Some((ioapic_address, ioapic_input)) =
+            resolve_ioapic_for_gsi(&io_apics, power_info.sci_gsi)
         {
             if let Err(error) = crate::interrupts::configure_ioapic_route(
                 ioapic_address,
@@ -870,9 +867,11 @@ fn parse_aml_table<H>(
 where
     H: AcpiHandler,
 {
-    let mapping = unsafe { handler.map_physical_region::<u8>(table.address, table.length as usize) };
-    let data =
-        unsafe { core::slice::from_raw_parts(mapping.virtual_start().as_ptr(), table.length as usize) };
+    let mapping =
+        unsafe { handler.map_physical_region::<u8>(table.address, table.length as usize) };
+    let data = unsafe {
+        core::slice::from_raw_parts(mapping.virtual_start().as_ptr(), table.length as usize)
+    };
     let mut aml_bytes = alloc::vec![0u8; data.len()];
     aml_bytes.copy_from_slice(data);
 
@@ -891,8 +890,10 @@ fn parse_acpi_aml_tables<H>(
 where
     H: AcpiHandler,
 {
-    let mut context =
-        AmlContext::new(alloc::boxed::Box::new(AmlAcpiHandler::new(phys_mem_offset)), DebugVerbosity::None);
+    let mut context = AmlContext::new(
+        alloc::boxed::Box::new(AmlAcpiHandler::new(phys_mem_offset)),
+        DebugVerbosity::None,
+    );
 
     if let Some(ref dsdt) = tables.dsdt {
         parse_aml_table(handler, dsdt, &mut context)?;
@@ -907,7 +908,10 @@ where
 
 fn update_processor_topology(platform_info: &PlatformInfo) {
     if let InterruptModel::Apic(apic_info) = &platform_info.interrupt_model {
-        acpi_log!("[ACPI] Local APIC address: {:#x}", apic_info.local_apic_address);
+        acpi_log!(
+            "[ACPI] Local APIC address: {:#x}",
+            apic_info.local_apic_address
+        );
         *LAPIC_ADDRESS.lock() = Some(apic_info.local_apic_address);
     }
 
@@ -951,10 +955,10 @@ fn initialize_system_bus_namespace<C: AmlMethodClock>(
         }
 
         if level.typ == LevelType::Device {
-            let status = evaluate_device_status(context, &path, clock);
+            let status = evaluate_device_status(context, path, clock);
             if status.present || status.functional {
                 devices.push(path.as_string());
-                invoke_method_if_present(context, &resolve_child_path(&path, "_INI"), clock);
+                invoke_method_if_present(context, &resolve_child_path(path, "_INI"), clock);
             }
 
             return Ok(status.present || status.functional);
@@ -993,7 +997,11 @@ fn evaluate_device_status<C: AmlMethodClock>(
     }
 }
 
-fn invoke_method_if_present<C: AmlMethodClock>(context: &mut AmlContext, path: &AmlName, clock: &C) {
+fn invoke_method_if_present<C: AmlMethodClock>(
+    context: &mut AmlContext,
+    path: &AmlName,
+    clock: &C,
+) {
     if context.namespace.get_by_path(path).is_err() {
         return;
     }
@@ -1023,11 +1031,15 @@ fn discover_pci_root_bridges<C: AmlMethodClock>(
         }
 
         if level.typ == LevelType::Device {
-            let prt_path = resolve_child_path(&path, "_PRT");
+            let prt_path = resolve_child_path(path, "_PRT");
             if context.namespace.get_by_path(&prt_path).is_ok() {
-                let bus_number = read_optional_integer(context, &resolve_child_path(&path, "_BBN"), clock)
-                    .unwrap_or(0) as u8;
-                bridges.push(PciRootBridge { path: path.clone(), bus: bus_number });
+                let bus_number =
+                    read_optional_integer(context, &resolve_child_path(path, "_BBN"), clock)
+                        .unwrap_or(0) as u8;
+                bridges.push(PciRootBridge {
+                    path: path.clone(),
+                    bus: bus_number,
+                });
             }
         }
 
@@ -1071,7 +1083,7 @@ fn collect_io_apics(platform_info: &PlatformInfo) -> Vec<IoApicDescriptor> {
             let mut io_apics = apic
                 .io_apics
                 .iter()
-                .map(|io_apic| io_apic_descriptor(io_apic))
+                .map(io_apic_descriptor)
                 .collect::<Vec<_>>();
             io_apics.sort_by_key(|descriptor| descriptor.gsi_base);
             io_apics
@@ -1091,11 +1103,7 @@ fn extract_power_management_info(
     tables: &AcpiTables<TurnixAcpiHandler>,
     context: &AmlContext,
 ) -> Option<PowerManagementInfo> {
-    let fadt = unsafe {
-        tables
-            .get_sdt::<Fadt>(Signature::FADT)
-            .ok()??
-    };
+    let fadt = unsafe { tables.get_sdt::<Fadt>(Signature::FADT).ok()?? };
 
     let pm1a_event_block = fadt.pm1a_event_block().ok()?;
     let pm1a_control_block = fadt.pm1a_control_block().ok()?;
@@ -1181,7 +1189,9 @@ fn transition_pm1_to_sleep<A: AcpiRegisterAccess>(
 }
 
 fn build_sleep_control_value(current: u16, sleep_type: u16) -> u16 {
-    (current & !PM1_SLEEP_TYPE_MASK) | ((sleep_type << 10) & PM1_SLEEP_TYPE_MASK) | PM1_SLEEP_ENABLE_BIT
+    (current & !PM1_SLEEP_TYPE_MASK)
+        | ((sleep_type << 10) & PM1_SLEEP_TYPE_MASK)
+        | PM1_SLEEP_ENABLE_BIT
 }
 
 fn resolve_ioapic_for_gsi(io_apics: &[IoApicDescriptor], gsi: u32) -> Option<(u32, u8)> {
@@ -1215,7 +1225,10 @@ fn program_pci_routes(routes: &[PciRoutingEntry]) -> Result<(), &'static str> {
         }
     }
 
-    acpi_log!("[ACPI] Programmed {} PCI interrupt routes.", programmed.len());
+    acpi_log!(
+        "[ACPI] Programmed {} PCI interrupt routes.",
+        programmed.len()
+    );
     Ok(())
 }
 
@@ -1321,26 +1334,94 @@ mod tests {
     struct NullHandler;
 
     impl Handler for NullHandler {
-        fn read_u8(&self, _address: usize) -> u8 { 0 }
-        fn read_u16(&self, _address: usize) -> u16 { 0 }
-        fn read_u32(&self, _address: usize) -> u32 { 0 }
-        fn read_u64(&self, _address: usize) -> u64 { 0 }
+        fn read_u8(&self, _address: usize) -> u8 {
+            0
+        }
+        fn read_u16(&self, _address: usize) -> u16 {
+            0
+        }
+        fn read_u32(&self, _address: usize) -> u32 {
+            0
+        }
+        fn read_u64(&self, _address: usize) -> u64 {
+            0
+        }
         fn write_u8(&mut self, _address: usize, _value: u8) {}
         fn write_u16(&mut self, _address: usize, _value: u16) {}
         fn write_u32(&mut self, _address: usize, _value: u32) {}
         fn write_u64(&mut self, _address: usize, _value: u64) {}
-        fn read_io_u8(&self, _port: u16) -> u8 { 0 }
-        fn read_io_u16(&self, _port: u16) -> u16 { 0 }
-        fn read_io_u32(&self, _port: u16) -> u32 { 0 }
+        fn read_io_u8(&self, _port: u16) -> u8 {
+            0
+        }
+        fn read_io_u16(&self, _port: u16) -> u16 {
+            0
+        }
+        fn read_io_u32(&self, _port: u16) -> u32 {
+            0
+        }
         fn write_io_u8(&self, _port: u16, _value: u8) {}
         fn write_io_u16(&self, _port: u16, _value: u16) {}
         fn write_io_u32(&self, _port: u16, _value: u32) {}
-        fn read_pci_u8(&self, _segment: u16, _bus: u8, _device: u8, _function: u8, _offset: u16) -> u8 { 0 }
-        fn read_pci_u16(&self, _segment: u16, _bus: u8, _device: u8, _function: u8, _offset: u16) -> u16 { 0 }
-        fn read_pci_u32(&self, _segment: u16, _bus: u8, _device: u8, _function: u8, _offset: u16) -> u32 { 0 }
-        fn write_pci_u8(&self, _segment: u16, _bus: u8, _device: u8, _function: u8, _offset: u16, _value: u8) {}
-        fn write_pci_u16(&self, _segment: u16, _bus: u8, _device: u8, _function: u8, _offset: u16, _value: u16) {}
-        fn write_pci_u32(&self, _segment: u16, _bus: u8, _device: u8, _function: u8, _offset: u16, _value: u32) {}
+        fn read_pci_u8(
+            &self,
+            _segment: u16,
+            _bus: u8,
+            _device: u8,
+            _function: u8,
+            _offset: u16,
+        ) -> u8 {
+            0
+        }
+        fn read_pci_u16(
+            &self,
+            _segment: u16,
+            _bus: u8,
+            _device: u8,
+            _function: u8,
+            _offset: u16,
+        ) -> u16 {
+            0
+        }
+        fn read_pci_u32(
+            &self,
+            _segment: u16,
+            _bus: u8,
+            _device: u8,
+            _function: u8,
+            _offset: u16,
+        ) -> u32 {
+            0
+        }
+        fn write_pci_u8(
+            &self,
+            _segment: u16,
+            _bus: u8,
+            _device: u8,
+            _function: u8,
+            _offset: u16,
+            _value: u8,
+        ) {
+        }
+        fn write_pci_u16(
+            &self,
+            _segment: u16,
+            _bus: u8,
+            _device: u8,
+            _function: u8,
+            _offset: u16,
+            _value: u16,
+        ) {
+        }
+        fn write_pci_u32(
+            &self,
+            _segment: u16,
+            _bus: u8,
+            _device: u8,
+            _function: u8,
+            _offset: u16,
+            _value: u32,
+        ) {
+        }
     }
 
     #[derive(Clone)]
@@ -1350,7 +1431,9 @@ mod tests {
 
     impl TestAcpiTableHandler {
         fn new(image: Vec<u8>) -> Self {
-            Self { image: image.into() }
+            Self {
+                image: image.into(),
+            }
         }
     }
 
@@ -1440,7 +1523,11 @@ mod tests {
         for total_length_bytes in 1..=4usize {
             let extra_bytes = total_length_bytes - 1;
             let raw_length = payload_len_without_length_field + total_length_bytes;
-            let encodable_bits = if extra_bytes == 0 { 6 } else { 4 + (extra_bytes * 8) };
+            let encodable_bits = if extra_bytes == 0 {
+                6
+            } else {
+                4 + (extra_bytes * 8)
+            };
             let max_length = (1usize << encodable_bits) - 1;
             if raw_length > max_length {
                 continue;
@@ -1536,7 +1623,10 @@ mod tests {
         build_sdt_blob(b"SSDT", &aml)
     }
 
-    fn parse_test_aml_table_blob(context: &mut AmlContext, table_blob: &[u8]) -> Result<(), &'static str> {
+    fn parse_test_aml_table_blob(
+        context: &mut AmlContext,
+        table_blob: &[u8],
+    ) -> Result<(), &'static str> {
         let header_len = mem::size_of::<acpi::sdt::SdtHeader>();
         if table_blob.len() < header_len {
             return Err("synthetic SSDT blob shorter than header");
@@ -1580,7 +1670,9 @@ mod tests {
             .namespace
             .add_value(
                 AmlName::from_str(path).unwrap(),
-                AmlValue::native_method(0, false, 0, move |_| Ok(AmlValue::Package(entries.clone()))),
+                AmlValue::native_method(0, false, 0, move |_| {
+                    Ok(AmlValue::Package(entries.clone()))
+                }),
             )
             .unwrap();
     }
@@ -1651,7 +1743,10 @@ mod tests {
 
         assert_eq!(descriptor.irq, 16);
         assert_eq!(descriptor.trigger, aml::resource::InterruptTrigger::Level);
-        assert_eq!(descriptor.polarity, aml::resource::InterruptPolarity::ActiveLow);
+        assert_eq!(
+            descriptor.polarity,
+            aml::resource::InterruptPolarity::ActiveLow
+        );
     }
 
     #[test]
@@ -1734,12 +1829,21 @@ mod tests {
     #[test]
     fn resolve_ioapic_maps_gsi_to_correct_input() {
         let io_apics = alloc::vec![
-            IoApicDescriptor { address: 0xfec0_0000, gsi_base: 0 },
-            IoApicDescriptor { address: 0xfec0_1000, gsi_base: 24 },
+            IoApicDescriptor {
+                address: 0xfec0_0000,
+                gsi_base: 0
+            },
+            IoApicDescriptor {
+                address: 0xfec0_1000,
+                gsi_base: 24
+            },
         ];
 
         assert_eq!(resolve_ioapic_for_gsi(&io_apics, 7), Some((0xfec0_0000, 7)));
-        assert_eq!(resolve_ioapic_for_gsi(&io_apics, 28), Some((0xfec0_1000, 4)));
+        assert_eq!(
+            resolve_ioapic_for_gsi(&io_apics, 28),
+            Some((0xfec0_1000, 4))
+        );
     }
 
     #[test]
@@ -1755,7 +1859,10 @@ mod tests {
             .unwrap();
         context
             .namespace
-            .add_value(AmlName::from_str("\\_SB.PCI0._BBN").unwrap(), AmlValue::Integer(0))
+            .add_value(
+                AmlName::from_str("\\_SB.PCI0._BBN").unwrap(),
+                AmlValue::Integer(0),
+            )
             .unwrap();
         add_prt_method(&mut context, "\\_SB.PCI0._PRT", &[(2, 0, 0, 16)]);
 
@@ -1798,9 +1905,16 @@ mod tests {
             .unwrap();
         context
             .namespace
-            .add_value(AmlName::from_str("\\_SB.PCI0._BBN").unwrap(), AmlValue::Integer(0))
+            .add_value(
+                AmlName::from_str("\\_SB.PCI0._BBN").unwrap(),
+                AmlValue::Integer(0),
+            )
             .unwrap();
-        add_prt_method(&mut context, "\\_SB.PCI0._PRT", &[(2, 0, 0, 18), (3, 0, 1, 18)]);
+        add_prt_method(
+            &mut context,
+            "\\_SB.PCI0._PRT",
+            &[(2, 0, 0, 18), (3, 0, 1, 18)],
+        );
 
         let mut registry = DeviceRegistry::new();
         let (key_a, info_a) = make_registry_device(0, 2, 0, 0);

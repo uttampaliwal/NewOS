@@ -9,7 +9,9 @@ pub struct LocalApic {
 impl LocalApic {
     /// Create a new Local APIC instance.
     ///
-    /// SAFETY: The caller must ensure that the base address is valid and mapped.
+    /// # Safety
+    ///
+    /// The caller must ensure that the base address is valid and mapped.
     pub unsafe fn new(base_addr: VirtAddr) -> Self {
         Self { base_addr }
     }
@@ -31,6 +33,10 @@ impl LocalApic {
     }
 
     /// Initialize the Local APIC.
+    ///
+    /// # Safety
+    ///
+    /// The LAPIC MMIO region must be mapped and valid.
     pub unsafe fn initialize(&mut self) {
         // Enable the Local APIC by setting bit 8 of the Spurious Interrupt Vector Register.
         // We also set the spurious vector to 0xFF.
@@ -41,6 +47,10 @@ impl LocalApic {
     }
 
     /// Set the APIC timer to fire every `count` ticks.
+    ///
+    /// # Safety
+    ///
+    /// The LAPIC MMIO region must be mapped and valid.
     pub unsafe fn start_timer(&mut self, count: u32) {
         unsafe {
             // Divide by 16
@@ -53,6 +63,10 @@ impl LocalApic {
     }
 
     /// Signal End of Interrupt (EOI) to the Local APIC.
+    ///
+    /// # Safety
+    ///
+    /// The LAPIC MMIO region must be mapped and valid.
     pub unsafe fn signal_eoi(&mut self) {
         unsafe {
             self.write(0xB0, 0);
@@ -65,6 +79,9 @@ pub struct IoApic {
 }
 
 impl IoApic {
+    /// # Safety
+    ///
+    /// The caller must ensure that the base address is valid and mapped.
     pub unsafe fn new(base_addr: VirtAddr) -> Self {
         Self { base_addr }
     }
@@ -77,10 +94,16 @@ impl IoApic {
         }
     }
 
+    /// # Safety
+    ///
+    /// The IOAPIC MMIO region must be mapped and valid.
     pub unsafe fn route_irq(&mut self, irq: u8, vector: u8) {
         unsafe { self.route_irq_configured(irq, vector, false, false) };
     }
 
+    /// # Safety
+    ///
+    /// The IOAPIC MMIO region must be mapped and valid.
     pub unsafe fn route_irq_configured(
         &mut self,
         irq: u8,

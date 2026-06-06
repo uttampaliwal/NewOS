@@ -14,6 +14,12 @@ pub struct PerCpuData {
     pub is_bsp: bool,
 }
 
+impl Default for PerCpuData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PerCpuData {
     pub const fn new() -> Self {
         Self {
@@ -42,9 +48,8 @@ pub fn get_bsp_cpu_id() -> u32 {
 pub fn get_current_cpu_id() -> u32 {
     match crate::acpi::get_lapic_address() {
         Some(lapic_base) => {
-            let lapic_id_reg = unsafe {
-                core::ptr::read_volatile((lapic_base as usize + 0x20) as *const u32)
-            };
+            let lapic_id_reg =
+                unsafe { core::ptr::read_volatile((lapic_base as usize + 0x20) as *const u32) };
             lapic_id_reg >> 24
         }
         None => 0,
@@ -55,7 +60,7 @@ pub fn set_current_cpu_data(data: &PerCpuData) {
     let idx = data.cpu_id as usize;
     if idx < MAX_CPUS {
         unsafe {
-            PER_CPU_AREA[idx] = data.clone();
+            PER_CPU_AREA[idx] = *data;
         }
     }
 }
@@ -126,7 +131,7 @@ pub fn init(_phys_mem_offset: VirtAddr) {
 
 fn start_aps(ap_ids: &[u32]) {
     use x86_64::instructions::interrupts;
-    
+
     interrupts::without_interrupts(|| {
         for &apic_id in ap_ids {
             crate::serial::println!("[SMP] Starting AP with LAPIC ID {}", apic_id);
@@ -135,7 +140,7 @@ fn start_aps(ap_ids: &[u32]) {
             }
         }
     });
-    
+
     let ready = wait_for_aps(1000000);
     crate::serial::println!("[SMP] {} APs started successfully", ready);
 }
@@ -145,59 +150,59 @@ fn send_init_sipi_sipi(apic_id: u32) -> bool {
         Some(addr) => addr as usize,
         None => return false,
     };
-    
+
     let icr_low = lapic_base + 0x300;
     let icr_high = lapic_base + 0x310;
-    
+
     unsafe {
         core::ptr::write_volatile(icr_high as *mut u32, apic_id << 24);
         core::ptr::write_volatile(icr_low as *mut u32, 0x0000C500);
-        
+
         while core::ptr::read_volatile(icr_low as *const u32) & (1 << 12) != 0 {
             core::hint::spin_loop();
         }
-        
+
         for _ in 0..1000000 {
             core::hint::spin_loop();
         }
-        
+
         let trampoline_vec = (TRAMPOLINE_ADDR >> 12) as u32;
         core::ptr::write_volatile(icr_high as *mut u32, apic_id << 24);
         core::ptr::write_volatile(icr_low as *mut u32, 0x0000C600 | (trampoline_vec & 0xFF));
-        
+
         while core::ptr::read_volatile(icr_low as *const u32) & (1 << 12) != 0 {
             core::hint::spin_loop();
         }
-        
+
         for _ in 0..20000 {
             core::hint::spin_loop();
         }
-        
+
         core::ptr::write_volatile(icr_high as *mut u32, apic_id << 24);
         core::ptr::write_volatile(icr_low as *mut u32, 0x0000C600 | (trampoline_vec & 0xFF));
-        
+
         while core::ptr::read_volatile(icr_low as *const u32) & (1 << 12) != 0 {
             core::hint::spin_loop();
         }
     }
-    
+
     true
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn ap_entry(apic_id: u32) -> ! {
     crate::serial::println!("[AP {}] Started", apic_id);
-    
+
     let mut cpu_data = PerCpuData::new();
     cpu_data.cpu_id = apic_id;
     cpu_data.is_bsp = false;
     set_current_cpu_data(&cpu_data);
-    
+
     crate::gdt::init_for_cpu(apic_id);
     crate::interrupts::apic::init_for_cpu();
-    
+
     signal_ap_ready();
-    
+
     crate::serial::println!("[AP {}] Entering idle loop", apic_id);
     loop {
         x86_64::instructions::hlt();

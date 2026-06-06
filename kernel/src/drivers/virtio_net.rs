@@ -1,8 +1,8 @@
+use crate::boot::get_phys_mem_offset;
+use crate::drivers::framework::{Bar, DeviceDriver, DeviceInfo};
 use core::ptr::{read_volatile, write_volatile};
 use core::sync::atomic::{AtomicBool, Ordering};
 use spin::Mutex;
-use crate::boot::get_phys_mem_offset;
-use crate::drivers::framework::{Bar, DeviceDriver, DeviceInfo};
 
 const VIRTIO_VENDOR: u16 = 0x1AF4;
 const VIRTIO_NET_TRANSITIONAL: u16 = 0x1000;
@@ -53,19 +53,27 @@ fn mmio_read_u32(base: u64, off: u16) -> u32 {
 }
 
 fn mmio_write_u8(base: u64, off: u16, val: u8) {
-    unsafe { write_volatile((base + off as u64) as *mut u8, val); }
+    unsafe {
+        write_volatile((base + off as u64) as *mut u8, val);
+    }
 }
 
 fn mmio_write_u16(base: u64, off: u16, val: u16) {
-    unsafe { write_volatile((base + off as u64) as *mut u16, val); }
+    unsafe {
+        write_volatile((base + off as u64) as *mut u16, val);
+    }
 }
 
 fn mmio_write_u32(base: u64, off: u16, val: u32) {
-    unsafe { write_volatile((base + off as u64) as *mut u32, val); }
+    unsafe {
+        write_volatile((base + off as u64) as *mut u32, val);
+    }
 }
 
 fn mmio_write_u64(base: u64, off: u16, val: u64) {
-    unsafe { write_volatile((base + off as u64) as *mut u64, val); }
+    unsafe {
+        write_volatile((base + off as u64) as *mut u64, val);
+    }
 }
 
 fn pci_cfg_read_u8(bus: u8, dev: u8, func: u8, off: u16) -> u8 {
@@ -201,11 +209,7 @@ unsafe impl Send for VirtQueue {}
 unsafe impl Sync for VirtQueue {}
 
 impl VirtQueue {
-    fn allocate(
-        queue_idx: u16,
-        common_cfg_base: u64,
-        phys_mem_offset: u64,
-    ) -> Option<(Self, u16)> {
+    fn allocate(queue_idx: u16, common_cfg_base: u64, phys_mem_offset: u64) -> Option<(Self, u16)> {
         mmio_write_u16(common_cfg_base, COMMON_QUEUE_SEL, queue_idx);
         let size = mmio_read_u16(common_cfg_base, COMMON_QUEUE_SIZE);
         if size < QUEUE_SIZE {
@@ -232,13 +236,26 @@ impl VirtQueue {
         let avail_virt = avail_vec.as_ptr() as u64;
         let used_virt = used_vec.as_ptr() as u64;
 
-        mmio_write_u64(common_cfg_base, COMMON_QUEUE_DESC, desc_virt - phys_mem_offset);
-        mmio_write_u64(common_cfg_base, COMMON_QUEUE_DRIVER, avail_virt - phys_mem_offset);
-        mmio_write_u64(common_cfg_base, COMMON_QUEUE_DEVICE, used_virt - phys_mem_offset);
+        mmio_write_u64(
+            common_cfg_base,
+            COMMON_QUEUE_DESC,
+            desc_virt - phys_mem_offset,
+        );
+        mmio_write_u64(
+            common_cfg_base,
+            COMMON_QUEUE_DRIVER,
+            avail_virt - phys_mem_offset,
+        );
+        mmio_write_u64(
+            common_cfg_base,
+            COMMON_QUEUE_DEVICE,
+            used_virt - phys_mem_offset,
+        );
         mmio_write_u16(common_cfg_base, COMMON_QUEUE_ENABLE, 1);
 
         let desc_leaked = alloc::boxed::Box::leak(desc_vec.into_boxed_slice());
-        let desc_arr = unsafe { &mut *(desc_leaked.as_mut_ptr() as *mut [Desc; QUEUE_SIZE as usize]) };
+        let desc_arr =
+            unsafe { &mut *(desc_leaked.as_mut_ptr() as *mut [Desc; QUEUE_SIZE as usize]) };
         for i in 0..QUEUE_SIZE - 1 {
             desc_arr[i as usize].next = i + 1;
         }
@@ -401,7 +418,11 @@ fn init_device(info: &DeviceInfo, caps: &[VirtioCap]) -> Option<VirtioNetDevice>
     }
 
     mmio_write_u8(common_base, COMMON_DEVICE_STATUS, STATUS_ACK);
-    mmio_write_u8(common_base, COMMON_DEVICE_STATUS, STATUS_ACK | STATUS_DRIVER);
+    mmio_write_u8(
+        common_base,
+        COMMON_DEVICE_STATUS,
+        STATUS_ACK | STATUS_DRIVER,
+    );
 
     mmio_write_u32(common_base, COMMON_DEVICE_FEATURE_SEL, 0);
     let dev_features_low = mmio_read_u32(common_base, COMMON_DEVICE_FEATURES);
@@ -423,7 +444,11 @@ fn init_device(info: &DeviceInfo, caps: &[VirtioCap]) -> Option<VirtioNetDevice>
     mmio_write_u32(common_base, COMMON_DRIVER_FEATURE_SEL, 0);
     mmio_write_u32(common_base, COMMON_DRIVER_FEATURES, driver_features as u32);
     mmio_write_u32(common_base, COMMON_DRIVER_FEATURE_SEL, 1);
-    mmio_write_u32(common_base, COMMON_DRIVER_FEATURES, (driver_features >> 32) as u32);
+    mmio_write_u32(
+        common_base,
+        COMMON_DRIVER_FEATURES,
+        (driver_features >> 32) as u32,
+    );
 
     mmio_write_u8(
         common_base,
@@ -440,10 +465,8 @@ fn init_device(info: &DeviceInfo, caps: &[VirtioCap]) -> Option<VirtioNetDevice>
 
     let mac_address = read_mac(device_cfg_base);
 
-    let (tx_queue, tx_notify_off) =
-        VirtQueue::allocate(0, common_base, pmo)?;
-    let (rx_queue, rx_notify_off) =
-        VirtQueue::allocate(1, common_base, pmo)?;
+    let (tx_queue, tx_notify_off) = VirtQueue::allocate(0, common_base, pmo)?;
+    let (rx_queue, rx_notify_off) = VirtQueue::allocate(1, common_base, pmo)?;
 
     mmio_write_u8(
         common_base,
@@ -453,8 +476,12 @@ fn init_device(info: &DeviceInfo, caps: &[VirtioCap]) -> Option<VirtioNetDevice>
 
     crate::serial::println!(
         "[VIRTIO] MAC={:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        mac_address[0], mac_address[1], mac_address[2],
-        mac_address[3], mac_address[4], mac_address[5],
+        mac_address[0],
+        mac_address[1],
+        mac_address[2],
+        mac_address[3],
+        mac_address[4],
+        mac_address[5],
     );
 
     Some(VirtioNetDevice {
@@ -511,8 +538,7 @@ pub fn transmit_packet(data: &[u8]) -> bool {
 
     tx.make_available(head);
 
-    let notify_addr = dev.notify_base
-        + dev.notify_off_multiplier as u64 * dev.tx_notify_off as u64;
+    let notify_addr = dev.notify_base + dev.notify_off_multiplier as u64 * dev.tx_notify_off as u64;
     mmio_write_u16(notify_addr, 0, 0);
 
     true
@@ -545,14 +571,15 @@ pub fn poll_rx<F: FnMut(&[u8])>(mut callback: F) {
         core::mem::forget(buf);
         let new_head = rx.alloc_desc(1).unwrap_or(0xFFFF);
         if new_head != 0xFFFF {
-            let rdesc = unsafe { core::slice::from_raw_parts_mut(rx.desc_ptr, QUEUE_SIZE as usize) };
+            let rdesc =
+                unsafe { core::slice::from_raw_parts_mut(rx.desc_ptr, QUEUE_SIZE as usize) };
             rdesc[new_head as usize].addr = buf_phys;
             rdesc[new_head as usize].len = 2048;
             rdesc[new_head as usize].flags = 2;
             rdesc[new_head as usize].next = 0xFFFF;
             rx.make_available(new_head);
-            let notify_addr = dev.notify_base
-                + dev.notify_off_multiplier as u64 * dev.rx_notify_off as u64;
+            let notify_addr =
+                dev.notify_base + dev.notify_off_multiplier as u64 * dev.rx_notify_off as u64;
             mmio_write_u16(notify_addr, 0, 1);
         }
     }
@@ -564,8 +591,7 @@ pub fn reinit() -> bool {
 
     for (_, info) in device_registry.iter_device_infos() {
         let is_virtio_net = info.vendor_id == VIRTIO_VENDOR
-            && (info.device_id == VIRTIO_NET_TRANSITIONAL
-                || info.device_id == VIRTIO_NET_MODERN);
+            && (info.device_id == VIRTIO_NET_TRANSITIONAL || info.device_id == VIRTIO_NET_MODERN);
         if !is_virtio_net {
             continue;
         }
@@ -594,8 +620,8 @@ impl DeviceDriver for VirtioNetDriver {
         if info.vendor_id != VIRTIO_VENDOR {
             return Err(VirtioNetError);
         }
-        let is_net = info.device_id == VIRTIO_NET_TRANSITIONAL
-            || info.device_id == VIRTIO_NET_MODERN;
+        let is_net =
+            info.device_id == VIRTIO_NET_TRANSITIONAL || info.device_id == VIRTIO_NET_MODERN;
         if !is_net {
             return Err(VirtioNetError);
         }
@@ -716,8 +742,8 @@ mod tests {
     fn test_capability_detection_no_bus() {
         let vid = 0xFFFFu16;
         let did = 0xFFFFu16;
-        let is_virtio_net = vid == VIRTIO_VENDOR
-            && (did == VIRTIO_NET_TRANSITIONAL || did == VIRTIO_NET_MODERN);
+        let is_virtio_net =
+            vid == VIRTIO_VENDOR && (did == VIRTIO_NET_TRANSITIONAL || did == VIRTIO_NET_MODERN);
         assert!(!is_virtio_net);
     }
 
@@ -757,7 +783,11 @@ mod tests {
         assert!(features_without_mac & VIRTIO_NET_F_MAC == 0);
     }
 
-    fn alloc_all(desc: &mut [Desc; QUEUE_SIZE as usize], head: &mut u16, count: &mut u16) -> alloc::vec::Vec<u16> {
+    fn alloc_all(
+        desc: &mut [Desc; QUEUE_SIZE as usize],
+        head: &mut u16,
+        count: &mut u16,
+    ) -> alloc::vec::Vec<u16> {
         let mut out = alloc::vec::Vec::with_capacity(*count as usize);
         while *count > 0 {
             let h = *head;
@@ -796,8 +826,10 @@ mod tests {
         assert_eq!(free_head, 0);
 
         let second_round = alloc_all(desc, &mut free_head, &mut free_count);
-        assert_eq!(second_round, first_round,
-            "second alloc cycle should produce same order as first");
+        assert_eq!(
+            second_round, first_round,
+            "second alloc cycle should produce same order as first"
+        );
         assert_eq!(free_count, 0);
     }
 }

@@ -23,6 +23,16 @@ license = "MIT OR Apache-2.0"
 authors = ["Uttam", "Codex", "Antigravity"]
 repository = "https://github.com/uttampaliwal/Turnix"
 
+[workspace.lints.rust]
+warnings = "warn"
+unsafe_code = "allow"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "allow"
+missing_safety_doc = "warn"
+too_many_arguments = "allow"
+
 [profile.dev]
 panic = "abort"
 

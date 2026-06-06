@@ -5,29 +5,29 @@
 //! existing `use crate::vfs::…` references continue to compile without change.
 
 pub use crate::fs::vfs::{
-    // Global singleton
-    VFS,
+    DirEntry,
+    DirEntry as VfsEntry, // keep old name available as alias
+    FdKind,
     // Core types
     FileDescriptor,
-    FdKind,
+    FileStat,
+    FileType,
+    FsBackend,
+    FsError,
     InodeId,
     InodeStat,
-    OpenFlags,
-    MountFlags,
-    FsError,
-    FileType,
-    FileStat,
-    DirEntry,
-    DirEntry as VfsEntry,   // keep old name available as alias
-    FsBackend,
-    MountEntry,
-    Vfs,
-    // Placeholder IPC types
-    PipeBuffer,
-    UnixSocketState,
-    // Helpers
-    check_permission,
     // Limits / misc
     MAX_OPEN_FILES,
+    MountEntry,
+    MountFlags,
+    OpenFlags,
+    // Placeholder IPC types
+    PipeBuffer,
     Timestamp,
+    UnixSocketState,
+    // Global singleton
+    VFS,
+    Vfs,
+    // Helpers
+    check_permission,
 };

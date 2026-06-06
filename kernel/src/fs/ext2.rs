@@ -3,15 +3,13 @@
 
 extern crate alloc;
 
-use spin::Mutex;
-use alloc::vec::Vec;
-use alloc::vec;
-use core::ptr;
 use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::ptr;
+use spin::Mutex;
 
-use crate::fs::vfs::{
-    DirEntry, FsBackend, FsError, FileType, InodeId, InodeStat, OpenFlags,
-};
+use crate::fs::vfs::{DirEntry, FileType, FsBackend, FsError, InodeId, InodeStat, OpenFlags};
 
 /// ext2 superblock (offset 1024 in filesystem)
 #[repr(C, packed)]
@@ -119,7 +117,9 @@ impl Ext2Inode {
     }
 
     pub fn get_block(&self, idx: usize) -> u32 {
-        if idx >= 15 { return 0; }
+        if idx >= 15 {
+            return 0;
+        }
         let block_ptr = unsafe { (self as *const _ as *const u8).add(40 + idx * 4) as *const u32 };
         unsafe { ptr::read_unaligned(block_ptr) }
     }
@@ -189,7 +189,12 @@ static EXT2_FS: Mutex<Option<Ext2Fs>> = Mutex::new(None);
 
 /// Read blocks from block device (using AHCI)
 fn read_blocks(device_id: usize, lba: u64, count: usize, buffer: &mut [u8]) -> bool {
-    crate::serial::println!("[EXT2] Reading {} blocks from LBA {} on device {}", count, lba, device_id);
+    crate::serial::println!(
+        "[EXT2] Reading {} blocks from LBA {} on device {}",
+        count,
+        lba,
+        device_id
+    );
     crate::drivers::ahci::read_blocks(device_id, lba, count, buffer)
 }
 
@@ -231,15 +236,19 @@ pub fn init(device_id: usize) -> bool {
     let block_size = superblock.block_size();
     let block_count = superblock.get_block_count();
     let _inodes_per_group = superblock.get_inodes_per_group();
-    let group_count = ((block_count + superblock.get_blocks_per_group() - 1) / superblock.get_blocks_per_group()) as usize;
+    let group_count = block_count.div_ceil(superblock.get_blocks_per_group()) as usize;
 
-    crate::serial::println!("[EXT2] Filesystem: {} blocks, {} inodes, {} groups",
-        block_size, superblock.get_inode_count(), group_count);
+    crate::serial::println!(
+        "[EXT2] Filesystem: {} blocks, {} inodes, {} groups",
+        block_size,
+        superblock.get_inode_count(),
+        group_count
+    );
 
     // Read group descriptors (located after superblock)
     let gd_block = if block_size == 1024 { 2u64 } else { 1u64 };
     let gd_size = group_count * 32; // Each group desc is 32 bytes
-    let mut gd_buffer = vec![0u8; ((gd_size + block_size - 1) / block_size) * block_size];
+    let mut gd_buffer = vec![0u8; gd_size.div_ceil(block_size) * block_size];
 
     if !read_blocks(device_id, gd_block, gd_buffer.len() / 512, &mut gd_buffer) {
         crate::serial::println!("[EXT2] Failed to read group descriptors");
@@ -248,7 +257,8 @@ pub fn init(device_id: usize) -> bool {
     let mut group_descs = Vec::new();
     for i in 0..group_count {
         if i * 32 + 32 <= gd_buffer.len() {
-            let gd = unsafe { ptr::read_unaligned(gd_buffer.as_ptr().add(i * 32) as *const GroupDesc) };
+            let gd =
+                unsafe { ptr::read_unaligned(gd_buffer.as_ptr().add(i * 32) as *const GroupDesc) };
             group_descs.push(gd);
         }
     }
@@ -285,28 +295,27 @@ pub fn mount(device_id: usize) -> bool {
 /// Read inode by number
 pub fn read_inode(device_id: usize, ino: u32) -> Option<Ext2Inode> {
     let guard = EXT2_FS.lock();
-    if let Some(ref fs) = *guard {
-        if let Some(ref sb) = fs.superblock {
-            let block_size = fs.block_size;
-            let inodes_per_group = sb.get_inodes_per_group();
-            let inode_size = 128usize; // Standard ext2 inode size
+    let fs = guard.as_ref()?;
+    let sb = fs.superblock.as_ref()?;
+    let block_size = fs.block_size;
+    let inodes_per_group = sb.get_inodes_per_group();
+    let inode_size = 128usize; // Standard ext2 inode size
 
-            let group = (ino - 1) / inodes_per_group;
-            let index = (ino - 1) % inodes_per_group;
+    let group = (ino - 1) / inodes_per_group;
+    let index = (ino - 1) % inodes_per_group;
 
-            if (group as usize) < fs.group_descs.len() {
-                let gd = &fs.group_descs[group as usize];
-                let inode_table = gd.get_inode_table();
-                let inode_table_lba = inode_table as u64 * (block_size / 512) as u64;
-                let inode_offset = index as u64 * inode_size as u64;
+    if (group as usize) < fs.group_descs.len() {
+        let gd = &fs.group_descs[group as usize];
+        let inode_table = gd.get_inode_table();
+        let inode_table_lba = inode_table as u64 * (block_size / 512) as u64;
+        let inode_offset = index as u64 * inode_size as u64;
 
-                let mut buffer = vec![0u8; block_size];
-                if read_blocks(device_id, inode_table_lba, block_size / 512, &mut buffer) {
-                    let inode_ptr = unsafe { buffer.as_ptr().add(inode_offset as usize) as *const Ext2Inode };
-                    let inode = unsafe { ptr::read_unaligned(inode_ptr) };
-                    return Some(inode);
-                }
-            }
+        let mut buffer = vec![0u8; block_size];
+        if read_blocks(device_id, inode_table_lba, block_size / 512, &mut buffer) {
+            let inode_ptr =
+                unsafe { buffer.as_ptr().add(inode_offset as usize) as *const Ext2Inode };
+            let inode = unsafe { ptr::read_unaligned(inode_ptr) };
+            return Some(inode);
         }
     }
     None
@@ -353,7 +362,8 @@ pub fn list_dir(device_id: usize, ino: u32) -> Vec<(u32, String, u8)> {
                 }
 
                 if name_len > 0 && name_len <= 255 {
-                    let name_cow = String::from_utf8_lossy(&buffer[offset + 8..offset + 8 + name_len]);
+                    let name_cow =
+                        String::from_utf8_lossy(&buffer[offset + 8..offset + 8 + name_len]);
                     let name = String::from(&*name_cow);
                     result.push((inode_num, name, file_type));
                 }
@@ -402,7 +412,7 @@ fn mode_to_file_type(mode: u16) -> FileType {
         0x1000 => FileType::Pipe,
         0xC000 => FileType::Socket,
         0xA000 => FileType::Symlink,
-        _      => FileType::Regular,
+        _ => FileType::Regular,
     }
 }
 
@@ -411,8 +421,8 @@ fn dir_ftype_to_file_type(ft: u8) -> FileType {
     match ft {
         1 => FileType::Regular,
         2 => FileType::Directory,
-        3 => FileType::Device,  // char device
-        4 => FileType::Device,  // block device
+        3 => FileType::Device, // char device
+        4 => FileType::Device, // block device
         5 => FileType::Pipe,
         6 => FileType::Socket,
         7 => FileType::Symlink,

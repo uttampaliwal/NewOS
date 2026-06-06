@@ -1,13 +1,13 @@
+use x86_64::VirtAddr;
 use x86_64::registers::control::Cr2;
 use x86_64::structures::paging::{
     FrameAllocator, Mapper, OffsetPageTable, Page, PageSize, PageTable, PageTableFlags, PhysFrame,
     Size4KiB,
 };
-use x86_64::VirtAddr;
 
+use crate::memory::PAGE_SIZE;
 use crate::memory::page_cache::PAGE_CACHE;
 use crate::memory::vma::{VmaBacking, VmaProt};
-use crate::memory::PAGE_SIZE;
 
 /// Map a physical frame into the current process at the given virtual
 /// address, using the protection flags from the VMA.
@@ -45,15 +45,10 @@ fn map_fault_frame(
 
 /// Read a page of file data from the VFS for a file-backed mapping.
 /// Falls back to zero-fill when the file data is unavailable.
-fn populate_file_page(
-    frame_ptr: *mut u8,
-    inode: crate::memory::vma::InodeId,
-    page_idx: u64,
-) {
+fn populate_file_page(frame_ptr: *mut u8, inode: crate::memory::vma::InodeId, page_idx: u64) {
     let vfs = crate::vfs::VFS.lock();
     let page_offset = page_idx * PAGE_SIZE;
-    let buf =
-        unsafe { core::slice::from_raw_parts_mut(frame_ptr, Size4KiB::SIZE as usize) };
+    let buf = unsafe { core::slice::from_raw_parts_mut(frame_ptr, Size4KiB::SIZE as usize) };
     if !vfs.read_page(inode.0 as usize, page_offset, buf) {
         // File data not available — zero-fill
         unsafe {
@@ -99,18 +94,18 @@ pub fn handle_demand_fault() -> bool {
     {
         let pml4_frame = process.pml4_frame();
         let pte_bits = crate::memory::swap::read_pte(pml4_frame, phys_mem_offset, fault_addr);
-        if let Some(bits) = pte_bits {
-            if crate::memory::swap::is_swapped_out_pte(bits) {
-                if let Some(phys) = crate::memory::swap::restore_swapped_page(bits) {
-                    let kframe = PhysFrame::containing_address(x86_64::PhysAddr::new(phys));
-                    let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
-                    return match guard.as_mut() {
-                        Some(a) => map_fault_frame(fault_addr, kframe, vma.prot, a, phys_mem_offset),
-                        None => false,
-                    };
-                }
-                return false;
+        if let Some(bits) = pte_bits
+            && crate::memory::swap::is_swapped_out_pte(bits)
+        {
+            if let Some(phys) = crate::memory::swap::restore_swapped_page(bits) {
+                let kframe = PhysFrame::containing_address(x86_64::PhysAddr::new(phys));
+                let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
+                return match guard.as_mut() {
+                    Some(a) => map_fault_frame(fault_addr, kframe, vma.prot, a, phys_mem_offset),
+                    None => false,
+                };
             }
+            return false;
         }
     }
 
@@ -134,9 +129,8 @@ pub fn handle_demand_fault() -> bool {
         if let Some(cached_frame) = cache.lookup(*inode, page_idx, now) {
             cache.add_ref(*inode, page_idx);
             drop(cache);
-            let kframe = PhysFrame::containing_address(x86_64::PhysAddr::new(
-                cached_frame.start_address,
-            ));
+            let kframe =
+                PhysFrame::containing_address(x86_64::PhysAddr::new(cached_frame.start_address));
             return map_fault_frame(fault_addr, kframe, vma.prot, allocator, phys_mem_offset);
         }
         drop(cache);
@@ -146,8 +140,7 @@ pub fn handle_demand_fault() -> bool {
             Some(f) => f,
             None => return false,
         };
-        let frame_ptr =
-            (phys_mem_offset + kframe.start_address().as_u64()).as_mut_ptr::<u8>();
+        let frame_ptr = (phys_mem_offset + kframe.start_address().as_u64()).as_mut_ptr::<u8>();
 
         populate_file_page(frame_ptr, *inode, page_idx);
 

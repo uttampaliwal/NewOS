@@ -1,4 +1,4 @@
-use acpi::{AcpiHandler, AcpiTables, PhysicalMapping, PciConfigRegions};
+use acpi::{AcpiHandler, AcpiTables, PciConfigRegions, PhysicalMapping};
 use core::ptr::NonNull;
 use x86_64::VirtAddr;
 
@@ -85,11 +85,7 @@ fn parse_bars(reader: &dyn Fn(u16) -> u32) -> [Option<Bar>; 6] {
             0x2 => {
                 // 64-bit, consumes next BAR as high dword when available
                 let low = (raw & 0xFFFF_FFF0) as u64;
-                let high = if i + 1 < 6 {
-                    reader(off + 4) as u64
-                } else {
-                    0
-                };
+                let high = if i + 1 < 6 { reader(off + 4) as u64 } else { 0 };
                 let base = (high << 32) | low;
                 bars[i] = Some(Bar::Memory64 {
                     base,
@@ -198,8 +194,14 @@ pub fn enumerate(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
         }
     }
 
-    let device_count = crate::drivers::DEVICE_REGISTRY.lock().iter_device_infos().count();
-    crate::serial::println!("[PCIE] Enumeration complete. Discovered {} device functions.", device_count);
+    let device_count = crate::drivers::DEVICE_REGISTRY
+        .lock()
+        .iter_device_infos()
+        .count();
+    crate::serial::println!(
+        "[PCIE] Enumeration complete. Discovered {} device functions.",
+        device_count
+    );
 }
 
 #[cfg(test)]
@@ -226,7 +228,11 @@ mod tests {
 
         // BAR0 should be Memory64 with base = (0x12345678 << 32) | 0x00000000 = 0x1234567800000000
         match bars[0] {
-            Some(Bar::Memory64 { base, size: _, prefetchable }) => {
+            Some(Bar::Memory64 {
+                base,
+                size: _,
+                prefetchable,
+            }) => {
                 assert_eq!(base, 0x1234567800000000);
                 assert_eq!(prefetchable, false);
             }
@@ -237,7 +243,6 @@ mod tests {
         assert!(bars[1].is_none());
     }
 
-    
     #[test]
     fn test_parse_32bit_memory_bar() {
         // Test parsing a 32-bit memory BAR
@@ -247,7 +252,11 @@ mod tests {
         let bars = parse_bars(&reader);
 
         match bars[0] {
-            Some(Bar::Memory32 { base, size: _, prefetchable }) => {
+            Some(Bar::Memory32 {
+                base,
+                size: _,
+                prefetchable,
+            }) => {
                 assert_eq!(base, 0x80000000);
                 assert_eq!(prefetchable, true);
             }
@@ -291,7 +300,9 @@ mod tests {
 
         // BAR1 should be 32-bit memory
         match bars[1] {
-            Some(Bar::Memory32 { base, prefetchable, .. }) => {
+            Some(Bar::Memory32 {
+                base, prefetchable, ..
+            }) => {
                 assert_eq!(base, 0x80000000);
                 assert_eq!(prefetchable, true);
             }
@@ -300,7 +311,9 @@ mod tests {
 
         // BAR2 should be 64-bit memory
         match bars[2] {
-            Some(Bar::Memory64 { base, prefetchable, .. }) => {
+            Some(Bar::Memory64 {
+                base, prefetchable, ..
+            }) => {
                 assert_eq!(base, 0x1234567800000000);
                 assert_eq!(prefetchable, false);
             }
@@ -329,7 +342,7 @@ mod tests {
         let mut config = [0u32; 16];
         config[4] = 0x00000004; // BAR0 low: 64-bit memory, base_low=0x00000000
         config[5] = 0x12345678; // BAR1 high: 0x12345678
-        
+
         let reader = |off: u16| config[(off / 4) as usize];
         let bars = parse_bars(&reader);
 
@@ -346,7 +359,6 @@ mod tests {
         assert!(bars[1].is_none());
     }
 
-    
     #[test]
     fn test_device_info_creation() {
         // Test creating DeviceInfo with parsed values
@@ -388,6 +400,10 @@ mod tests {
 
         assert!(key1 < key2, "Same bus, lower device number should be less");
         assert!(key2 < key3, "Lower bus number should be less");
-        assert_eq!(key1, DeviceKey::new(0, 1, 0, 0x1234, 0x5678), "Equal keys should be equal");
+        assert_eq!(
+            key1,
+            DeviceKey::new(0, 1, 0, 0x1234, 0x5678),
+            "Equal keys should be equal"
+        );
     }
 }

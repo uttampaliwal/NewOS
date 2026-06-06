@@ -40,13 +40,13 @@ pub fn add_task(task: Task) {
 pub fn remove_task(task_id: TaskId) {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
-        if let Some(ref current) = sched.current_task {
-            if current.id == task_id {
-                sched.current_task = None;
-                sched.current_task_id = None;
-                sched.task_count -= 1;
-                return;
-            }
+        if let Some(ref current) = sched.current_task
+            && current.id == task_id
+        {
+            sched.current_task = None;
+            sched.current_task_id = None;
+            sched.task_count -= 1;
+            return;
         }
         let len_before = sched.tasks.len();
         sched.tasks.retain(|t| t.id != task_id);
@@ -125,44 +125,44 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
     // Increment uptime counter (each tick represents ~10ms if LAPIC is configured that way)
     UPTIME_TICKS.fetch_add(1, Ordering::Relaxed);
 
-    if let Some(mut sched) = SCHEDULER.try_lock() {
-        if let Some(mut prev_task) = sched.current_task.take() {
-            // Save current stack pointer
-            prev_task.stack_ptr = current_stack_ptr;
+    if let Some(mut sched) = SCHEDULER.try_lock()
+        && let Some(mut prev_task) = sched.current_task.take()
+    {
+        // Save current stack pointer
+        prev_task.stack_ptr = current_stack_ptr;
 
-            // If the task is running, put it back in the queue as ready.
-            // If it was blocked or zombie, we don't put it back in the ready queue.
-            let was_running = prev_task.state == super::TaskState::Running;
-            let is_zombie = prev_task.state == super::TaskState::Zombie;
+        // If the task is running, put it back in the queue as ready.
+        // If it was blocked or zombie, we don't put it back in the ready queue.
+        let was_running = prev_task.state == super::TaskState::Running;
+        let is_zombie = prev_task.state == super::TaskState::Zombie;
 
-            if let Some(mut next_task) = sched.tasks.pop_front() {
-                // There is a next task to switch to.
-                if was_running {
-                    prev_task.state = super::TaskState::Ready;
-                    sched.tasks.push_back(prev_task);
-                }
-
-                // Prepare hardware for the next task
-                next_task.switch_to();
-                next_task.state = super::TaskState::Running;
-                let next_ptr = next_task.stack_ptr;
-                sched.current_task = Some(next_task);
-                sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
-
-                return next_ptr;
-            } else {
-                // No other tasks - check if we should halt
-                if is_zombie {
-                    // Last task exited - halt the system
-                    crate::serial::println!("[scheduler] All tasks exited. Halting system.");
-                    loop {
-                        x86_64::instructions::hlt();
-                    }
-                }
-                // No tasks to run, return to current context
-                sched.current_task = Some(prev_task);
-                sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
+        if let Some(mut next_task) = sched.tasks.pop_front() {
+            // There is a next task to switch to.
+            if was_running {
+                prev_task.state = super::TaskState::Ready;
+                sched.tasks.push_back(prev_task);
             }
+
+            // Prepare hardware for the next task
+            next_task.switch_to();
+            next_task.state = super::TaskState::Running;
+            let next_ptr = next_task.stack_ptr;
+            sched.current_task = Some(next_task);
+            sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
+
+            return next_ptr;
+        } else {
+            // No other tasks - check if we should halt
+            if is_zombie {
+                // Last task exited - halt the system
+                crate::serial::println!("[scheduler] All tasks exited. Halting system.");
+                loop {
+                    x86_64::instructions::hlt();
+                }
+            }
+            // No tasks to run, return to current context
+            sched.current_task = Some(prev_task);
+            sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
         }
     }
     current_stack_ptr

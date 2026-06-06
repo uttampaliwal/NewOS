@@ -1,12 +1,11 @@
-use crate::elf;
+use crate::drivers::gpu;
+use crate::fs::ext4::Ext4Backend;
+use crate::fs::tmpfs::TmpfsBackend;
+use crate::fs::vfs::{FsBackend, MountFlags};
 use crate::memory::vma::{VmaFlags, VmaProt};
 use crate::vfs::VFS;
-use crate::fs::tmpfs::TmpfsBackend;
-use crate::fs::ext4::Ext4Backend;
-use crate::fs::vfs::{FsBackend, MountFlags};
-use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
-use crate::drivers::gpu;
 use alloc::sync::Arc;
+use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
 use x86_64::VirtAddr;
 
 #[derive(Debug)]
@@ -404,11 +403,9 @@ pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::Syscall
     // To get a mapper, we need to get the current kernel page table
     let (kernel_pml4_frame, _) = x86_64::registers::control::Cr3::read();
     let mut mapper = unsafe {
-        let pml4_ptr = (phys_mem_offset + kernel_pml4_frame.start_address().as_u64()).as_mut_ptr::<x86_64::structures::paging::PageTable>();
-        x86_64::structures::paging::OffsetPageTable::new(
-            &mut *pml4_ptr,
-            phys_mem_offset,
-        )
+        let pml4_ptr = (phys_mem_offset + kernel_pml4_frame.start_address().as_u64())
+            .as_mut_ptr::<x86_64::structures::paging::PageTable>();
+        x86_64::structures::paging::OffsetPageTable::new(&mut *pml4_ptr, phys_mem_offset)
     };
 
     // Lock frame allocator again
@@ -477,14 +474,22 @@ fn handle_mmap(args: SyscallArgs) -> SyscallResult {
 
     let prot = VmaProt::from_bits_truncate(prot_bits);
     if crate::memory::demand::check_wx(prot) {
-        crate::serial::println!("[mmap] W^X violation: rejecting MAP_ANONYMOUS with PROT_WRITE|PROT_EXEC");
+        crate::serial::println!(
+            "[mmap] W^X violation: rejecting MAP_ANONYMOUS with PROT_WRITE|PROT_EXEC"
+        );
         return SyscallResult::Error(13);
     }
 
     let mut flags = VmaFlags::empty();
-    if flags_bits & 1 != 0 { flags |= VmaFlags::MAP_PRIVATE; }
-    if flags_bits & 2 != 0 { flags |= VmaFlags::MAP_SHARED; }
-    if flags_bits & 4 != 0 { flags |= VmaFlags::MAP_FIXED; }
+    if flags_bits & 1 != 0 {
+        flags |= VmaFlags::MAP_PRIVATE;
+    }
+    if flags_bits & 2 != 0 {
+        flags |= VmaFlags::MAP_SHARED;
+    }
+    if flags_bits & 4 != 0 {
+        flags |= VmaFlags::MAP_FIXED;
+    }
 
     let is_anon = flags_bits & 8 != 0;
     if !is_anon {
@@ -529,13 +534,13 @@ fn handle_munmap(args: SyscallArgs) -> SyscallResult {
 
 /// Filesystem type constants for the `mount` syscall (arg2).
 const FSTYPE_TMPFS: u64 = 0;
-const FSTYPE_EXT2:  u64 = 1;
-const FSTYPE_EXT4:  u64 = 2;
+const FSTYPE_EXT2: u64 = 1;
+const FSTYPE_EXT4: u64 = 2;
 
 fn handle_mount(args: SyscallArgs) -> SyscallResult {
     let path_ptr = args.arg0 as *const u8;
     let path_len = args.arg1 as usize;
-    let fs_type  = args.arg2;
+    let fs_type = args.arg2;
     // arg3: flags (reserved / future use — ignored for now)
 
     if path_ptr.is_null() || path_len == 0 {
@@ -550,8 +555,8 @@ fn handle_mount(args: SyscallArgs) -> SyscallResult {
 
     let backend: Arc<dyn FsBackend> = match fs_type {
         FSTYPE_TMPFS => Arc::new(TmpfsBackend::new()),
-        FSTYPE_EXT4  => Arc::new(Ext4Backend::new()),
-        FSTYPE_EXT2  => {
+        FSTYPE_EXT4 => Arc::new(Ext4Backend::new()),
+        FSTYPE_EXT2 => {
             // ext2 requires a device id; we default to device 0 here.
             // A more complete ABI would pass the device id in arg3.
             let backend = crate::fs::ext2::Ext2Backend::new(0);
@@ -588,7 +593,7 @@ fn handle_umount(args: SyscallArgs) -> SyscallResult {
     match vfs.umount(mount_point) {
         Ok(()) => SyscallResult::Success(0),
         Err(crate::fs::vfs::FsError::BusyMounted) => SyscallResult::Error(16), // EBUSY
-        Err(crate::fs::vfs::FsError::NotFound)    => SyscallResult::Error(2),  // ENOENT
+        Err(crate::fs::vfs::FsError::NotFound) => SyscallResult::Error(2),     // ENOENT
         Err(e) => {
             crate::serial::println!("[umount] failed at '{}': {:?}", mount_point, e);
             SyscallResult::Error(1)

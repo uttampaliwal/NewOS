@@ -237,14 +237,20 @@ lazy_static! {
         // Use our custom assembly entry point for the timer
         unsafe {
             let entry_ptr = timer_interrupt_entry as *const ();
-            idt[InterruptIndex::Timer.as_u8()].set_handler_fn(core::mem::transmute(entry_ptr));
+            idt[InterruptIndex::Timer.as_u8()].set_handler_fn(core::mem::transmute::<
+                *const (),
+                extern "x86-interrupt" fn(InterruptStackFrame),
+            >(entry_ptr));
 
             let yield_entry_ptr = yield_interrupt_entry as *const ();
-            idt[YIELD_INTERRUPT_VECTOR as u8].set_handler_fn(core::mem::transmute(yield_entry_ptr));
+            idt[YIELD_INTERRUPT_VECTOR].set_handler_fn(core::mem::transmute::<
+                *const (),
+                extern "x86-interrupt" fn(InterruptStackFrame),
+            >(yield_entry_ptr));
         }
 
-        idt[KEYBOARD_INTERRUPT_VECTOR as u8].set_handler_fn(keyboard_interrupt_handler);
-        idt[SCI_INTERRUPT_VECTOR as u8].set_handler_fn(sci_interrupt_handler);
+        idt[KEYBOARD_INTERRUPT_VECTOR].set_handler_fn(keyboard_interrupt_handler);
+        idt[SCI_INTERRUPT_VECTOR].set_handler_fn(sci_interrupt_handler);
         for vector in ACPI_PCI_VECTOR_BASE..ACPI_PCI_VECTOR_BASE + ACPI_PCI_VECTOR_COUNT {
             idt[vector].set_handler_fn(generic_external_interrupt_handler);
         }
@@ -262,15 +268,15 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     let mut port = Port::new(0x60);
 
     let scancode: u8 = unsafe { port.read() };
-    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
-        if let Some(key) = keyboard.process_keyevent(key_event) {
-            match key {
-                DecodedKey::Unicode(character) => {
-                    crate::tty::TTY.lock().handle_input(character);
-                    crate::input::add_char(character); // Keep for compatibility for now
-                }
-                DecodedKey::RawKey(_) => {}
+    if let Ok(Some(key_event)) = keyboard.add_byte(scancode)
+        && let Some(key) = keyboard.process_keyevent(key_event)
+    {
+        match key {
+            DecodedKey::Unicode(character) => {
+                crate::tty::TTY.lock().handle_input(character);
+                crate::input::add_char(character); // Keep for compatibility for now
             }
+            DecodedKey::RawKey(_) => {}
         }
     }
 
