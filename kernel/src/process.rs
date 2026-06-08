@@ -5,12 +5,14 @@ use crate::memory::vma::{Vma, VmaBacking, VmaError, VmaFlags, VmaProt, VmaSet};
 use crate::memory::wx;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
-    Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB,
+    Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB, Translate,
 };
+extern crate alloc;
+use alloc::vec;
+use alloc::vec::Vec;
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use spin::Mutex;
 
 // ---------------------------------------------------------------------------
@@ -257,9 +259,13 @@ impl Process {
         physical_memory_offset: VirtAddr,
     ) -> Result<Self, elf::ParseError> {
         let header = elf::parse_header(elf_data)?;
+        crate::serial::println!("[STG: PROC_NEW_HEADER]");
         let aslr_base = aslr::randomise_load_base(&header);
+        let virtual_base = compute_load_base(elf_data, &header)?;
+        crate::serial::println!("[STG: PROC_NEW_BASE]");
 
         let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
+        crate::serial::println!("[STG: PROC_NEW_PML4]");
         let stack_size: u64 = 4096 * 8;
         let stack_base = aslr::randomise_stack_base();
         let stack_start = stack_base;
@@ -298,11 +304,13 @@ impl Process {
                 frame_allocator,
                 physical_memory_offset,
             );
+            crate::serial::println!("[STG: PROC_NEW_STACK]");
 
             // Map ELF Segments
             let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
                 .as_mut_ptr::<PageTable>();
             let process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+            crate::serial::println!("[STG: PROC_NEW_MAPPER]");
 
             // Track executable segments for post-load write revocation
             let mut exec_segments: Vec<(VirtAddr, u64)> = Vec::new();
@@ -372,9 +380,20 @@ impl Process {
                     }
                 }
             }
+            crate::serial::println!("[STG: PROC_NEW_SEGMENTS]");
 
             // Finalise executable segments: strip WRITABLE and clear NO_EXECUTE
             // so they become R-X before the entry point runs (req 14.4).
+            crate::serial::println!("[STG: PROC_NEW_RELOCATE]");
+            apply_relative_relocations(
+                elf_data,
+                &header,
+                aslr_base,
+                virtual_base,
+                &process_mapper,
+                physical_memory_offset,
+            )?;
+            crate::serial::println!("[STG: PROC_NEW_RELOCATED]");
             for (seg_start, seg_size) in &exec_segments {
                 wx::clear_write_and_allow_exec(
                     pml4_frame,
@@ -384,34 +403,45 @@ impl Process {
                 );
             }
         }
+        crate::serial::println!("[STG: PROC_NEW_DONE]");
         Ok(process)
     }
 
     pub fn exec_from_elf(
         &self,
         elf_data: &[u8],
-        frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+        argv: &[&[u8]],
+        envp: &[&[u8]],
+        frame_allocator: &mut crate::memory::FrameAllocator<'_>,
         physical_memory_offset: VirtAddr,
     ) -> Result<(), elf::ParseError> {
         let header = elf::parse_header(elf_data)?;
         let aslr_base = aslr::randomise_load_base(&header);
-
-        // Close fds marked with O_CLOEXEC
-        {
-            let mut vfs = crate::vfs::VFS.lock();
-            let fd_table = &self.inner.lock().fd_table;
-            for (i, fd_opt) in fd_table.iter().enumerate() {
-                if let Some(fd) = fd_opt
-                    && fd.flags.is_cloexec()
-                {
-                    vfs.close(i);
-                }
-            }
-        }
+        let virtual_base = compute_load_base(elf_data, &header)?;
+        let (old_pml4_frame, current_ppid, retained_fd_table, cloexec_fds) = {
+            let inner = self.inner.lock();
+            let cloexec_fds = inner
+                .fd_table
+                .iter()
+                .enumerate()
+                .filter_map(|(index, fd_opt)| {
+                    fd_opt
+                        .as_ref()
+                        .filter(|fd| fd.flags.is_cloexec())
+                        .map(|_| index)
+                })
+                .collect::<Vec<_>>();
+            let retained_fd_table = core::array::from_fn(|index| {
+                inner.fd_table[index]
+                    .clone()
+                    .filter(|fd| !fd.flags.is_cloexec())
+            });
+            (inner.pml4_frame, inner.ppid, retained_fd_table, cloexec_fds)
+        };
 
         // Create new PML4 for the exec'd process
         let new_pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
-        let stack_size: u64 = 4096 * 8;
+        let stack_size: u64 = 4096 * 16; // Larger stack for argv/envp
         let stack_base = aslr::randomise_stack_base();
         let stack_start = stack_base;
         let stack_top = stack_start + stack_size;
@@ -424,7 +454,7 @@ impl Process {
         let temp_process = Self {
             inner: Arc::new(Mutex::new(ProcessControlBlock {
                 id: self.id(), // Keep the same PID!
-                ppid: self.inner.lock().ppid,
+                ppid: current_ppid,
                 state: ProcessState::Ready,
                 pml4_frame: new_pml4_frame,
                 entry_point,
@@ -433,11 +463,7 @@ impl Process {
                 vma_set: VmaSet::new(),
                 mmap_next_addr: mmap_base,
                 aslr_base,
-                fd_table: core::array::from_fn(|i| {
-                    self.inner.lock().fd_table[i]
-                        .clone()
-                        .filter(|fd| !fd.flags.is_cloexec())
-                }),
+                fd_table: retained_fd_table.clone(),
                 signal_mask: SignalSet::empty(), // Reset signals on exec
                 signal_handlers: [SignalAction::Default; 64],
                 pending_signals: SignalSet::empty(),
@@ -524,7 +550,83 @@ impl Process {
                 }
             }
 
+            // Now set up argv and envp on the user stack!
+            // Stack layout (top to bottom, grows down):
+            // - envp strings (null-terminated)
+            // - argv strings (null-terminated)
+            // - padding to align to 16 bytes
+            // - envp array (null-terminated)
+            // - argv array (null-terminated)
+            // - argc (on stack for _start)
+            // - padding to 16 bytes for sysv64 ABI
+
+            let mut stack_ptr = stack_top.as_u64();
+
+            // Step 1: Write all string data to the stack first
+            let mut string_addrs: Vec<Vec<VirtAddr>> = vec![Vec::new(), Vec::new()]; // 0: argv, 1: envp
+            for (idx, list) in [argv, envp].iter().enumerate() {
+                for s in list.iter() {
+                    stack_ptr -= (s.len() + 1) as u64; // +1 for null terminator
+                    let dest_virt = VirtAddr::new_truncate(stack_ptr);
+                    string_addrs[idx].push(dest_virt);
+                    let dest_phys = temp_mapper.translate_addr(dest_virt).unwrap();
+                    let dest_ptr = (physical_memory_offset + dest_phys.as_u64()).as_mut_ptr::<u8>();
+                    core::ptr::copy_nonoverlapping(s.as_ptr(), dest_ptr, s.len());
+                    core::ptr::write(dest_ptr.add(s.len()), 0);
+                }
+            }
+
+            // Step 2: Align stack to 16 bytes before writing arrays
+            if !stack_ptr.is_multiple_of(16) {
+                stack_ptr -= stack_ptr % 16;
+            }
+
+            // Step 3: Write envp array (null-terminated)
+            stack_ptr -= (envp.len() + 1) as u64 * 8;
+            let envp_array_virt = VirtAddr::new_truncate(stack_ptr);
+            let envp_array_phys = temp_mapper.translate_addr(envp_array_virt).unwrap();
+            let envp_array_ptr =
+                (physical_memory_offset + envp_array_phys.as_u64()).as_mut_ptr::<u64>();
+            for (i, addr) in string_addrs[1].iter().enumerate() {
+                core::ptr::write(envp_array_ptr.add(i), addr.as_u64());
+            }
+            core::ptr::write(envp_array_ptr.add(envp.len()), 0);
+
+            // Step 4: Write argv array (null-terminated)
+            stack_ptr -= (argv.len() + 1) as u64 * 8;
+            let argv_array_virt = VirtAddr::new_truncate(stack_ptr);
+            let argv_array_phys = temp_mapper.translate_addr(argv_array_virt).unwrap();
+            let argv_array_ptr =
+                (physical_memory_offset + argv_array_phys.as_u64()).as_mut_ptr::<u64>();
+            for (i, addr) in string_addrs[0].iter().enumerate() {
+                core::ptr::write(argv_array_ptr.add(i), addr.as_u64());
+            }
+            core::ptr::write(argv_array_ptr.add(argv.len()), 0);
+
+            // Step 5: Write argc
+            stack_ptr -= 8;
+            let argc_virt = VirtAddr::new_truncate(stack_ptr);
+            let argc_phys = temp_mapper.translate_addr(argc_virt).unwrap();
+            let argc_ptr = (physical_memory_offset + argc_phys.as_u64()).as_mut_ptr::<u64>();
+            core::ptr::write(argc_ptr, argv.len() as u64);
+
+            // Step 6: Align stack to 16 bytes for sysv64 ABI (_start expects RSP to be 16-byte aligned)
+            if !stack_ptr.is_multiple_of(16) {
+                stack_ptr -= 8;
+            }
+
+            // Update stack_top in process
+            temp_process.inner.lock().stack_top = VirtAddr::new_truncate(stack_ptr);
+
             // Finalise executable segments: strip WRITABLE and clear NO_EXECUTE
+            apply_relative_relocations(
+                elf_data,
+                &header,
+                aslr_base,
+                virtual_base,
+                &temp_mapper,
+                physical_memory_offset,
+            )?;
             for (seg_start, seg_size) in &exec_segments {
                 wx::clear_write_and_allow_exec(
                     new_pml4_frame,
@@ -535,19 +637,31 @@ impl Process {
             }
         }
 
-        // Okay now, swap all the stuff into the current Process's inner!
-        let temp_inner = temp_process.inner.lock();
-        let mut current_inner = self.inner.lock();
-        current_inner.pml4_frame = new_pml4_frame;
-        current_inner.entry_point = entry_point;
-        current_inner.stack_top = stack_top;
-        current_inner.vma_set = VmaSet::new();
-        current_inner.mmap_next_addr = mmap_base;
-        current_inner.aslr_base = aslr_base;
-        current_inner.fd_table = temp_inner.fd_table.clone();
-        current_inner.signal_mask = SignalSet::empty();
-        current_inner.signal_handlers = [SignalAction::Default; 64];
-        current_inner.pending_signals = SignalSet::empty();
+        let temp_stack_top = temp_process.inner.lock().stack_top;
+
+        {
+            let mut vfs = crate::vfs::VFS.lock();
+            for fd_idx in cloexec_fds {
+                vfs.close(fd_idx);
+            }
+        }
+
+        {
+            let mut current_inner = self.inner.lock();
+            current_inner.pml4_frame = new_pml4_frame;
+            current_inner.entry_point = entry_point;
+            current_inner.stack_top = temp_stack_top;
+            current_inner.vma_set = VmaSet::new();
+            current_inner.mmap_next_addr = mmap_base;
+            current_inner.aslr_base = aslr_base;
+            current_inner.fd_table = retained_fd_table;
+            current_inner.signal_mask = SignalSet::empty();
+            current_inner.signal_handlers = [SignalAction::Default; 64];
+            current_inner.pending_signals = SignalSet::empty();
+            current_inner.state = ProcessState::Running;
+        }
+
+        paging::destroy_user_mappings(old_pml4_frame, frame_allocator, physical_memory_offset);
 
         Ok(())
     }
@@ -679,4 +793,134 @@ impl Process {
             }
         }
     }
+}
+
+fn compute_load_base(elf_data: &[u8], header: &elf::ElfHeader) -> Result<u64, elf::ParseError> {
+    if header.elf_type != elf::ELF_TYPE_DYN {
+        return Ok(0);
+    }
+
+    let mut load_base = u64::MAX;
+    for i in 0..header.program_header_count {
+        if let Some(ph) = elf::parse_program_header(elf_data, *header, i)? {
+            load_base = load_base.min(ph.virtual_address);
+        }
+    }
+
+    if load_base == u64::MAX {
+        return Err(elf::ParseError::ProgramHeaderOutOfBounds);
+    }
+
+    Ok(load_base)
+}
+
+fn apply_relative_relocations<M>(
+    elf_data: &[u8],
+    header: &elf::ElfHeader,
+    aslr_base: VirtAddr,
+    virtual_base: u64,
+    mapper: &M,
+    physical_memory_offset: VirtAddr,
+) -> Result<(), elf::ParseError>
+where
+    M: x86_64::structures::paging::Translate,
+{
+    const SECTION_TYPE_RELA: u32 = 4;
+    const R_X86_64_RELATIVE: u32 = 8;
+
+    if header.elf_type != elf::ELF_TYPE_DYN || virtual_base == 0 {
+        return Ok(());
+    }
+
+    if elf_data.len() < 64 {
+        return Err(elf::ParseError::FileTooSmall);
+    }
+
+    let section_header_offset = u64::from_le_bytes(elf_data[40..48].try_into().unwrap()) as usize;
+    let section_header_entry_size =
+        u16::from_le_bytes(elf_data[58..60].try_into().unwrap()) as usize;
+    let section_header_count = u16::from_le_bytes(elf_data[60..62].try_into().unwrap()) as usize;
+
+    if section_header_offset == 0 || section_header_entry_size < 64 || section_header_count == 0 {
+        return Ok(());
+    }
+
+    let load_delta = aslr_base.as_u64().wrapping_sub(virtual_base);
+
+    for index in 0..section_header_count {
+        let start = section_header_offset
+            .checked_add(
+                index
+                    .checked_mul(section_header_entry_size)
+                    .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?,
+            )
+            .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+        let end = start
+            .checked_add(section_header_entry_size)
+            .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+        if end > elf_data.len() {
+            return Err(elf::ParseError::ProgramHeaderOutOfBounds);
+        }
+
+        let section = &elf_data[start..end];
+        let section_type = u32::from_le_bytes(section[4..8].try_into().unwrap());
+        if section_type != SECTION_TYPE_RELA {
+            continue;
+        }
+
+        let section_offset = u64::from_le_bytes(section[24..32].try_into().unwrap()) as usize;
+        let section_size = u64::from_le_bytes(section[32..40].try_into().unwrap()) as usize;
+        let section_entry_size = u64::from_le_bytes(section[56..64].try_into().unwrap()) as usize;
+        if section_entry_size < 24 {
+            continue;
+        }
+
+        let entry_count = section_size / section_entry_size;
+        for entry_index in 0..entry_count {
+            let entry_start = section_offset
+                .checked_add(
+                    entry_index
+                        .checked_mul(section_entry_size)
+                        .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?,
+                )
+                .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+            let entry_end = entry_start
+                .checked_add(24)
+                .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+            if entry_end > elf_data.len() {
+                return Err(elf::ParseError::ProgramHeaderOutOfBounds);
+            }
+
+            let r_offset =
+                u64::from_le_bytes(elf_data[entry_start..entry_start + 8].try_into().unwrap());
+            let r_info = u64::from_le_bytes(
+                elf_data[entry_start + 8..entry_start + 16]
+                    .try_into()
+                    .unwrap(),
+            );
+            let r_addend = u64::from_le_bytes(
+                elf_data[entry_start + 16..entry_start + 24]
+                    .try_into()
+                    .unwrap(),
+            );
+            let r_type = (r_info & 0xffff_ffff) as u32;
+
+            if r_type != R_X86_64_RELATIVE || r_offset < virtual_base {
+                continue;
+            }
+
+            let target_virtual = VirtAddr::new(aslr_base.as_u64() + (r_offset - virtual_base));
+            let target_physical = mapper
+                .translate_addr(target_virtual)
+                .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+            let target_ptr =
+                (physical_memory_offset + target_physical.as_u64()).as_mut_ptr::<u64>();
+
+            unsafe {
+                core::ptr::write_volatile(target_ptr, r_addend.wrapping_add(load_delta));
+            }
+        }
+    }
+
+    Ok(())
 }

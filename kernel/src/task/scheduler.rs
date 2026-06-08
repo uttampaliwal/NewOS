@@ -200,3 +200,13 @@ pub fn get_current_process() -> Option<Process> {
     let sched = SCHEDULER.lock();
     sched.current_task.as_ref().map(|task| task.process.clone())
 }
+
+pub fn with_current_task_mut<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&mut Task) -> R,
+{
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut sched = SCHEDULER.lock();
+        sched.current_task.as_mut().map(f)
+    })
+}

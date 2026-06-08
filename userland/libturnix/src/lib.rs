@@ -58,11 +58,13 @@ pub fn stat(path: &str) -> Option<Stat> {
     if (res as i64) < 0 { None } else { Some(st) }
 }
 
-pub fn exec(elf_data: &[u8]) -> ! {
-    syscall2(
+pub fn exec(path: &str, argv: *const *const u8, envp: *const *const u8) -> ! {
+    syscall4(
         Syscall::Exec as u64,
-        elf_data.as_ptr() as u64,
-        elf_data.len() as u64,
+        path.as_ptr() as u64,
+        path.len() as u64,
+        argv as u64,
+        envp as u64,
     );
     loop {
         core::hint::spin_loop();
@@ -183,6 +185,24 @@ fn syscall3(num: u64, arg0: u64, arg1: u64, arg2: u64) -> u64 {
             in("rdi") arg0,
             in("rsi") arg1,
             in("rdx") arg2,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") res,
+        );
+    }
+    res
+}
+
+fn syscall4(num: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64) -> u64 {
+    let res: u64;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("rax") num,
+            in("rdi") arg0,
+            in("rsi") arg1,
+            in("rdx") arg2,
+            in("r10") arg3,
             out("rcx") _,
             out("r11") _,
             lateout("rax") res,

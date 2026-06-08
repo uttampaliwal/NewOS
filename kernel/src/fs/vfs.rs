@@ -900,8 +900,14 @@ impl Vfs {
             }
         }
 
+        let use_legacy_entry = {
+            let fd = self.open_files.get(&fd_idx)?;
+            self.entries.iter().any(|entry| entry.name == fd.name)
+                && fd.backend.stat(fd.inode).is_err()
+        };
+
         // Try via backend if we have a real mount.
-        if let Some(n) = self.read_fd(fd_idx, buf) {
+        if !use_legacy_entry && let Some(n) = self.read_fd(fd_idx, buf) {
             return Some(n);
         }
 
@@ -943,8 +949,14 @@ impl Vfs {
             }
         }
 
+        let use_legacy_entry = {
+            let fd = self.open_files.get(&fd_idx)?;
+            self.entries.iter().any(|entry| entry.name == fd.name)
+                && fd.backend.stat(fd.inode).is_err()
+        };
+
         // Try via backend.
-        if let Some(n) = self.write_fd(fd_idx, buf) {
+        if !use_legacy_entry && let Some(n) = self.write_fd(fd_idx, buf) {
             return Some(n);
         }
 
@@ -1206,6 +1218,7 @@ fn split_parent_name(rel: &str) -> (&str, &str) {
 mod tests {
     use super::*;
     use alloc::string::ToString;
+    use alloc::vec;
 
     // -----------------------------------------------------------------------
     // Minimal in-memory backend for tests
@@ -1557,6 +1570,22 @@ mod tests {
         assert_eq!(n, 11);
         assert_eq!(&buf, b"hello world");
         vfs.close_fd(fd);
+    }
+
+    #[test]
+    fn legacy_flat_entry_read_uses_ramdisk_data() {
+        let mut vfs = Vfs::new();
+        vfs.entries.push(LegacyEntry {
+            name: String::from("init"),
+            file_type: FileType::Regular,
+            data: Some(vec![0x7F, b'E', b'L', b'F', 0x02, 0x01]),
+        });
+
+        let fd = vfs.open("init").expect("legacy open");
+        let mut buf = [0u8; 4];
+        let n = vfs.read(fd, &mut buf).expect("legacy read");
+        assert_eq!(n, 4);
+        assert_eq!(&buf, b"\x7FELF");
     }
 
     #[test]

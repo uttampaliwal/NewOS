@@ -269,6 +269,8 @@ fn handle_stat(args: SyscallArgs) -> SyscallResult {
 fn handle_exec(args: SyscallArgs) -> SyscallResult {
     let path_ptr = args.arg0 as *const u8;
     let path_len = args.arg1 as usize;
+    let argv_ptr = args.arg2 as *const *const u8;
+    let envp_ptr = args.arg3 as *const *const u8;
 
     // Validate path pointer and len
     if path_ptr.is_null() || path_len == 0 || path_len > 4096 {
@@ -281,6 +283,55 @@ fn handle_exec(args: SyscallArgs) -> SyscallResult {
         Ok(p) => p,
         Err(_) => return SyscallResult::Error(2), // Invalid UTF-8
     };
+
+    // Collect argv strings
+    let mut argv = alloc::vec![];
+    if !argv_ptr.is_null() {
+        let mut i = 0;
+        loop {
+            let str_ptr = unsafe { *argv_ptr.add(i) };
+            if str_ptr.is_null() {
+                break;
+            }
+            // Get string length (find null terminator)
+            let mut len = 0;
+            while unsafe { *str_ptr.add(len) } != 0 {
+                len += 1;
+                if len > 4096 {
+                    return SyscallResult::Error(2);
+                }
+            }
+            let str_slice = unsafe { core::slice::from_raw_parts(str_ptr, len) };
+            argv.push(str_slice);
+            i += 1;
+        }
+    } else {
+        // Default argv: [program name]
+        argv.push(path_slice);
+    }
+
+    // Collect envp strings
+    let mut envp = alloc::vec![];
+    if !envp_ptr.is_null() {
+        let mut i = 0;
+        loop {
+            let str_ptr = unsafe { *envp_ptr.add(i) };
+            if str_ptr.is_null() {
+                break;
+            }
+            // Get string length (find null terminator)
+            let mut len = 0;
+            while unsafe { *str_ptr.add(len) } != 0 {
+                len += 1;
+                if len > 4096 {
+                    return SyscallResult::Error(2);
+                }
+            }
+            let str_slice = unsafe { core::slice::from_raw_parts(str_ptr, len) };
+            envp.push(str_slice);
+            i += 1;
+        }
+    }
 
     // Get current process
     let current_process = match crate::task::scheduler::get_current_process() {
@@ -331,7 +382,13 @@ fn handle_exec(args: SyscallArgs) -> SyscallResult {
     let phys_mem_offset = crate::boot::get_phys_mem_offset();
 
     // Perform exec on the current process
-    match current_process.exec_from_elf(&elf_data[..read_len], frame_allocator, phys_mem_offset) {
+    match current_process.exec_from_elf(
+        &elf_data[..read_len],
+        &argv,
+        &envp,
+        frame_allocator,
+        phys_mem_offset,
+    ) {
         Ok(_) => (),
         Err(_) => return SyscallResult::Error(8),
     };
@@ -339,42 +396,11 @@ fn handle_exec(args: SyscallArgs) -> SyscallResult {
     // Drop frame allocator guard to unlock it
     drop(frame_allocator_guard);
 
-    // Now, we need to create a new exec task and replace the current task in the scheduler!
-    // Get the current task ID first
-    let current_task_id = match crate::task::scheduler::get_current_task_id() {
-        Some(tid) => tid,
-        None => return SyscallResult::Error(9),
-    };
+    if crate::task::scheduler::with_current_task_mut(|task| task.switch_to()).is_none() {
+        return SyscallResult::Error(9);
+    }
 
-    // Now create a new mapper using current Cr3 (kernel page table)
-    let (kernel_pml4_frame, _) = x86_64::registers::control::Cr3::read();
-    let mut mapper = unsafe {
-        let pml4_ptr = (phys_mem_offset + kernel_pml4_frame.start_address().as_u64())
-            .as_mut_ptr::<x86_64::structures::paging::PageTable>();
-        x86_64::structures::paging::OffsetPageTable::new(&mut *pml4_ptr, phys_mem_offset)
-    };
-
-    // Lock frame allocator again to create the new exec task
-    let mut frame_allocator_guard2 = crate::boot::get_frame_allocator().lock();
-    let frame_allocator2 = frame_allocator_guard2.as_mut().unwrap();
-
-    // Create new exec task
-    let new_task = crate::task::Task::new_exec_user(
-        current_process.clone(),
-        &mut mapper,
-        frame_allocator2,
-        phys_mem_offset,
-    );
-
-    // Add new task to scheduler, and remove the old current task
-    crate::task::scheduler::add_task(new_task);
-    crate::task::scheduler::remove_task(current_task_id);
-
-    // Yield to the scheduler, which should pick up the new task
-    crate::task::scheduler::yield_task();
-
-    // This line should never be reached
-    SyscallResult::Error(10)
+    SyscallResult::Success(0)
 }
 
 pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::SyscallFrame) -> u64 {

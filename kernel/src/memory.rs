@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use turnix_abi::boot::{BootInfo, BootMemoryDescriptor, MEMORY_TYPE_CONVENTIONAL};
 use x86_64::PhysAddr;
 use x86_64::structures::paging::{
@@ -27,6 +28,7 @@ pub struct PhysFrame {
 pub struct FrameAllocator<'a> {
     boot_info: &'a BootInfo,
     next_address: u64,
+    free_list: Vec<u64>,
 }
 
 unsafe impl Sync for FrameAllocator<'static> {}
@@ -37,10 +39,15 @@ impl<'a> FrameAllocator<'a> {
         Self {
             boot_info,
             next_address: LOW_MEMORY_CUTOFF,
+            free_list: Vec::new(),
         }
     }
 
     pub fn allocate_physical_frame(&mut self) -> Option<PhysFrame> {
+        if let Some(start_address) = self.free_list.pop() {
+            return Some(PhysFrame { start_address });
+        }
+
         use turnix_abi::boot::{MEMORY_TYPE_BOOT_SERVICES_CODE, MEMORY_TYPE_BOOT_SERVICES_DATA};
 
         for descriptor in self.boot_info.memory_map.iter() {
@@ -94,6 +101,10 @@ impl<'a> FrameAllocator<'a> {
         }
 
         None
+    }
+
+    pub fn deallocate_physical_frame(&mut self, frame: PhysFrame) {
+        self.free_list.push(frame.start_address);
     }
 }
 

@@ -134,11 +134,44 @@ pub extern "C" fn syscall_dispatch(frame: &mut SyscallFrame) -> u64 {
         }
 
         let result = crate::syscall::handler::handle_syscall(syscall, args);
-        match result {
-            crate::syscall::handler::SyscallResult::Success(val) => val,
-            crate::syscall::handler::SyscallResult::Error(err) => err as u64,
-        }
+        encode_syscall_result(result)
     } else {
         0xFFFFFFFFFFFFFFFFu64
+    }
+}
+
+fn encode_syscall_result(result: crate::syscall::handler::SyscallResult) -> u64 {
+    match result {
+        crate::syscall::handler::SyscallResult::Success(val) => val,
+        crate::syscall::handler::SyscallResult::Error(err) => {
+            if err < 0 {
+                err as u64
+            } else {
+                (-err) as u64
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_syscall_result;
+
+    #[test]
+    fn positive_errno_becomes_negative_return() {
+        let encoded = encode_syscall_result(crate::syscall::handler::SyscallResult::Error(2));
+        assert_eq!(encoded as i64, -2);
+    }
+
+    #[test]
+    fn negative_errno_is_preserved() {
+        let encoded = encode_syscall_result(crate::syscall::handler::SyscallResult::Error(-1));
+        assert_eq!(encoded as i64, -1);
+    }
+
+    #[test]
+    fn success_is_unchanged() {
+        let encoded = encode_syscall_result(crate::syscall::handler::SyscallResult::Success(42));
+        assert_eq!(encoded, 42);
     }
 }

@@ -178,6 +178,90 @@ pub fn clone_user_mappings_cow(
         }
     }
 }
+
+/// Destroy a user address space by recursively freeing user mappings and the
+/// page-table frames that back them.
+pub fn destroy_user_mappings(
+    pml4_frame: PhysFrame<Size4KiB>,
+    frame_allocator: &mut crate::memory::FrameAllocator<'_>,
+    physical_memory_offset: VirtAddr,
+) {
+    let pml4_ptr =
+        (physical_memory_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+
+    unsafe {
+        let pml4 = &mut *pml4_ptr;
+        for index in 0..256 {
+            if !pml4[index].is_unused() {
+                destroy_table_level(&mut pml4[index], 3, frame_allocator, physical_memory_offset);
+            }
+        }
+    }
+
+    frame_allocator.deallocate_physical_frame(crate::memory::PhysFrame {
+        start_address: pml4_frame.start_address().as_u64(),
+    });
+}
+
+fn destroy_table_level(
+    entry: &mut PageTableEntry,
+    level: u8,
+    frame_allocator: &mut crate::memory::FrameAllocator<'_>,
+    physical_memory_offset: VirtAddr,
+) {
+    if entry.is_unused() {
+        return;
+    }
+
+    if level == 0 {
+        if let Ok(frame) = entry.frame() {
+            frame_allocator.deallocate_physical_frame(crate::memory::PhysFrame {
+                start_address: frame.start_address().as_u64(),
+            });
+        }
+        entry.set_unused();
+        return;
+    }
+
+    if entry.flags().contains(PageTableFlags::HUGE_PAGE) {
+        if let Ok(frame) = entry.frame() {
+            frame_allocator.deallocate_physical_frame(crate::memory::PhysFrame {
+                start_address: frame.start_address().as_u64(),
+            });
+        }
+        entry.set_unused();
+        return;
+    }
+
+    let next_frame = match entry.frame() {
+        Ok(frame) => frame,
+        Err(_) => {
+            entry.set_unused();
+            return;
+        }
+    };
+    let next_ptr =
+        (physical_memory_offset + next_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+
+    unsafe {
+        let next_table = &mut *next_ptr;
+        for index in 0..512 {
+            if !next_table[index].is_unused() {
+                destroy_table_level(
+                    &mut next_table[index],
+                    level - 1,
+                    frame_allocator,
+                    physical_memory_offset,
+                );
+            }
+        }
+    }
+
+    frame_allocator.deallocate_physical_frame(crate::memory::PhysFrame {
+        start_address: next_frame.start_address().as_u64(),
+    });
+    entry.set_unused();
+}
 /// Ensure a virtual address range is accessible to user mode (Ring 3).
 /// This sets the USER_ACCESSIBLE bit on all page table levels.
 ///
