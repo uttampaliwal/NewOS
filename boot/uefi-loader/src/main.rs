@@ -134,7 +134,7 @@ fn main() -> Status {
 
     // 4. Get GOP info before exiting boot services
     let gop = boot::get_handle_for_protocol::<uefi::proto::console::gop::GraphicsOutput>()
-        .and_then(|h| boot::open_protocol_exclusive::<uefi::proto::console::gop::GraphicsOutput>(h))
+        .and_then(boot::open_protocol_exclusive::<uefi::proto::console::gop::GraphicsOutput>)
         .expect("GOP should be available");
 
     let mut gop = gop;

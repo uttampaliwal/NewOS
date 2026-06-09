@@ -58,7 +58,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         if violations > 0 {
             let _ = writeln!(
                 writer,
-                "[WARNING] W^X violation: {} kernel pages are both writable and executable",
+                "[WARNING] W^X: {} kernel pages are W+X at boot (expected until NX enforcement is applied)",
                 violations
             );
         } else {
@@ -259,32 +259,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         }
     }
 
-    // 4.2 Mount tmpfs at "/" and ext4 stub at "/mnt"
-    {
-        let tmpfs: Arc<dyn crate::fs::vfs::FsBackend> =
-            Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
-        if let Err(e) =
-            crate::vfs::VFS
-                .lock()
-                .mount("/", tmpfs, crate::fs::vfs::MountFlags::default())
-        {
-            crate::serial::println!("[FS] Failed to mount tmpfs at /: {:?}", e);
-        } else {
-            let _ = writeln!(writer, "[STG: TMPFS_MOUNTED]");
-        }
 
-        let ext4: Arc<dyn crate::fs::vfs::FsBackend> =
-            Arc::new(crate::fs::ext4::Ext4Backend::new());
-        if let Err(e) =
-            crate::vfs::VFS
-                .lock()
-                .mount("/mnt", ext4, crate::fs::vfs::MountFlags::default())
-        {
-            crate::serial::println!("[FS] Failed to mount ext4 at /mnt: {:?}", e);
-        } else {
-            let _ = writeln!(writer, "[STG: EXT4_MOUNTED]");
-        }
-    }
 
     // 4.1 Initialize Text Console with PSF font from VFS
     {
@@ -485,7 +460,7 @@ extern "sysv64" fn idle_task() -> ! {
 
 fn validate_boot_info(boot_info: &BootInfo) -> Result<(), &'static str> {
     crate::serial::println!(
-        "Validating BootInfo: ABI version = {}, expected = 3",
+        "Validating BootInfo: ABI version = {} (supported: 3, 4)",
         boot_info.abi_version
     );
     // Validate BootInfo ABI version

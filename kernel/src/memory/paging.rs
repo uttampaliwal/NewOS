@@ -1,6 +1,30 @@
 use x86_64::VirtAddr;
 use x86_64::registers::control::{Cr0, Cr0Flags, Cr3};
-use x86_64::structures::paging::{OffsetPageTable, PageTable, PageTableFlags, PhysFrame, Size4KiB};
+use x86_64::structures::paging::{
+    FrameAllocator, OffsetPageTable, PageTable, PageTableFlags, PhysFrame, Size4KiB,
+};
+
+/// A frame allocator wrapper that zeroes every allocated frame before returning
+/// it. This is required for page table frames: the x86_64 mapper reads entries
+/// before writing them, so stale data in recycled frames causes spurious faults
+/// (and WHPX VP-exit-4 crashes).
+struct ZeroingFrameAllocator<'a, A: x86_64::structures::paging::FrameAllocator<Size4KiB>> {
+    inner: &'a mut A,
+    physical_memory_offset: VirtAddr,
+}
+
+unsafe impl<'a, A: x86_64::structures::paging::FrameAllocator<Size4KiB>>
+    x86_64::structures::paging::FrameAllocator<Size4KiB> for ZeroingFrameAllocator<'a, A>
+{
+    fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
+        let frame = self.inner.allocate_frame()?;
+        // Zero the frame through the physical-memory window before use.
+        let ptr = (self.physical_memory_offset + frame.start_address().as_u64())
+            .as_mut_ptr::<u8>();
+        unsafe { core::ptr::write_bytes(ptr, 0, 4096) };
+        Some(frame)
+    }
+}
 
 /// Initialize a new OffsetPageTable using the mapping provided by the loader.
 ///
@@ -21,7 +45,12 @@ pub fn create_process_pml4(
     frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
     physical_memory_offset: VirtAddr,
 ) -> PhysFrame<Size4KiB> {
-    let new_frame = frame_allocator
+    // Allocate through the zeroing wrapper so the new frame is clean.
+    let mut zeroing = ZeroingFrameAllocator {
+        inner: frame_allocator,
+        physical_memory_offset,
+    };
+    let new_frame = zeroing
         .allocate_frame()
         .expect("failed to allocate frame for process PML4");
 
@@ -32,9 +61,6 @@ pub fn create_process_pml4(
         (physical_memory_offset + new_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
 
     unsafe {
-        // Initialize new PML4 with zeros
-        core::ptr::write_bytes(new_pml4_ptr, 0, 1);
-
         let kernel_pml4 = &*kernel_pml4_ptr;
         let new_pml4 = &mut *new_pml4_ptr;
 
@@ -61,6 +87,10 @@ pub fn clone_user_mappings(
     let dst_pml4_ptr = (physical_memory_offset + dst_pml4_frame.start_address().as_u64())
         .as_mut_ptr::<PageTable>();
 
+    let mut zeroing = ZeroingFrameAllocator {
+        inner: frame_allocator,
+        physical_memory_offset,
+    };
     unsafe {
         let src_pml4 = &*src_pml4_ptr;
         let dst_pml4 = &mut *dst_pml4_ptr;
@@ -72,7 +102,7 @@ pub fn clone_user_mappings(
                     &src_pml4[i],
                     &mut dst_pml4[i],
                     3, // Start at P4 entry (Level 3 in recursion)
-                    frame_allocator,
+                    &mut zeroing,
                     physical_memory_offset,
                     cow,
                 );
@@ -154,6 +184,10 @@ pub fn clone_user_mappings_cow(
     let dst_pml4_ptr = (physical_memory_offset + dst_pml4_frame.start_address().as_u64())
         .as_mut_ptr::<PageTable>();
 
+    let mut zeroing = ZeroingFrameAllocator {
+        inner: frame_allocator,
+        physical_memory_offset,
+    };
     unsafe {
         let src_pml4 = &*src_pml4_ptr;
         let dst_pml4 = &mut *dst_pml4_ptr;
@@ -165,7 +199,7 @@ pub fn clone_user_mappings_cow(
                     &src_pml4[i],
                     &mut dst_pml4[i],
                     3, // Start at P4 entry (Level 3 in recursion)
-                    frame_allocator,
+                    &mut zeroing,
                     physical_memory_offset,
                     true, // Enable COW
                 );

@@ -734,15 +734,39 @@ impl Process {
                 Page::containing_address(virt_start),
                 Page::containing_address(virt_start + size - 1u64),
             );
+            // Wrap with a zeroing allocator so intermediate page-table frames
+            // (P3/P2/P1) are clean before the mapper writes to them.
+            struct ZeroingAlloc<'z, Z: x86_64::structures::paging::FrameAllocator<Size4KiB>> {
+                inner: &'z mut Z,
+                phys_offset: VirtAddr,
+            }
+            unsafe impl<'z, Z: x86_64::structures::paging::FrameAllocator<Size4KiB>>
+                x86_64::structures::paging::FrameAllocator<Size4KiB> for ZeroingAlloc<'z, Z>
+            {
+                fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
+                    let frame = self.inner.allocate_frame()?;
+                    let ptr = (self.phys_offset + frame.start_address().as_u64()).as_mut_ptr::<u8>();
+                    unsafe { core::ptr::write_bytes(ptr, 0, 4096) };
+                    Some(frame)
+                }
+            }
+            let mut zeroing = ZeroingAlloc {
+                inner: frame_allocator,
+                phys_offset: physical_memory_offset,
+            };
             for page in pages {
                 use x86_64::structures::paging::Translate;
                 if process_mapper
                     .translate_addr(page.start_address())
                     .is_none()
                 {
-                    let frame = frame_allocator.allocate_frame().expect("out of memory");
+                    let frame = zeroing.inner.allocate_frame().expect("out of memory");
+                    // Zero the leaf frame (data page) as well for security.
+                    let ptr = (physical_memory_offset + frame.start_address().as_u64())
+                        .as_mut_ptr::<u8>();
+                    core::ptr::write_bytes(ptr, 0, 4096);
                     process_mapper
-                        .map_to(page, frame, flags, frame_allocator)
+                        .map_to(page, frame, flags, &mut zeroing)
                         .expect("map")
                         .ignore();
                 }
