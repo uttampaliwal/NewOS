@@ -90,3 +90,8 @@ fn panic(_info: &PanicInfo) -> ! {
 
 #[cfg(test)]
 fn main() {}
+
+// Minimal host main for MSVC linker on Windows hosts.
+#[cfg(target_os = "windows")]
+#[no_mangle]
+pub extern "C" fn mainCRTStartup() {}

@@ -17,6 +17,11 @@ pub extern "C" fn _start() -> ! {
 #[cfg(test)]
 fn main() {}
 
+// Minimal host main for MSVC linker on Windows hosts.
+#[cfg(target_os = "windows")]
+#[no_mangle]
+pub extern "C" fn mainCRTStartup() {}
+
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {

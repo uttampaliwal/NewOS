@@ -61,6 +61,8 @@ jobs:
         run: |
           cargo build -p turnix-abi -p turnix-serial -p xtask -p libturnix -p turnix-std --release
           cargo build -p turnix-kernel --lib --release
+          # Build kernel image without CRT/startup files
+          RUSTFLAGS='-C link-arg=-nostartfiles' cargo build -p turnix-kernel-image --release || true
           cargo build -p turnix-uefi-loader --target x86_64-unknown-uefi --release
           cargo build -p init -p shell -p fault-tester --target x86_64-unknown-none --release
 

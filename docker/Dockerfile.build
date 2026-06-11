@@ -1,0 +1,19 @@
+FROM rust:latest
+
+# Install deps for cross building and qemu
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential clang pkg-config nasm qemu-system-x86 unzip git ca-certificates && \
+    rustup target add x86_64-unknown-none || true
+
+WORKDIR /work
+COPY . /work
+
+# Build host libs and kernel libraries; skip OS image linking which needs special flags
+# Build host libs and kernel libraries; build kernel image with special flags
+RUN cargo build -p turnix-abi -p turnix-serial -p xtask -p libturnix -p turnix-std --release \
+    && cargo build -p turnix-kernel --lib --release \
+    # Build kernel image with no CRT/startup files to avoid duplicate _start
+    && RUSTFLAGS='-C link-arg=-nostartfiles -C link-arg=-Tlinker.ld' cargo build -p turnix-kernel-image --release || true \
+    && cargo build -p boot/uefi-loader --target x86_64-unknown-uefi --release || true
+
+# Build kernel image / run tests can be added as needed

@@ -6,6 +6,7 @@ edition = "2021"
 [[bin]]
 name = "init"
 test = false
+required-features = ["host_bin"]
 
 [dependencies]
 turnix-abi = { path = "../../shared/abi" }

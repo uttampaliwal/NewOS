@@ -13,6 +13,12 @@ members = [
 ]
 default-members = [
     "shared/abi",
+    "shared/serial",
+    "userland/libturnix",
+    "userland/std",
+    "userland/init",
+    "userland/shell",
+    "userland/fault-tester",
     "tools/xtask",
 ]
 resolver = "2"
@@ -38,3 +44,7 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+
+[features]
+# Feature to enable building host-compatible userland bins
+host_bin = []

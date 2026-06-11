@@ -21,6 +21,12 @@ pub extern "C" fn _start() -> ! {
 #[cfg(test)]
 fn main() {}
 
+// Provide a minimal host-compatible main when building on Windows host to satisfy
+// MSVC linker which expects a CRT entry point. This is a no-op for the OS image.
+#[cfg(target_os = "windows")]
+#[no_mangle]
+pub extern "C" fn mainCRTStartup() {}
+
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
