@@ -12,3 +12,6 @@ required-features = ["host_bin"]
 turnix-abi = { path = "../../shared/abi" }
 libturnix = { path = "../libturnix" }
 
+[features]
+host_bin = []
+

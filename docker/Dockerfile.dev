@@ -1,0 +1,23 @@
+FROM ubuntu:24.04
+
+# Install required packages and rustup
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    build-essential curl ca-certificates git clang pkg-config nasm qemu-system-x86 ovmf unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install rustup and toolchain
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh && \
+    chmod +x /tmp/rustup.sh && \
+    /tmp/rustup.sh -y --default-toolchain nightly && \
+    rm /tmp/rustup.sh
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /work
+COPY . /work
+
+# Ensure nightly toolchain and target
+RUN rustup default nightly || true && rustup target add x86_64-unknown-none || true
+
+# Default shell for interactive runs
+CMD ["bash"]

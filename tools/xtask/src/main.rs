@@ -386,7 +386,7 @@ fn run_uefi(workspace_root: &Path) {
         .arg("-monitor")
         .arg("none")
         .arg("-display")
-        .arg("sdl,gl=on")
+        .arg(env::var("TURNIX_QEMU_DISPLAY").unwrap_or_else(|_| "sdl,gl=on".to_string()))
         .arg("-no-reboot")
         .arg("-device")
         .arg("isa-debug-exit,iobase=0xf4,iosize=0x04")
