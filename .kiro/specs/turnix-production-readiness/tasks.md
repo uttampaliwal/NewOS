@@ -268,14 +268,14 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that path resolution correctly delegates to the mounted backend
     - _Requirements: 21.2, 21.3_
 
-- [ ] 21. Implement the full `fork` syscall
-  - [ ] 21.1 Implement `handle_fork` in `kernel/src/syscall/handler.rs` using the existing `Process::fork` (which calls `clone_user_mappings_cow`)
+- [x] 21. Implement the full `fork` syscall
+  - [x] 21.1 Implement `handle_fork` in `kernel/src/syscall/handler.rs` using the existing `Process::fork` (which calls `clone_user_mappings_cow`)
     - Clone the parent's `fd_table`, `signal_mask`, and `signal_handlers` into the child `ProcessControlBlock`
     - Return 0 to the child and the child PID to the parent (requires saving the fork return value into the child's `rax` register in the saved context)
     - Add the child process to the global process table and the scheduler's ready queue
     - Assign new ASLR stack/heap bases to the child via `aslr::randomise_stack_base()`
     - _Requirements: 17.1, 13.3_
-  - [ ]* 21.2 Write property test for Fork Address Space Consistency
+  - [x]* 21.2 Write property test for Fork Address Space Consistency
     - **Property 14: Fork Address Space Consistency**
     - **Validates: Requirements 17.1**
     - Use `proptest` to generate parent VMA sets with known content; assert child reads return same values and child writes do not affect parent

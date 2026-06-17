@@ -311,6 +311,123 @@ mod tests {
             // here because the sequence may leave some VMAs mapped.)
             // The step-by-step checks above already guarantee consistency.
         }
+
+        /// Property 14 — Fork Address Space Consistency
+        ///
+        /// When a VmaSet is cloned (as happens during fork):
+        ///   1. The child's address space contains the same VMAs as the parent.
+        ///   2. Modifications to the child (insert/remove) do not affect the
+        ///      parent, ensuring address-space isolation after fork.
+        ///
+        /// Validates Requirements 17.1.
+        #[test]
+        fn fork_address_space_consistency(candidates in arb_vma_candidates()) {
+            // Build the parent address space.
+            let mut parent = VmaSet::new();
+            for vma in &candidates {
+                let _ = parent.insert(vma.clone());
+            }
+
+            // Fork: the child gets a deep-cloned copy (as Process::fork does).
+            let mut child = parent.clone();
+
+            // Phase 1 — child reads return the same values as the parent.
+            for vma in &candidates {
+                for &addr in &[vma.start, vma.start + 0x100u64] {
+                    let parent_found = parent.find(addr);
+                    let child_found  = child.find(addr);
+                    if addr < vma.end {
+                        prop_assert!(
+                            parent_found.is_some(),
+                            "parent must find address {:#x} in VMA [{:#x}, {:#x})",
+                            addr.as_u64(), vma.start.as_u64(), vma.end.as_u64()
+                        );
+                        prop_assert!(
+                            child_found.is_some(),
+                            "child must find address {:#x} in VMA [{:#x}, {:#x})",
+                            addr.as_u64(), vma.start.as_u64(), vma.end.as_u64()
+                        );
+                        if let (Some(p), Some(c)) = (parent_found, child_found) {
+                            prop_assert_eq!(
+                                p.start, c.start,
+                                "child VMA start differs from parent at {:#x}",
+                                addr.as_u64()
+                            );
+                            prop_assert_eq!(
+                                p.end, c.end,
+                                "child VMA end differs from parent at {:#x}",
+                                addr.as_u64()
+                            );
+                            prop_assert_eq!(
+                                p.prot, c.prot,
+                                "child VMA prot differs from parent at {:#x}",
+                                addr.as_u64()
+                            );
+                        }
+                    } else {
+                        prop_assert!(
+                            parent_found.is_none(),
+                            "parent must NOT find address {:#x} outside VMAs",
+                            addr.as_u64()
+                        );
+                        prop_assert!(
+                            child_found.is_none(),
+                            "child must NOT find address {:#x} outside VMAs",
+                            addr.as_u64()
+                        );
+                    }
+                }
+            }
+
+            // Phase 2 — child writes (insert/remove) do not affect the parent.
+            let original_parent_len = parent.len();
+
+            // 2a. Insert a new VMA into the child.
+            let child_insert = Vma {
+                start: VirtAddr::new(0x7fff_0000_0000),
+                end:   VirtAddr::new(0x7fff_0000_1000),
+                prot: VmaProt::READ | VmaProt::WRITE,
+                backing: VmaBacking::Anonymous,
+                flags: VmaFlags::MAP_PRIVATE,
+            };
+            let child_insert_result = child.insert(child_insert.clone());
+            let parent_after_insert = parent.len();
+            prop_assert_eq!(
+                original_parent_len, parent_after_insert,
+                "parent VmaSet grew when child inserted a new VMA"
+            );
+            prop_assert!(
+                child_insert_result.is_ok(),
+                "child could not insert a non-overlapping VMA"
+            );
+            prop_assert!(
+                child.find(child_insert.start).is_some(),
+                "child must find the newly inserted VMA"
+            );
+            prop_assert!(
+                parent.find(child_insert.start).is_none(),
+                "parent must NOT see the child's new VMA"
+            );
+
+            // 2b. Remove a VMA from the child (if any candidates exist).
+            if !candidates.is_empty() {
+                let remove_start = candidates[0].start;
+                let removed = child.remove(remove_start);
+                prop_assert!(
+                    removed.is_some(),
+                    "child could not remove VMA starting at {:#x}",
+                    remove_start.as_u64()
+                );
+                prop_assert!(
+                    child.find(remove_start).is_none(),
+                    "child must no longer find removed VMA"
+                );
+                prop_assert!(
+                    parent.find(remove_start).is_some(),
+                    "parent must still find VMA that child removed"
+                );
+            }
+        }
     }
 
     #[test]
