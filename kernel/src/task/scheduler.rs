@@ -210,3 +210,10 @@ where
         sched.current_task.as_mut().map(f)
     })
 }
+
+#[cfg(test)]
+pub fn set_current_task_for_test(task: Task) {
+    let mut sched = SCHEDULER.lock();
+    sched.current_task_id = Some(task.id);
+    sched.current_task = Some(task);
+}

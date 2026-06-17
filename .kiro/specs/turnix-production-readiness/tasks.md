@@ -280,14 +280,14 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 17.1**
     - Use `proptest` to generate parent VMA sets with known content; assert child reads return same values and child writes do not affect parent
 
-- [ ] 22. Implement the full `exec` syscall
-  - [ ] 22.1 Implement `handle_exec` in `kernel/src/syscall/handler.rs` to replace the calling process's address space
+- [x] 22. Implement the full `exec` syscall
+  - [x] 22.1 Implement `handle_exec` in `kernel/src/syscall/handler.rs` to replace the calling process's address space
     - Look up the ELF path in the VFS; return `ENOENT` if not found (leave process unchanged)
     - Unmap all existing VMAs, free the old page table, load the new ELF via `Process::new_from_elf` with ASLR base
     - Close all FDs marked `O_CLOEXEC`; preserve PID; set up new stack with `argv`/`envp`
     - Apply W^X: revoke write permission on executable segments before jumping to entry point
     - _Requirements: 17.2, 17.5, 14.4_
-  - [ ]* 22.2 Write unit tests for exec error paths
+  - [x]* 22.2 Write unit tests for exec error paths
     - Test `exec` with non-existent path returns `ENOENT` and process is unchanged
     - Test `exec` with invalid ELF magic returns `ENOEXEC`
     - _Requirements: 17.5_

@@ -343,7 +343,7 @@ fn handle_exec(args: SyscallArgs) -> SyscallResult {
     let mut vfs = crate::vfs::VFS.lock();
     let fd = match vfs.open(path) {
         Some(fd) => fd,
-        None => return SyscallResult::Error(4), // File not found
+        None => return SyscallResult::Error(2), // File not found (ENOENT)
     };
 
     // Get file stat to know size
@@ -637,4 +637,140 @@ pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallRes
     };
 
     handle_syscall(syscall, args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::process::{Process, ProcessControlBlock, ProcessId, ProcessState, SignalSet, SignalAction};
+    use crate::task::{Task, TaskId, TaskState};
+    use crate::memory::vma::VmaSet;
+    use spin::Mutex;
+    use alloc::sync::Arc;
+    use x86_64::{PhysAddr, VirtAddr};
+    use x86_64::structures::paging::PhysFrame;
+    use turnix_abi::syscall::SyscallArgs;
+
+    struct SafeBootInfo(turnix_abi::boot::BootInfo);
+    unsafe impl Sync for SafeBootInfo {}
+
+    static DUMMY_BOOT_INFO: SafeBootInfo = SafeBootInfo(turnix_abi::boot::BootInfo::uefi(turnix_abi::version::ABI_VERSION));
+
+    fn setup_dummy_process() {
+        let process = Process {
+            inner: Arc::new(Mutex::new(ProcessControlBlock {
+                id: ProcessId(1),
+                ppid: ProcessId(0),
+                state: ProcessState::Running,
+                pml4_frame: PhysFrame::containing_address(PhysAddr::new(0)),
+                entry_point: VirtAddr::zero(),
+                stack_top: VirtAddr::zero(),
+                threads: alloc::vec![],
+                vma_set: VmaSet::new(),
+                mmap_next_addr: VirtAddr::zero(),
+                aslr_base: VirtAddr::zero(),
+                fd_table: core::array::from_fn(|_| None),
+                signal_mask: SignalSet::empty(),
+                signal_handlers: [SignalAction::Default; 64],
+                pending_signals: SignalSet::empty(),
+            }))
+        };
+        let task = Task {
+            id: TaskId::new(),
+            stack_ptr: 0,
+            kernel_stack_top: 0,
+            process,
+            state: TaskState::Running,
+        };
+        crate::task::scheduler::set_current_task_for_test(task);
+    }
+
+    fn cleanup() {
+        *crate::boot::FRAME_ALLOCATOR.lock() = None;
+        *crate::boot::PHYS_MEM_OFFSET.lock() = None;
+        *crate::vfs::VFS.lock() = crate::vfs::Vfs::new();
+    }
+
+    #[test]
+    fn test_exec_nonexistent_path_returns_enoent() {
+        setup_dummy_process();
+
+        // Ensure VFS has a mounted root but no such file
+        let mut vfs = crate::vfs::VFS.lock();
+        *vfs = crate::vfs::Vfs::new();
+        vfs.mount("/", Arc::new(crate::fs::tmpfs::TmpfsBackend::new()), crate::fs::vfs::MountFlags::default()).unwrap();
+        drop(vfs);
+
+        let path = "/nonexistent_file";
+        let args = SyscallArgs::new(
+            path.as_ptr() as u64,
+            path.len() as u64,
+            0,
+            0,
+        );
+
+        let result = handle_exec(args);
+        match result {
+            SyscallResult::Error(err) => {
+                assert_eq!(err, 2, "Expected ENOENT (2) when file is not found");
+            }
+            other => panic!("Expected SyscallResult::Error, got {:?}", other),
+        }
+
+        // Verify the process remains unchanged (still has empty VMA set, etc.)
+        let current_process = crate::task::scheduler::get_current_process().unwrap();
+        let inner = current_process.inner.lock();
+        assert_eq!(inner.id.0, 1);
+        assert!(inner.vma_set.iter().next().is_none());
+
+        cleanup();
+    }
+
+    #[test]
+    fn test_exec_invalid_elf_magic_returns_enoexec() {
+        setup_dummy_process();
+
+        // Set up frame allocator and phys mem offset
+        let boot_info = &DUMMY_BOOT_INFO.0;
+        let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
+        *guard = Some(crate::memory::FrameAllocator::new(boot_info));
+        let mut offset_guard = crate::boot::PHYS_MEM_OFFSET.lock();
+        *offset_guard = Some(VirtAddr::zero());
+        drop(guard);
+        drop(offset_guard);
+
+        // Mount a tmpfs root and create a file with invalid ELF magic directly
+        let backend = Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        let inode = backend.inner.lock().create_file(crate::fs::vfs::InodeId(1), "invalid_elf", 0o777).unwrap();
+        backend.write(inode, 0, b"not a valid ELF file").unwrap();
+
+        let mut vfs = crate::vfs::VFS.lock();
+        *vfs = crate::vfs::Vfs::new();
+        vfs.mount("/", backend, crate::fs::vfs::MountFlags::default()).unwrap();
+        drop(vfs);
+
+        let path = "/invalid_elf";
+        let args = SyscallArgs::new(
+            path.as_ptr() as u64,
+            path.len() as u64,
+            0,
+            0,
+        );
+
+        let result = handle_exec(args);
+        match result {
+            SyscallResult::Error(err) => {
+                assert_eq!(err, 8, "Expected ENOEXEC (8) when ELF magic is invalid");
+            }
+            other => panic!("Expected SyscallResult::Error, got {:?}", other),
+        }
+
+        // Verify the process remains unchanged
+        let current_process = crate::task::scheduler::get_current_process().unwrap();
+        let inner = current_process.inner.lock();
+        assert_eq!(inner.id.0, 1);
+        assert!(inner.vma_set.iter().next().is_none());
+
+        cleanup();
+    }
 }
