@@ -37,6 +37,7 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Exec => handle_exec(args),
         Syscall::Fork => handle_fork(args),
         Syscall::Wait => handle_wait(args),
+        Syscall::Waitpid => handle_waitpid(args),
         Syscall::Yielder => handle_yielder(args),
         Syscall::Uptime => handle_uptime(args),
         Syscall::Ls => handle_ls(args),
@@ -182,10 +183,75 @@ fn handle_read(args: SyscallArgs) -> SyscallResult {
 }
 
 fn handle_exit(args: SyscallArgs) -> SyscallResult {
-    let code = args.arg0 as i32;
-    crate::serial::print(format_args!("\n[syscall] exit code: {}\n", code));
+    let exit_code = args.arg0 as i32;
+    crate::serial::println!("[syscall] exit({})", exit_code);
+
+    if let Some(process) = crate::task::scheduler::get_current_process() {
+        let pml4_frame;
+        let ppid;
+        {
+            let mut inner = process.inner.lock();
+
+            // Close every open FD.
+            for slot in inner.fd_table.iter_mut() {
+                *slot = None;
+            }
+
+            // Capture the PML4 frame so we can release the address space.
+            pml4_frame = inner.pml4_frame;
+            ppid = inner.ppid;
+
+            // Transition to Zombie so the parent can reap us.
+            inner.state = crate::process::ProcessState::Zombie { exit_code };
+
+            // Clear VMA metadata (physical frames are freed below).
+            inner.vma_set = crate::memory::vma::VmaSet::new();
+
+            // Reparent any children whose parent is about to disappear.
+            let my_pid = inner.id;
+            let table = crate::process::PROCESS_TABLE.lock();
+            for (_pid, pcb_arc) in table.iter() {
+                let mut pcb = pcb_arc.lock();
+                if pcb.ppid == my_pid {
+                    crate::serial::println!(
+                        "[exit] reparenting PID {:?} → init", pcb.id
+                    );
+                    pcb.ppid = crate::process::ProcessId(1);
+                }
+            }
+            drop(table);
+        } // inner lock released
+
+        // Release the process's address space: free all user page tables
+        // and physical frames so they are not leaked while the Zombie PCB
+        // lingers until the parent calls wait().
+        {
+            let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
+            if let Some(ref mut frame_allocator) = *guard {
+                let phys_mem_offset = crate::boot::get_phys_mem_offset();
+                crate::memory::paging::destroy_user_mappings(
+                    pml4_frame,
+                    frame_allocator,
+                    phys_mem_offset,
+                );
+            }
+        }
+
+        // Deliver SIGCHLD to parent and wake any task blocked in wait().
+        {
+            let table = crate::process::PROCESS_TABLE.lock();
+            if let Some(parent_pcb_arc) = table.get(&ppid) {
+                let mut parent = parent_pcb_arc.lock();
+                parent.pending_signals.insert(17);
+            }
+        }
+        crate::task::scheduler::wake_tasks_waiting_for_parent(ppid);
+    }
+
+    // Mark the current kernel task as Zombie and yield so the scheduler
+    // can run another task.  This function never returns.
     crate::task::scheduler::exit_current_task();
-    // This line is unreachable but required for the function signature
+
     #[allow(unreachable_code)]
     SyscallResult::Success(0)
 }
@@ -464,13 +530,109 @@ fn handle_fork(_args: SyscallArgs) -> SyscallResult {
     SyscallResult::Error(0)
 }
 
-fn handle_wait(_args: SyscallArgs) -> SyscallResult {
-    // Basic wait implementation
-    // In a real wait, we would:
-    // 1. Wait for a child process to exit
-    // 2. Return the PID and exit status
-    // For now, return error
-    SyscallResult::Error(1)
+/// `wait(status_ptr) -> child_pid`
+///
+/// Waits for *any* child to exit.  If `status_ptr` (arg0) is non-null it
+/// receives the exit code as a 32-bit integer.
+///
+/// Returns:
+///  * `child_pid`   on success
+///  * `-10` (ECHILD) if the process has no children
+///  * `-4`  (EINTR)  if interrupted (future signal support)
+fn handle_wait(args: SyscallArgs) -> SyscallResult {
+    let status_ptr = args.arg0 as *mut i32;
+    handle_wait_impl(/*pid=*/ -1, status_ptr)
+}
+
+/// `waitpid(pid, status_ptr, _options) -> child_pid`
+///
+/// * `pid == -1`  — wait for any child (same as `wait`)
+/// * `pid  >  0`  — wait for the specific child PID
+fn handle_waitpid(args: SyscallArgs) -> SyscallResult {
+    let pid       = args.arg0 as i64;
+    let status_ptr = args.arg1 as *mut i32;
+    // arg2 = options (WNOHANG etc.) — ignored for now
+    handle_wait_impl(pid as i32, status_ptr)
+}
+
+/// Common implementation for wait/waitpid.
+///
+/// `target_pid == -1`  → any child
+/// `target_pid  >  0`  → a specific child
+fn handle_wait_impl(target_pid: i32, status_ptr: *mut i32) -> SyscallResult {
+    let my_pid = match crate::task::scheduler::get_current_process_id() {
+        Some(p) => p,
+        None    => return SyscallResult::Error(3), // ESRCH – no current process
+    };
+
+    // -----------------------------------------------------------------------
+    // Scan PROCESS_TABLE for a zombie child that we should reap.
+    // -----------------------------------------------------------------------
+    loop {
+        let reaped = {
+            let mut table = crate::process::PROCESS_TABLE.lock();
+
+            // Collect all child PIDs first, then look for zombies.
+            let mut found_any_child = false;
+            let mut zombie_pid: Option<crate::process::ProcessId> = None;
+            let mut zombie_exit_code: i32 = 0;
+
+            for (pid, pcb_arc) in table.iter() {
+                let pcb = pcb_arc.lock();
+                if pcb.ppid != my_pid {
+                    continue;
+                }
+                // At least one child exists.
+                found_any_child = true;
+
+                // Filter by requested PID.
+                if target_pid > 0 {
+                    let target = crate::process::ProcessId(target_pid as usize);
+                    if *pid != target {
+                        continue;
+                    }
+                }
+
+                if let crate::process::ProcessState::Zombie { exit_code } = pcb.state {
+                    zombie_pid = Some(*pid);
+                    zombie_exit_code = exit_code;
+                    break;
+                }
+            }
+
+            if !found_any_child {
+                // ECHILD: no children at all.
+                return SyscallResult::Error(10);
+            }
+
+            if let Some(zpid) = zombie_pid {
+                // Reap: remove zombie from the process table.
+                table.remove(&zpid);
+                #[cfg(not(test))]
+                crate::serial::println!(
+                    "[wait] reaped child PID {:?} exit_code={}", zpid, zombie_exit_code
+                );
+                Some((zpid, zombie_exit_code))
+            } else {
+                None
+            }
+        }; // --- PROCESS_TABLE lock released ---
+
+        if let Some((child_pid, exit_code)) = reaped {
+            // Write exit status to user buffer if provided.
+            if !status_ptr.is_null() {
+                // POSIX encodes exit status as (exit_code & 0xff) << 8.
+                let encoded = ((exit_code as i32) & 0xff) << 8;
+                unsafe { status_ptr.write(encoded); }
+            }
+            return SyscallResult::Success(child_pid.0 as u64);
+        }
+
+        // No zombie child yet — block and wait to be woken by a child's exit.
+        crate::task::scheduler::block_current_waiting_for_child();
+        crate::task::scheduler::yield_task();
+        // After being woken we loop back and re-scan.
+    }
 }
 
 fn handle_yielder(args: SyscallArgs) -> SyscallResult {
@@ -772,5 +934,236 @@ mod tests {
         assert!(inner.vma_set.iter().next().is_none());
 
         cleanup();
+    }
+    // -----------------------------------------------------------------------
+    // Task-23: wait / waitpid / zombie-reaping unit tests
+    // -----------------------------------------------------------------------
+
+    use proptest::prelude::*;
+
+    /// Build a minimal PCB with a given PID and PPID.
+    fn make_pcb(
+        pid: usize,
+        ppid: usize,
+        state: ProcessState,
+    ) -> Arc<Mutex<ProcessControlBlock>> {
+        Arc::new(Mutex::new(ProcessControlBlock {
+            id: ProcessId(pid),
+            ppid: ProcessId(ppid),
+            state,
+            pml4_frame: PhysFrame::containing_address(PhysAddr::new(0)),
+            entry_point: VirtAddr::zero(),
+            stack_top: VirtAddr::zero(),
+            threads: alloc::vec![],
+            vma_set: VmaSet::new(),
+            mmap_next_addr: VirtAddr::zero(),
+            aslr_base: VirtAddr::zero(),
+            fd_table: core::array::from_fn(|_| None),
+            signal_mask: SignalSet::empty(),
+            signal_handlers: [SignalAction::Default; 64],
+            pending_signals: SignalSet::empty(),
+        }))
+    }
+
+    // Property 15 — Wait Exit Status Round-Trip
+    //
+    // For any exit code in [0, 255]:
+    //   1. The child is in Zombie state with the correct exit code
+    //      between exit and wait.
+    //   2. `wait` returns exactly that exit code (POSIX-encoded).
+    //   3. The zombie child is reaped (removed from PROCESS_TABLE).
+    //
+    // Validates Requirements 17.3, 17.4.
+    proptest! {
+        #[test]
+        fn test_prop_wait_exit_status_round_trip(exit_code in 0i32..=255) {
+            use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
+
+            let _parent_pid = ProcessId(900);
+            let child_pid  = ProcessId(901);
+
+            // Insert child as Zombie with the generated exit code.
+            {
+                let mut table = PROCESS_TABLE.lock();
+                table.insert(child_pid, make_pcb(901, 900, ProcessState::Zombie { exit_code }));
+            }
+
+            // Verify the child is in Zombie state between exit and wait.
+            {
+                let table = PROCESS_TABLE.lock();
+                let child = table.get(&child_pid).unwrap();
+                let child_inner = child.lock();
+                match child_inner.state {
+                    ProcessState::Zombie { exit_code: code } => {
+                        assert_eq!(code, exit_code,
+                            "child has wrong exit code in Zombie state");
+                    }
+                    ref other => panic!("expected Zombie, got {:?}", other),
+                }
+            }
+
+            // Set up current task as parent.
+            let parent_proc = crate::process::Process {
+                inner: make_pcb(900, 1, ProcessState::Running),
+            };
+            let task = crate::task::Task {
+                id: crate::task::TaskId::new(),
+                stack_ptr: 0,
+                kernel_stack_top: 0,
+                process: parent_proc,
+                state: crate::task::TaskState::Running,
+            };
+            crate::task::scheduler::set_current_task_for_test(task);
+
+            // Call wait(-1) and capture the exit status.
+            let mut status: i32 = 0xdead;
+            let result = handle_wait_impl(-1, &mut status as *mut i32);
+            match result {
+                SyscallResult::Success(pid) => {
+                    assert_eq!(pid, child_pid.0 as u64,
+                        "wait returned wrong child PID");
+                }
+                other => panic!("expected Success, got {:?}", other),
+            }
+
+            // POSIX encodes exit status as (exit_code & 0xff) << 8.
+            let expected_status = ((exit_code as i32) & 0xff) << 8;
+            assert_eq!(status, expected_status,
+                "wait returned wrong exit status for code {}", exit_code);
+
+            // Child must have been reaped from the process table.
+            let table = PROCESS_TABLE.lock();
+            assert!(
+                table.get(&child_pid).is_none(),
+                "zombie child should have been reaped from PROCESS_TABLE"
+            );
+        }
+    }
+
+    /// Verify that handle_wait_impl finds a zombie child and returns its PID
+    /// and exit code, and that the child is removed from the process table.
+    #[test]
+    fn test_wait_reaps_zombie_child() {
+        use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
+
+        let _parent_pid = ProcessId(200);
+        let child_pid  = ProcessId(201);
+        let exit_code  = 42i32;
+
+        // Insert child (zombie) into process table.
+        {
+            let mut table = PROCESS_TABLE.lock();
+            table.insert(child_pid, make_pcb(201, 200, ProcessState::Zombie { exit_code }));
+        }
+
+        // Set up a current task so get_current_process_id() returns parent_pid.
+        let parent_proc = Process {
+            inner: make_pcb(200, 1, ProcessState::Running),
+        };
+        let task = Task {
+            id: TaskId::new(),
+            stack_ptr: 0,
+            kernel_stack_top: 0,
+            process: parent_proc,
+            state: TaskState::Running,
+        };
+        crate::task::scheduler::set_current_task_for_test(task);
+
+        // Call handle_wait_impl — expects Zombie child, should reap it.
+        let result = handle_wait_impl(-1, core::ptr::null_mut());
+        match result {
+            SyscallResult::Success(pid) => {
+                assert_eq!(pid, child_pid.0 as u64, "returned wrong child PID");
+            }
+            other => panic!("expected Success, got {:?}", other),
+        }
+
+        // Child must have been removed from the process table.
+        let table = PROCESS_TABLE.lock();
+        assert!(
+            table.get(&child_pid).is_none(),
+            "zombie child should have been reaped from PROCESS_TABLE"
+        );
+    }
+
+    /// Verify that handle_wait_impl returns ECHILD when the current process
+    /// has no children at all.
+    #[test]
+    fn test_wait_returns_echild_when_no_children() {
+        use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
+
+        // Make sure the process table has no children of PID 300.
+        {
+            let mut table = PROCESS_TABLE.lock();
+            table.retain(|_, pcb| pcb.lock().ppid != ProcessId(300));
+        }
+
+        let parent_proc = Process {
+            inner: make_pcb(300, 1, ProcessState::Running),
+        };
+        let task = Task {
+            id: TaskId::new(),
+            stack_ptr: 0,
+            kernel_stack_top: 0,
+            process: parent_proc,
+            state: TaskState::Running,
+        };
+        crate::task::scheduler::set_current_task_for_test(task);
+
+        let result = handle_wait_impl(-1, core::ptr::null_mut());
+        match result {
+            SyscallResult::Error(e) => {
+                assert_eq!(e, 10, "expected ECHILD (10), got {}", e);
+            }
+            other => panic!("expected Error(10/ECHILD), got {:?}", other),
+        }
+    }
+
+    /// Verify that handle_wait_impl for a specific PID returns only that
+    /// child's exit code and reaps only that child.
+    #[test]
+    fn test_waitpid_reaps_specific_child() {
+        use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
+
+        let _parent_pid  = ProcessId(400);
+        let child_a_pid = ProcessId(401);
+        let child_b_pid = ProcessId(402);
+
+        {
+            let mut table = PROCESS_TABLE.lock();
+            // child_a: zombie, child_b: running
+            table.insert(child_a_pid, make_pcb(401, 400, ProcessState::Zombie { exit_code: 77 }));
+            table.insert(child_b_pid, make_pcb(402, 400, ProcessState::Running));
+        }
+
+        let parent_proc = Process {
+            inner: make_pcb(400, 1, ProcessState::Running),
+        };
+        let task = Task {
+            id: TaskId::new(),
+            stack_ptr: 0,
+            kernel_stack_top: 0,
+            process: parent_proc,
+            state: TaskState::Running,
+        };
+        crate::task::scheduler::set_current_task_for_test(task);
+
+        // Wait specifically for child_a.
+        let result = handle_wait_impl(401, core::ptr::null_mut());
+        match result {
+            SyscallResult::Success(pid) => {
+                assert_eq!(pid, child_a_pid.0 as u64, "should have reaped child_a");
+            }
+            other => panic!("expected Success, got {:?}", other),
+        }
+
+        // child_a reaped, child_b still present.
+        let table = PROCESS_TABLE.lock();
+        assert!(table.get(&child_a_pid).is_none(), "child_a should be reaped");
+        assert!(table.get(&child_b_pid).is_some(), "child_b should still exist");
+        drop(table);
+
+        // Cleanup child_b.
+        PROCESS_TABLE.lock().remove(&child_b_pid);
     }
 }

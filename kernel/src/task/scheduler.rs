@@ -1,5 +1,5 @@
 use super::{Task, TaskId};
-use crate::process::Process;
+use crate::process::{Process, ProcessId};
 use alloc::collections::VecDeque;
 use core::sync::atomic::{AtomicU64, Ordering};
 use lazy_static::lazy_static;
@@ -13,6 +13,8 @@ lazy_static! {
 
 struct Scheduler {
     tasks: VecDeque<Task>,
+    /// Tasks that are blocked waiting for *any* child to exit.
+    blocked_tasks: alloc::vec::Vec<Task>,
     current_task: Option<Task>,
     task_count: usize,
     current_task_id: Option<TaskId>,
@@ -22,6 +24,7 @@ impl Scheduler {
     fn new() -> Self {
         Self {
             tasks: VecDeque::new(),
+            blocked_tasks: alloc::vec![],
             current_task: None,
             task_count: 0,
             current_task_id: None,
@@ -209,6 +212,54 @@ where
         let mut sched = SCHEDULER.lock();
         sched.current_task.as_mut().map(f)
     })
+}
+
+pub fn get_current_process_id() -> Option<ProcessId> {
+    SCHEDULER
+        .lock()
+        .current_task
+        .as_ref()
+        .map(|t| t.process.id())
+}
+
+/// Block the current task until *any* child process of `parent_pid` exits.
+///
+/// The task's state is set to `Blocked` and it is moved off the run queue
+/// into `blocked_tasks`.  The caller must immediately yield after this
+/// returns so the scheduler can switch to another task.
+pub fn block_current_waiting_for_child() {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut sched = SCHEDULER.lock();
+        if let Some(mut task) = sched.current_task.take() {
+            sched.current_task_id = None;
+            task.state = super::TaskState::Blocked;
+            sched.task_count -= 1; // no longer in the runnable count
+            sched.blocked_tasks.push(task);
+        }
+    });
+}
+
+/// Wake every task that is blocked waiting for children of `parent_pid`.
+///
+/// Called from `exit_current_task` / `handle_exit` after the process has
+/// transitioned to `Zombie`.
+pub fn wake_tasks_waiting_for_parent(parent_pid: ProcessId) {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut sched = SCHEDULER.lock();
+        let mut i = 0;
+        while i < sched.blocked_tasks.len() {
+            // Wake any blocked task whose process is the parent of the zombie.
+            if sched.blocked_tasks[i].process.id() == parent_pid {
+                let mut task = sched.blocked_tasks.swap_remove(i);
+                task.state = super::TaskState::Ready;
+                sched.task_count += 1;
+                sched.tasks.push_back(task);
+                // Don't advance i — the swap moved a different element here.
+            } else {
+                i += 1;
+            }
+        }
+    });
 }
 
 #[cfg(test)]

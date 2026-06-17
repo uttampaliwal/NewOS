@@ -292,12 +292,12 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test `exec` with invalid ELF magic returns `ENOEXEC`
     - _Requirements: 17.5_
 
-- [ ] 23. Implement `wait`/`waitpid` and process zombie/reaping
-  - [ ] 23.1 Implement `handle_wait` in `kernel/src/syscall/handler.rs`: block the caller until a child transitions to `Zombie` state, return the child's exit status, and reap the zombie (remove from process table)
+- [x] 23. Implement `wait`/`waitpid` and process zombie/reaping
+  - [x] 23.1 Implement `handle_wait` in `kernel/src/syscall/handler.rs`: block the caller until a child transitions to `Zombie` state, return the child's exit status, and reap the zombie (remove from process table)
     - Implement `handle_exit`: release address space, close all FDs, transition to `Zombie { exit_code }`, deliver `SIGCHLD` to parent, wake any parent blocked in `wait`
     - Add `waitpid` syscall to `shared/abi/src/syscall.rs` and implement handler
     - _Requirements: 17.3, 17.4_
-  - [ ]* 23.2 Write property test for Wait Exit Status Round-Trip
+  - [x]* 23.2 Write property test for Wait Exit Status Round-Trip
     - **Property 15: Wait Exit Status Round-Trip**
     - **Validates: Requirements 17.3, 17.4**
     - Use `proptest` to generate exit codes in [0, 255]; assert `wait` returns exactly that code and child is in `Zombie` state between `exit` and `wait`

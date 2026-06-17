@@ -38,6 +38,7 @@ pub enum Syscall {
     Munmap = 23,
     Mount = 24,
     Umount = 25,
+    Waitpid = 26,
 }
 
 impl Syscall {
@@ -68,6 +69,7 @@ impl Syscall {
             23 => Some(Self::Munmap),
             24 => Some(Self::Mount),
             25 => Some(Self::Umount),
+            26 => Some(Self::Waitpid),
             _ => None,
         }
     }
@@ -247,5 +249,15 @@ mod tests {
     #[test]
     fn umount_syscall_round_trip() {
         assert_eq!(Syscall::from_u16(25), Some(Syscall::Umount));
+    }
+
+    #[test]
+    fn waitpid_syscall_id_is_twenty_six() {
+        assert_eq!(Syscall::Waitpid as u16, 26);
+    }
+
+    #[test]
+    fn waitpid_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(26), Some(Syscall::Waitpid));
     }
 }
