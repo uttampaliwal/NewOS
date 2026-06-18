@@ -1,7 +1,7 @@
 use crate::drivers::gpu;
 use crate::fs::ext4::Ext4Backend;
 use crate::fs::tmpfs::TmpfsBackend;
-use crate::fs::vfs::{FsBackend, MountFlags};
+use crate::fs::vfs::{FsBackend, MountFlags, UnixSocketState};
 use crate::memory::vma::{VmaFlags, VmaProt};
 use crate::vfs::VFS;
 use alloc::sync::Arc;
@@ -56,6 +56,11 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Mount => handle_mount(args),
         Syscall::Umount => handle_umount(args),
         Syscall::Pipe => handle_pipe(args),
+        Syscall::Socket => handle_socket(args),
+        Syscall::Bind => handle_bind(args),
+        Syscall::Listen => handle_listen(args),
+        Syscall::Accept => handle_accept(args),
+        Syscall::Connect => handle_connect(args),
     }
 }
 
@@ -820,6 +825,130 @@ fn handle_pipe(args: SyscallArgs) -> SyscallResult {
     unsafe { pipefd_ptr.write(pipefds); }
 
     SyscallResult::Success(0)
+}
+
+/// `socket(domain: i32, type: i32, protocol: i32) -> fd`
+fn handle_socket(args: SyscallArgs) -> SyscallResult {
+    let _domain = args.arg0 as i32;
+    let sock_type = args.arg1 as i32;
+    let _protocol = args.arg2 as i32;
+
+    // Only AF_UNIX + SOCK_STREAM is supported for now.
+    if sock_type != 1 {
+        // SOCK_STREAM = 1
+        return SyscallResult::Error(97); // EAFNOSUPPORT / EPROTONOSUPPORT
+    }
+
+    let mut vfs = VFS.lock();
+    let fd = vfs.create_socket_fd();
+    SyscallResult::Success(fd as u64)
+}
+
+/// `bind(sockfd: i32, path: *const u8, pathlen: usize) -> 0`
+fn handle_bind(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let path_ptr = args.arg1 as *const u8;
+    let path_len = args.arg2 as usize;
+
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(14); // EFAULT
+    }
+    let path_slice = unsafe {
+        core::slice::from_raw_parts(path_ptr, path_len)
+    };
+    let path = match core::str::from_utf8(path_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(14),
+    };
+
+    let sock = {
+        let vfs = VFS.lock();
+        vfs.get_unix_socket(fd)
+    };
+    let sock = match sock {
+        Some(s) => s,
+        None => return SyscallResult::Error(9), // EBADF
+    };
+
+    match UnixSocketState::bind(&sock, path) {
+        Ok(_) => SyscallResult::Success(0),
+        Err(_) => SyscallResult::Error(48), // EADDRINUSE
+    }
+}
+
+/// `listen(sockfd: i32, backlog: i32) -> 0`
+fn handle_listen(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let backlog = args.arg1 as usize;
+
+    let sock = {
+        let vfs = VFS.lock();
+        vfs.get_unix_socket(fd)
+    };
+    let sock = match sock {
+        Some(s) => s,
+        None => return SyscallResult::Error(9), // EBADF
+    };
+
+    match UnixSocketState::listen(&sock, backlog) {
+        Ok(_) => SyscallResult::Success(0),
+        Err(_) => SyscallResult::Error(88), // ENOTSOCK / EINVAL
+    }
+}
+
+/// `accept(sockfd: i32) -> new_fd`
+fn handle_accept(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+
+    let sock = {
+        let vfs = VFS.lock();
+        vfs.get_unix_socket(fd)
+    };
+    let sock = match sock {
+        Some(s) => s,
+        None => return SyscallResult::Error(9), // EBADF
+    };
+
+    match UnixSocketState::accept(&sock) {
+        Some(end) => {
+            let mut vfs = VFS.lock();
+            let idx = vfs.create_connected_socket_fd(end);
+            SyscallResult::Success(idx as u64)
+        }
+        None => SyscallResult::Error(11), // EAGAIN
+    }
+}
+
+/// `connect(sockfd: i32, path: *const u8, pathlen: usize) -> 0`
+fn handle_connect(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let path_ptr = args.arg1 as *const u8;
+    let path_len = args.arg2 as usize;
+
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(14); // EFAULT
+    }
+    let path_slice = unsafe {
+        core::slice::from_raw_parts(path_ptr, path_len)
+    };
+    let path = match core::str::from_utf8(path_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(14),
+    };
+
+    let sock = {
+        let vfs = VFS.lock();
+        vfs.get_unix_socket(fd)
+    };
+    let sock = match sock {
+        Some(s) => s,
+        None => return SyscallResult::Error(9), // EBADF
+    };
+
+    match UnixSocketState::connect(&sock, path) {
+        Ok(_) => SyscallResult::Success(0),
+        Err(_) => SyscallResult::Error(2), // ENOENT
+    }
 }
 
 pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallResult {

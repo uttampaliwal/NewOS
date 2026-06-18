@@ -40,6 +40,11 @@ pub enum Syscall {
     Umount = 25,
     Waitpid = 26,
     Pipe = 27,
+    Socket = 28,
+    Bind = 29,
+    Listen = 30,
+    Accept = 31,
+    Connect = 32,
 }
 
 impl Syscall {
@@ -72,6 +77,11 @@ impl Syscall {
             25 => Some(Self::Umount),
             26 => Some(Self::Waitpid),
             27 => Some(Self::Pipe),
+            28 => Some(Self::Socket),
+            29 => Some(Self::Bind),
+            30 => Some(Self::Listen),
+            31 => Some(Self::Accept),
+            32 => Some(Self::Connect),
             _ => None,
         }
     }
@@ -271,5 +281,55 @@ mod tests {
     #[test]
     fn pipe_syscall_round_trip() {
         assert_eq!(Syscall::from_u16(27), Some(Syscall::Pipe));
+    }
+
+    #[test]
+    fn socket_syscall_id_is_twenty_eight() {
+        assert_eq!(Syscall::Socket as u16, 28);
+    }
+
+    #[test]
+    fn socket_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(28), Some(Syscall::Socket));
+    }
+
+    #[test]
+    fn bind_syscall_id_is_twenty_nine() {
+        assert_eq!(Syscall::Bind as u16, 29);
+    }
+
+    #[test]
+    fn bind_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(29), Some(Syscall::Bind));
+    }
+
+    #[test]
+    fn listen_syscall_id_is_thirty() {
+        assert_eq!(Syscall::Listen as u16, 30);
+    }
+
+    #[test]
+    fn listen_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(30), Some(Syscall::Listen));
+    }
+
+    #[test]
+    fn accept_syscall_id_is_thirty_one() {
+        assert_eq!(Syscall::Accept as u16, 31);
+    }
+
+    #[test]
+    fn accept_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(31), Some(Syscall::Accept));
+    }
+
+    #[test]
+    fn connect_syscall_id_is_thirty_two() {
+        assert_eq!(Syscall::Connect as u16, 32);
+    }
+
+    #[test]
+    fn connect_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(32), Some(Syscall::Connect));
     }
 }

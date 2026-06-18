@@ -57,9 +57,7 @@ pub type Timestamp = u64;
 
 pub use crate::ipc::pipe::PipeBuffer;
 
-/// Placeholder for Unix-domain socket state — will be replaced by
-/// `kernel/src/ipc/unix_socket.rs` in Phase 3 (task 25).
-pub struct UnixSocketState;
+pub use crate::ipc::unix_socket::UnixSocketState;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -681,7 +679,7 @@ impl Vfs {
         let kind = match stat.file_type {
             FileType::Directory => FdKind::Directory,
             FileType::Pipe => FdKind::Pipe(Arc::new(PipeBuffer::new())),
-            FileType::Socket => FdKind::UnixSocket(Arc::new(UnixSocketState)),
+            FileType::Socket => FdKind::UnixSocket(Arc::new(UnixSocketState::new())),
             _ => FdKind::Regular,
         };
 
@@ -708,13 +706,15 @@ impl Vfs {
             // Notify the peer if this is a pipe endpoint.
             if let FdKind::Pipe(pipe_buf) = &fd.kind {
                 if fd.flags.writable() {
-                    // Closing the write end — signal EOF to readers.
                     pipe_buf.close_write_end();
                 }
                 if fd.flags.readable() {
-                    // Closing the read end — signal EPIPE to writers.
                     pipe_buf.close_read_end();
                 }
+            }
+            // Shut down the socket connection.
+            if let FdKind::UnixSocket(sock) = &fd.kind {
+                sock.shutdown();
             }
 
             let name = fd.name.clone();
@@ -770,6 +770,46 @@ impl Vfs {
         }
     }
 
+    /// Create a new Unix domain socket fd and return its index.
+    pub fn create_socket_fd(&mut self) -> usize {
+        let sock = Arc::new(UnixSocketState::new());
+        let fd = FileDescriptor::new(
+            InodeId(0),
+            Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+            crate::fs::vfs::OpenFlags::RDWR,
+            FdKind::UnixSocket(sock),
+            alloc::string::String::from("socket"),
+        );
+        let idx = self.alloc_fd();
+        self.open_files.insert(idx, fd);
+        idx
+    }
+
+    /// Create a socket fd wrapping an already‑connected `ConnectedEnd`.
+    pub fn create_connected_socket_fd(&mut self, end: crate::ipc::unix_socket::ConnectedEnd) -> usize {
+        let sock = Arc::new(UnixSocketState::from_connected_end(end));
+        let fd = FileDescriptor::new(
+            InodeId(0),
+            Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+            crate::fs::vfs::OpenFlags::RDWR,
+            FdKind::UnixSocket(sock),
+            alloc::string::String::from("socket:accepted"),
+        );
+        let idx = self.alloc_fd();
+        self.open_files.insert(idx, fd);
+        idx
+    }
+
+    /// Return the `UnixSocketState` for `fd_idx` if it is a socket, or
+    /// `None` otherwise.  Used by the socket‑syscall handlers.
+    pub fn get_unix_socket(&self, fd_idx: usize) -> Option<Arc<UnixSocketState>> {
+        let fd = self.open_files.get(&fd_idx)?;
+        match &fd.kind {
+            FdKind::UnixSocket(sock) => Some(sock.clone()),
+            _ => None,
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Read / write / seek
     // -----------------------------------------------------------------------
@@ -788,6 +828,14 @@ impl Vfs {
                 }
                 let n = pipe_buf.read(buf);
                 // Pipes don't use file offset; the buffer tracks position.
+                Some(n)
+            }
+            FdKind::UnixSocket(sock) => {
+                if sock.is_peer_closed() && sock.bytes_available() == 0 {
+                    return Some(0);
+                }
+                let n = sock.read(buf);
+                // Sockets don't use file offset.
                 Some(n)
             }
             _ => {
@@ -822,6 +870,13 @@ impl Vfs {
                 }
                 let n = pipe_buf.write(buf);
                 // Pipes don't use file offset; the buffer tracks position.
+                Some(n)
+            }
+            FdKind::UnixSocket(sock) => {
+                if sock.is_peer_closed() {
+                    return None;
+                }
+                let n = sock.write(buf);
                 Some(n)
             }
             _ => {

@@ -319,15 +319,16 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 18.3**
     - Use `proptest` to fill a pipe to capacity; assert write blocks until a reader consumes at least one byte
 
-- [ ] 25. Implement Unix domain sockets in `kernel/src/ipc/unix_socket.rs`
-  - [ ] 25.1 Create `kernel/src/ipc/unix_socket.rs` with `UnixSocketState` and `UnixSocketServer`
-    - Implement `socket(AF_UNIX, SOCK_STREAM)`, `bind` (create socket file in VFS), `listen`, `accept`, `connect` syscalls
+- [x] 25. Implement Unix domain sockets in `kernel/src/ipc/unix_socket.rs`
+  - [x] 25.1 Create `kernel/src/ipc/unix_socket.rs` with `UnixSocketState` and `ConnectedEnd`
+    - Implement `socket(AF_UNIX, SOCK_STREAM)`, `bind`, `listen`, `accept`, `connect` syscalls
     - `connect` establishes a bidirectional byte stream between client and server
     - Add syscall numbers to `shared/abi/src/syscall.rs` and implement handlers in `kernel/src/syscall/handler.rs`
     - _Requirements: 18.4, 18.5, 18.6_
-  - [ ]* 25.2 Write unit tests for Unix socket bind/connect
-    - Test that `bind` creates a socket file in the VFS at the specified path
-    - Test that `connect` to a non-existent path returns `ENOENT`
+  - [x]* 25.2 Write unit tests for Unix socket bind/connect
+    - Property 18: Unix Socket Data Integrity (bidirectional round-trip via proptest)
+    - Test that `bind` creates a registry entry in `BOUND_SOCKETS`
+    - Test that `connect` to a non-existent path returns `Err`
     - _Requirements: 18.5, 18.6_
 
 - [ ] 26. Implement the signal dispatcher in `kernel/src/task/signals.rs`
