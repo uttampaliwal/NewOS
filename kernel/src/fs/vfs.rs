@@ -52,12 +52,10 @@ pub const MAX_OPEN_FILES: usize = 1024;
 pub type Timestamp = u64;
 
 // ---------------------------------------------------------------------------
-// Placeholder types for Phase-3 IPC modules
+// Re-export real IPC types (Phase 3)
 // ---------------------------------------------------------------------------
 
-/// Placeholder for the pipe ring buffer — will be replaced by
-/// `kernel/src/ipc/pipe.rs` in Phase 3 (task 24).
-pub struct PipeBuffer;
+pub use crate::ipc::pipe::PipeBuffer;
 
 /// Placeholder for Unix-domain socket state — will be replaced by
 /// `kernel/src/ipc/unix_socket.rs` in Phase 3 (task 25).
@@ -682,7 +680,7 @@ impl Vfs {
 
         let kind = match stat.file_type {
             FileType::Directory => FdKind::Directory,
-            FileType::Pipe => FdKind::Pipe(Arc::new(PipeBuffer)),
+            FileType::Pipe => FdKind::Pipe(Arc::new(PipeBuffer::new())),
             FileType::Socket => FdKind::UnixSocket(Arc::new(UnixSocketState)),
             _ => FdKind::Regular,
         };
@@ -704,8 +702,21 @@ impl Vfs {
     /// Close the fd at index `fd_idx`.
     ///
     /// Decrements the open_fd_count for the backing mount.
+    /// For pipe endpoints, notifies the peer that the connection is closing.
     pub fn close_fd(&mut self, fd_idx: usize) -> bool {
         if let Some(fd) = self.open_files.remove(&fd_idx) {
+            // Notify the peer if this is a pipe endpoint.
+            if let FdKind::Pipe(pipe_buf) = &fd.kind {
+                if fd.flags.writable() {
+                    // Closing the write end — signal EOF to readers.
+                    pipe_buf.close_write_end();
+                }
+                if fd.flags.readable() {
+                    // Closing the read end — signal EPIPE to writers.
+                    pipe_buf.close_read_end();
+                }
+            }
+
             let name = fd.name.clone();
             // Decrement open_fd_count for the matching mount.
             if let Some(me) = self
@@ -722,48 +733,115 @@ impl Vfs {
         }
     }
 
+    /// Create a pipe pair and return the (read_fd, write_fd) indices.
+    pub fn create_pipe(&mut self) -> (usize, usize) {
+        let pipe_buf = Arc::new(PipeBuffer::new());
+
+        let read_fd = FileDescriptor::new(
+            InodeId(0),
+            Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+            OpenFlags::RDONLY,
+            FdKind::Pipe(pipe_buf.clone()),
+            alloc::string::String::from("pipe:r"),
+        );
+        let write_fd = FileDescriptor::new(
+            InodeId(0),
+            Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+            OpenFlags::WRONLY,
+            FdKind::Pipe(pipe_buf),
+            alloc::string::String::from("pipe:w"),
+        );
+
+        let read_idx = self.alloc_fd();
+        let write_idx = self.alloc_fd();
+        self.open_files.insert(read_idx, read_fd);
+        self.open_files.insert(write_idx, write_fd);
+        (read_idx, write_idx)
+    }
+
+    /// Return the `PipeBuffer` for `fd_idx` if it is a pipe endpoint, or
+    /// `None` otherwise.  This allows the syscall handler to perform blocking
+    /// writes without holding the VFS lock.
+    pub fn get_pipe_buffer(&self, fd_idx: usize) -> Option<Arc<PipeBuffer>> {
+        let fd = self.open_files.get(&fd_idx)?;
+        match &fd.kind {
+            FdKind::Pipe(pb) => Some(pb.clone()),
+            _ => None,
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Read / write / seek
     // -----------------------------------------------------------------------
 
     /// Read up to `buf.len()` bytes from fd `fd_idx` at its current offset.
     pub fn read_fd(&mut self, fd_idx: usize, buf: &mut [u8]) -> Option<usize> {
-        let (inode, offset, backend) = {
-            let fd = self.open_files.get(&fd_idx)?;
-            if !fd.flags.readable() {
-                return None;
-            }
-            (fd.inode, fd.get_offset(), fd.backend.clone())
-        };
-        let n = backend.read(inode, offset, buf).ok()?;
-        if let Some(fd) = self.open_files.get(&fd_idx) {
-            fd.set_offset(offset + n as u64);
+        let fd = self.open_files.get(&fd_idx)?;
+        if !fd.flags.readable() {
+            return None;
         }
-        Some(n)
+        match &fd.kind {
+            FdKind::Pipe(pipe_buf) => {
+                // If write end is closed and buffer is empty, return EOF (0).
+                if !pipe_buf.is_write_end_open() && pipe_buf.bytes_available() == 0 {
+                    return Some(0);
+                }
+                let n = pipe_buf.read(buf);
+                // Pipes don't use file offset; the buffer tracks position.
+                Some(n)
+            }
+            _ => {
+                let inode = fd.inode;
+                let offset = fd.get_offset();
+                let backend = fd.backend.clone();
+                let n = backend.read(inode, offset, buf).ok()?;
+                if let Some(fd) = self.open_files.get(&fd_idx) {
+                    fd.set_offset(offset + n as u64);
+                }
+                Some(n)
+            }
+        }
     }
 
     /// Write `buf` to fd `fd_idx` at its current offset (or end for APPEND).
     pub fn write_fd(&mut self, fd_idx: usize, buf: &[u8]) -> Option<usize> {
-        let (inode, offset, backend, is_append) = {
-            let fd = self.open_files.get(&fd_idx)?;
-            if !fd.flags.writable() {
-                return None;
-            }
-            let off = if fd.flags.is_append() {
-                // Seek to end for append mode.
-                let stat = fd.backend.stat(fd.inode).ok()?;
-                stat.size
-            } else {
-                fd.get_offset()
-            };
-            (fd.inode, off, fd.backend.clone(), fd.flags.is_append())
-        };
-        let _ = is_append; // used above
-        let n = backend.write(inode, offset, buf).ok()?;
-        if let Some(fd) = self.open_files.get(&fd_idx) {
-            fd.set_offset(offset + n as u64);
+        let fd = self.open_files.get(&fd_idx)?;
+        if !fd.flags.writable() {
+            return None;
         }
-        Some(n)
+        match &fd.kind {
+            FdKind::Pipe(pipe_buf) => {
+                // If read end is closed, writing is not allowed.
+                if !pipe_buf.is_read_end_open() {
+                    // Deliver SIGPIPE to the current process.
+                    if let Some(process) = crate::task::scheduler::get_current_process() {
+                        let mut inner = process.inner.lock();
+                        inner.pending_signals.insert(13); // SIGPIPE = 13
+                    }
+                    return None;
+                }
+                let n = pipe_buf.write(buf);
+                // Pipes don't use file offset; the buffer tracks position.
+                Some(n)
+            }
+            _ => {
+                let inode = fd.inode;
+                let offset = fd.get_offset();
+                let backend = fd.backend.clone();
+                let is_append = fd.flags.is_append();
+                let real_offset = if is_append {
+                    let stat = backend.stat(inode).ok()?;
+                    stat.size
+                } else {
+                    offset
+                };
+                let n = backend.write(inode, real_offset, buf).ok()?;
+                if let Some(fd) = self.open_files.get(&fd_idx) {
+                    fd.set_offset(real_offset + n as u64);
+                }
+                Some(n)
+            }
+        }
     }
 
     /// Set the file offset for fd `fd_idx` to `offset`.

@@ -222,6 +222,41 @@ pub fn get_current_process_id() -> Option<ProcessId> {
         .map(|t| t.process.id())
 }
 
+/// Block the current task unconditionally.
+///
+/// The task's state is set to `Blocked` and it is moved off the run queue
+/// into `blocked_tasks`.  The caller must immediately yield after this
+/// returns so the scheduler can switch to another task.
+/// The task will be woken by `wake_task_by_id`.
+pub fn block_current() {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut sched = SCHEDULER.lock();
+        if let Some(mut task) = sched.current_task.take() {
+            sched.current_task_id = None;
+            task.state = super::TaskState::Blocked;
+            sched.task_count -= 1;
+            sched.blocked_tasks.push(task);
+        }
+    });
+}
+
+/// Wake a specific task by its TaskId, moving it from `blocked_tasks` to the
+/// ready queue.
+pub fn wake_task_by_id(task_id: TaskId) {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut sched = SCHEDULER.lock();
+        for i in 0..sched.blocked_tasks.len() {
+            if sched.blocked_tasks[i].id == task_id {
+                let mut task = sched.blocked_tasks.swap_remove(i);
+                task.state = super::TaskState::Ready;
+                sched.task_count += 1;
+                sched.tasks.push_back(task);
+                return;
+            }
+        }
+    });
+}
+
 /// Block the current task until *any* child process of `parent_pid` exits.
 ///
 /// The task's state is set to `Blocked` and it is moved off the run queue
@@ -267,4 +302,15 @@ pub fn set_current_task_for_test(task: Task) {
     let mut sched = SCHEDULER.lock();
     sched.current_task_id = Some(task.id);
     sched.current_task = Some(task);
+}
+
+/// Reset scheduler state to clean between tests.
+#[cfg(test)]
+pub fn test_reset() {
+    let mut sched = SCHEDULER.lock();
+    sched.current_task = None;
+    sched.current_task_id = None;
+    sched.blocked_tasks.clear();
+    sched.tasks.clear();
+    sched.task_count = 0;
 }

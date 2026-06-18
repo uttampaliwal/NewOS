@@ -302,19 +302,19 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 17.3, 17.4**
     - Use `proptest` to generate exit codes in [0, 255]; assert `wait` returns exactly that code and child is in `Zombie` state between `exit` and `wait`
 
-- [ ] 24. Implement pipes in `kernel/src/ipc/pipe.rs`
-  - [ ] 24.1 Create `kernel/src/ipc/pipe.rs` with `PipeBuffer` (ring buffer, at least 65536 bytes), `PipeReadEnd`, and `PipeWriteEnd`
+- [x] 24. Implement pipes in `kernel/src/ipc/pipe.rs`
+  - [x] 24.1 Create `kernel/src/ipc/pipe.rs` with `PipeBuffer` (ring buffer, at least 65536 bytes), `PipeReadEnd`, and `PipeWriteEnd`
     - Implement `pipe` syscall: create a `PipeBuffer`, return two FDs (`FdKind::Pipe`) — one read, one write
     - Implement blocking write when buffer is full (block writer until space available)
     - Implement EOF on read when write end is closed and buffer is empty (return 0)
     - Deliver `SIGPIPE` to writer when read end is closed
     - Add `pub mod ipc;` and `pub mod pipe;` to `kernel/src/lib.rs`
     - _Requirements: 18.1, 18.2, 18.3, 18.7_
-  - [ ]* 24.2 Write property test for Pipe Data Integrity
+  - [x]* 24.2 Write property test for Pipe Data Integrity
     - **Property 16: Pipe Data Integrity**
     - **Validates: Requirements 18.1**
     - Use `proptest` to generate arbitrary byte sequences; assert read end produces same bytes in same order
-  - [ ]* 24.3 Write property test for Pipe Blocking on Full Buffer
+  - [x]* 24.3 Write property test for Pipe Blocking on Full Buffer
     - **Property 17: Pipe Blocking on Full Buffer**
     - **Validates: Requirements 18.3**
     - Use `proptest` to fill a pipe to capacity; assert write blocks until a reader consumes at least one byte

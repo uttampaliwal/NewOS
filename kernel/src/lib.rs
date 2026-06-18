@@ -31,6 +31,8 @@ pub mod fs;
 #[cfg(feature = "arch-x86_64")]
 pub mod input;
 #[cfg(feature = "arch-x86_64")]
+pub mod ipc;
+#[cfg(feature = "arch-x86_64")]
 pub mod memory;
 #[cfg(feature = "arch-x86_64")]
 pub mod process;

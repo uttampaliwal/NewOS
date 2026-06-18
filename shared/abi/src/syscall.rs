@@ -39,6 +39,7 @@ pub enum Syscall {
     Mount = 24,
     Umount = 25,
     Waitpid = 26,
+    Pipe = 27,
 }
 
 impl Syscall {
@@ -70,6 +71,7 @@ impl Syscall {
             24 => Some(Self::Mount),
             25 => Some(Self::Umount),
             26 => Some(Self::Waitpid),
+            27 => Some(Self::Pipe),
             _ => None,
         }
     }
@@ -259,5 +261,15 @@ mod tests {
     #[test]
     fn waitpid_syscall_round_trip() {
         assert_eq!(Syscall::from_u16(26), Some(Syscall::Waitpid));
+    }
+
+    #[test]
+    fn pipe_syscall_id_is_twenty_seven() {
+        assert_eq!(Syscall::Pipe as u16, 27);
+    }
+
+    #[test]
+    fn pipe_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(27), Some(Syscall::Pipe));
     }
 }

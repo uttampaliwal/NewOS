@@ -55,6 +55,7 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Munmap => handle_munmap(args),
         Syscall::Mount => handle_mount(args),
         Syscall::Umount => handle_umount(args),
+        Syscall::Pipe => handle_pipe(args),
     }
 }
 
@@ -118,6 +119,18 @@ fn handle_write_file(args: SyscallArgs) -> SyscallResult {
     }
 
     let buf = unsafe { core::slice::from_raw_parts(buf_ptr, buf_len) };
+
+    // For pipe FDs, extract the Arc<PipeBuffer> and perform a blocking
+    // write outside the VFS lock so the reader can make progress.
+    let pipe_buf = {
+        let vfs = VFS.lock();
+        vfs.get_pipe_buffer(fd)
+    };
+    if let Some(pb) = pipe_buf {
+        let n = pb.write_blocking(buf);
+        return SyscallResult::Success(n as u64);
+    }
+
     let mut vfs = VFS.lock();
     match vfs.write(fd, buf) {
         Some(len) => SyscallResult::Success(len as u64),
@@ -787,6 +800,26 @@ fn handle_umount(args: SyscallArgs) -> SyscallResult {
             SyscallResult::Error(1)
         }
     }
+}
+
+/// `pipe(pipefd: *mut [u64; 2]) -> 0 on success`
+///
+/// Creates a unidirectional data pipe.  `pipefd[0]` receives the read end fd,
+/// `pipefd[1]` receives the write end fd.
+fn handle_pipe(args: SyscallArgs) -> SyscallResult {
+    let pipefd_ptr = args.arg0 as *mut [u64; 2];
+
+    if pipefd_ptr.is_null() {
+        return SyscallResult::Error(14); // EFAULT
+    }
+
+    let mut vfs = VFS.lock();
+    let (read_idx, write_idx) = vfs.create_pipe();
+
+    let pipefds = [read_idx as u64, write_idx as u64];
+    unsafe { pipefd_ptr.write(pipefds); }
+
+    SyscallResult::Success(0)
 }
 
 pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallResult {
