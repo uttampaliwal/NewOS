@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1fe585b03c36b20d37f1e3916e3787460b7cca282a08d421a0b25590662fe1e1 # shrinks to sig_num = 26
+cc 5c1f1baea83bb2d91d53aa83f8873f9753444a93afd864bf585ebcc07213b8d9 # shrinks to sig_num = 12
+cc fd14ee755eac63b1cc07b4c8d24ebbf65368d87ba940a57008786346c6c65f17 # shrinks to sig_num = 24, handler_addr = 5806143101
+cc a82092a4b7bba24b8143a7f71c681777e880e7419bb721d66d3de8b2d1b0dbe7 # shrinks to sig_num = 8
+cc 00e3f96aa4b9040573a82d614121085bec47b58a424e44c1a374c64a3035d10a # shrinks to sig_num = 1
+cc 5d5e00ccf08d498023f58317418752a4249547675afc0babe80a60afda0ed767 # shrinks to sig_num = 1, handler_addr = 4294967296

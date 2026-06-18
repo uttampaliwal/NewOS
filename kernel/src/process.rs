@@ -135,6 +135,8 @@ pub struct ProcessControlBlock {
     pub signal_mask: SignalSet,
     pub signal_handlers: [SignalAction; 64],
     pub pending_signals: SignalSet,
+    /// User-space address of the active SignalFrame, or None.
+    pub pending_signal_frame: Option<u64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +248,7 @@ impl Process {
                         signal_mask: SignalSet::empty(),
                         signal_handlers: [SignalAction::Default; 64],
                         pending_signals: SignalSet::empty(),
+                        pending_signal_frame: None,
                     }))
                 }
             };
@@ -289,6 +292,7 @@ impl Process {
             signal_mask: SignalSet::empty(),
             signal_handlers: [SignalAction::Default; 64],
             pending_signals: SignalSet::empty(),
+            pending_signal_frame: None,
         };
 
         let process = Self {
@@ -467,6 +471,7 @@ impl Process {
                 signal_mask: SignalSet::empty(), // Reset signals on exec
                 signal_handlers: [SignalAction::Default; 64],
                 pending_signals: SignalSet::empty(),
+                pending_signal_frame: None,
             })),
         };
 
@@ -702,6 +707,7 @@ impl Process {
             signal_mask: parent.signal_mask,
             signal_handlers: parent.signal_handlers,
             pending_signals: SignalSet::empty(),
+            pending_signal_frame: None,
         };
 
         Self {

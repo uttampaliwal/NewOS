@@ -7,6 +7,7 @@ use x86_64::structures::paging::{
 };
 
 pub mod scheduler;
+pub mod signals;
 
 #[cfg(target_arch = "x86_64")]
 pub type TaskEntry = extern "sysv64" fn() -> !;

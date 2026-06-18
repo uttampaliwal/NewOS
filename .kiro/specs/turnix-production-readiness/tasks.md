@@ -331,24 +331,27 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that `connect` to a non-existent path returns `Err`
     - _Requirements: 18.5, 18.6_
 
-- [ ] 26. Implement the signal dispatcher in `kernel/src/task/signals.rs`
-  - [ ] 26.1 Create `kernel/src/task/signals.rs` with `SignalSet` (64-bit bitmask), `SignalAction` (`Default`, `Ignore`, `Handler(VirtAddr)`), and `SignalDispatcher`
+- [x] 26. Implement the signal dispatcher in `kernel/src/task/signals.rs`
+  - [x] 26.1 Create `kernel/src/task/signals.rs` with signal delivery, `SignalFrame`, default actions, `check_pending_signals`, `handle_sigreturn_with_frame`, and `send_signal`
     - Implement `sigaction` syscall: register handler in `ProcessControlBlock.signal_handlers`
     - Implement `sigprocmask` syscall: update `ProcessControlBlock.signal_mask`
-    - Implement signal delivery on return to user mode: if `pending_signals & !signal_mask != 0`, save register state on user stack (signal frame), set `rip` to handler, set `rdi` to signal number
-    - Implement `sigreturn` syscall: restore saved register state from signal frame
-    - Enforce `SIGKILL` and `SIGSTOP` cannot be caught or ignored
-    - Support all 19 POSIX signals listed in requirement 19.1
-    - Wire signal check into the SYSCALL/SYSRET return path in `kernel/src/interrupts/mod.rs`
+    - Implement signal delivery on return to user mode: if `pending_signals & !signal_mask != 0`, save register state on user stack (`SignalFrame`), set `rip` → handler, `rdi` → signal number
+    - Implement `sigreturn` syscall: restore saved register state from `SignalFrame`
+    - Implement `kill` syscall: set `pending_signals` on target process via `send_signal`
+    - Enforce `SIGKILL` and `SIGSTOP` cannot be caught, ignored, or masked
+    - Support all 31 POSIX signal numbers (1–31) with correct default actions
+    - Wire signal check into `syscall_dispatch` in `kernel/src/arch/x86_64/syscall_arch.rs`
+    - Add `pending_signal_frame: Option<u64>` to `ProcessControlBlock`
+    - Add `Syscall::Sigaction(33)`, `Sigprocmask(34)`, `Sigreturn(35)`, `Kill(36)` to ABI
     - _Requirements: 19.1, 19.2, 19.3, 19.4, 19.5, 19.6_
-  - [ ]* 26.2 Write property test for Signal Handler Delivery
-    - **Property 18: Signal Handler Delivery**
+  - [x]* 26.2 Write property test for Signal Handler Delivery
+    - **Property 19: Signal Handler Delivery**
     - **Validates: Requirements 19.2, 19.4, 19.5**
-    - Use `proptest` to generate signal numbers and handler addresses; assert handler is invoked with correct signal number and register state is restored after `sigreturn`
-  - [ ]* 26.3 Write property test for Signal Mask Blocking
-    - **Property 19: Signal Mask Blocking**
+    - Use `proptest` to generate signal numbers and handler addresses; assert handler is invoked with correct signal number and register state is restored after `handle_sigreturn_with_frame`
+  - [x]* 26.3 Write property test for Signal Mask Blocking
+    - **Property 20: Signal Mask Blocking**
     - **Validates: Requirements 19.6**
-    - Use `proptest` to generate signal masks; assert masked signals are not delivered while mask is active and are delivered when mask is cleared
+    - Use `proptest` to generate signal numbers; assert masked signals are not delivered while mask is active and are delivered when mask is cleared
 
 - [ ] 27. Implement POSIX stdin/stdout/stderr and `dup`/`dup2`
   - [ ] 27.1 Implement `dup` and `dup2` syscalls in `kernel/src/syscall/handler.rs`

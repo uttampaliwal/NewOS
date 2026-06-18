@@ -3,6 +3,7 @@ use crate::fs::ext4::Ext4Backend;
 use crate::fs::tmpfs::TmpfsBackend;
 use crate::fs::vfs::{FsBackend, MountFlags, UnixSocketState};
 use crate::memory::vma::{VmaFlags, VmaProt};
+use crate::process::SignalAction;
 use crate::vfs::VFS;
 use alloc::sync::Arc;
 use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
@@ -61,6 +62,14 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Listen => handle_listen(args),
         Syscall::Accept => handle_accept(args),
         Syscall::Connect => handle_connect(args),
+        Syscall::Sigaction => handle_sigaction(args),
+        Syscall::Sigprocmask => handle_sigprocmask(args),
+        Syscall::Sigreturn => {
+            // Sigreturn is handled specially via handle_sigreturn_with_frame
+            // in syscall_dispatch. This arm should not be reached.
+            SyscallResult::Success(0)
+        }
+        Syscall::Kill => handle_kill(args),
     }
 }
 
@@ -951,6 +960,119 @@ fn handle_connect(args: SyscallArgs) -> SyscallResult {
     }
 }
 
+// -----------------------------------------------------------------------
+// Signal syscalls
+// -----------------------------------------------------------------------
+
+/// `sigaction(sig: i32, new: *const SigAction, old: *mut SigAction) -> 0`
+///
+/// `SigAction` layout: { handler_or_default: u64, flags: u32, restorer: u64 }
+///   - handler_or_default = 0 → SIG_DFL, 1 → SIG_IGN, else → handler address
+fn handle_sigaction(args: SyscallArgs) -> SyscallResult {
+    let sig = args.arg0 as u8;
+    let new_ptr = args.arg1 as *const [u64; 3]; // {action, flags, restorer}
+    let old_ptr = args.arg2 as *mut [u64; 3];
+
+    if sig < 1 || sig > 31 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+    // SIGKILL and SIGSTOP can't be caught or ignored.
+    if sig == 9 || sig == 19 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let current = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(4), // ESRCH
+    };
+
+    let mut inner = current.inner.lock();
+
+    // Return the old action if requested.
+    if !old_ptr.is_null() {
+        let old_action = &inner.signal_handlers[sig as usize];
+        let old_val = match old_action {
+            SignalAction::Default => [0u64, 0, 0],
+            SignalAction::Ignore => [1u64, 0, 0],
+            SignalAction::Handler(addr) => [*addr, 0, 0],
+        };
+        unsafe { old_ptr.write(old_val); }
+    }
+
+    // Set the new action.
+    if !new_ptr.is_null() {
+        let new_action = unsafe { *new_ptr };
+        let action = match new_action[0] {
+            0 => SignalAction::Default,
+            1 => SignalAction::Ignore,
+            addr => SignalAction::Handler(addr),
+        };
+        inner.signal_handlers[sig as usize] = action;
+    }
+
+    SyscallResult::Success(0)
+}
+
+/// `sigprocmask(how: i32, new: *const u64, old: *mut u64) -> 0`
+///   how: 0 = SIG_BLOCK, 1 = SIG_UNBLOCK, 2 = SIG_SETMASK
+fn handle_sigprocmask(args: SyscallArgs) -> SyscallResult {
+    let how = args.arg0 as i32;
+    let new_ptr = args.arg1 as *const u64;
+    let old_ptr = args.arg2 as *mut u64;
+
+    let current = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(4), // ESRCH
+    };
+
+    let mut inner = current.inner.lock();
+
+    // Return the old mask if requested.
+    if !old_ptr.is_null() {
+        unsafe { old_ptr.write(inner.signal_mask.0); }
+    }
+
+    if !new_ptr.is_null() {
+        let new_mask_val = unsafe { *new_ptr };
+        // SIGKILL and SIGSTOP can't be masked.
+        let new_mask = new_mask_val & !((1u64 << 9) | (1u64 << 19));
+        match how {
+            0 => inner.signal_mask.0 |= new_mask,  // SIG_BLOCK
+            1 => inner.signal_mask.0 &= !new_mask, // SIG_UNBLOCK
+            2 => inner.signal_mask.0 = new_mask,   // SIG_SETMASK
+            _ => return SyscallResult::Error(22),  // EINVAL
+        }
+    }
+
+    SyscallResult::Success(0)
+}
+
+/// `kill(pid: i32, sig: i32) -> 0`
+fn handle_kill(args: SyscallArgs) -> SyscallResult {
+    let pid = args.arg0 as isize;
+    let sig = args.arg1 as u8;
+
+    if sig > 31 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let target_pid = if pid <= 0 {
+        // pid <= 0 not fully supported; send to current process group.
+        match crate::task::scheduler::get_current_process() {
+            Some(p) => p.inner.lock().id,
+            None => return SyscallResult::Error(3), // ESRCH
+        }
+    } else {
+        crate::process::ProcessId(pid as usize)
+    };
+
+    if crate::task::signals::send_signal(target_pid, sig) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(3) // ESRCH
+    }
+}
+
 pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallResult {
     let syscall = match Syscall::from_u16(header.number) {
         Some(s) => s,
@@ -997,6 +1119,7 @@ mod tests {
                 signal_mask: SignalSet::empty(),
                 signal_handlers: [SignalAction::Default; 64],
                 pending_signals: SignalSet::empty(),
+                pending_signal_frame: None,
             }))
         };
         let task = Task {
@@ -1124,6 +1247,7 @@ mod tests {
             signal_mask: SignalSet::empty(),
             signal_handlers: [SignalAction::Default; 64],
             pending_signals: SignalSet::empty(),
+            pending_signal_frame: None,
         }))
     }
 

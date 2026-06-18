@@ -133,8 +133,22 @@ pub extern "C" fn syscall_dispatch(frame: &mut SyscallFrame) -> u64 {
             return crate::syscall::handler::handle_fork_with_frame(frame);
         }
 
+        // Sigreturn needs access to the frame to restore saved registers.
+        if syscall == Syscall::Sigreturn {
+            let result = crate::task::signals::handle_sigreturn_with_frame(frame);
+            // Still check pending signals after sigreturn.
+            crate::task::signals::check_pending_signals(frame);
+            return result;
+        }
+
         let result = crate::syscall::handler::handle_syscall(syscall, args);
-        encode_syscall_result(result)
+        let encoded = encode_syscall_result(result);
+
+        // Store the return value in the frame so check_pending_signals
+        // can see it, then check for pending signals.
+        frame.rax = encoded;
+        crate::task::signals::check_pending_signals(frame);
+        encoded
     } else {
         0xFFFFFFFFFFFFFFFFu64
     }

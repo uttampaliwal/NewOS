@@ -45,6 +45,10 @@ pub enum Syscall {
     Listen = 30,
     Accept = 31,
     Connect = 32,
+    Sigaction = 33,
+    Sigprocmask = 34,
+    Sigreturn = 35,
+    Kill = 36,
 }
 
 impl Syscall {
@@ -82,6 +86,10 @@ impl Syscall {
             30 => Some(Self::Listen),
             31 => Some(Self::Accept),
             32 => Some(Self::Connect),
+            33 => Some(Self::Sigaction),
+            34 => Some(Self::Sigprocmask),
+            35 => Some(Self::Sigreturn),
+            36 => Some(Self::Kill),
             _ => None,
         }
     }
@@ -331,5 +339,45 @@ mod tests {
     #[test]
     fn connect_syscall_round_trip() {
         assert_eq!(Syscall::from_u16(32), Some(Syscall::Connect));
+    }
+
+    #[test]
+    fn sigaction_syscall_id_is_thirty_three() {
+        assert_eq!(Syscall::Sigaction as u16, 33);
+    }
+
+    #[test]
+    fn sigaction_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(33), Some(Syscall::Sigaction));
+    }
+
+    #[test]
+    fn sigprocmask_syscall_id_is_thirty_four() {
+        assert_eq!(Syscall::Sigprocmask as u16, 34);
+    }
+
+    #[test]
+    fn sigprocmask_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(34), Some(Syscall::Sigprocmask));
+    }
+
+    #[test]
+    fn sigreturn_syscall_id_is_thirty_five() {
+        assert_eq!(Syscall::Sigreturn as u16, 35);
+    }
+
+    #[test]
+    fn sigreturn_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(35), Some(Syscall::Sigreturn));
+    }
+
+    #[test]
+    fn kill_syscall_id_is_thirty_six() {
+        assert_eq!(Syscall::Kill as u16, 36);
+    }
+
+    #[test]
+    fn kill_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(36), Some(Syscall::Kill));
     }
 }
