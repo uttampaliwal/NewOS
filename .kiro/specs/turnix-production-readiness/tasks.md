@@ -359,18 +359,18 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Ensure `fork` inherits FDs 0/1/2 unless marked `O_CLOEXEC`
     - Route writes to FD 1/2 to the TTY device; route reads from FD 0 to the TTY blocking read
     - _Requirements: 20.1, 20.2, 20.3, 20.4, 20.5_
-  - [ ]* 27.2 Write unit tests for dup/dup2 semantics
+  - [x]* 27.2 Write unit tests for dup/dup2 semantics
     - Test `dup2(old, new)` closes `new` if already open before duplicating
     - Test that FD 0/1/2 are inherited across fork
     - _Requirements: 20.2, 20.5_
 
-- [ ] 28. Implement and extend the init daemon in `userland/init/`
-  - [ ] 28.1 Extend `userland/init/src/main.rs` to read service manifests from `/etc/turnix/services/` (TOML files), start each service in dependency order using `fork`/`exec`, and call `wait` in a loop to reap children within 1 second
+- [x] 28. Implement and extend the init daemon in `userland/init/`
+  - [x] 28.1 Extend `userland/init/src/main.rs` to read service manifests from `/etc/turnix/services/` (TOML files), start each service in dependency order using `fork`/`exec`, and call `wait` in a loop to reap children within 1 second
     - Implement orphan reaping: PID 1 calls `wait(-1)` in a loop to reap any reparented orphans
     - Handle `SIGTERM` and ACPI power-button event: stop services in reverse dependency order, then call `shutdown` syscall
     - Log service start failures and continue starting remaining services
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5, 16.6_
-  - [ ]* 28.2 Write unit tests for init service dependency ordering
+  - [x]* 28.2 Write unit tests for init service dependency ordering
     - Test that services with `after` dependencies start after their dependencies
     - Test that a service failing to start does not block remaining services
     - _Requirements: 16.2, 16.6_

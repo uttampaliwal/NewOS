@@ -8,10 +8,13 @@ name = "init"
 test = false
 required-features = ["host_bin"]
 
+[lib]
+name = "init"
+path = "src/lib.rs"
+
 [dependencies]
 turnix-abi = { path = "../../shared/abi" }
 libturnix = { path = "../libturnix" }
 
 [features]
 host_bin = []
-

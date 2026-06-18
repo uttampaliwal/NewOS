@@ -78,6 +78,37 @@ pub fn exit(code: i32) -> ! {
     }
 }
 
+pub fn wait(status: *mut i32) -> u64 {
+    syscall1(Syscall::Wait as u64, status as u64)
+}
+
+pub fn waitpid(pid: i32, status: *mut i32, options: i32) -> u64 {
+    syscall3(Syscall::Waitpid as u64, pid as u64, status as u64, options as u64)
+}
+
+pub fn kill(pid: i32, sig: u8) -> u64 {
+    syscall2(Syscall::Kill as u64, pid as u64, sig as u64)
+}
+
+pub fn sigaction(sig: u8, new: *const [u64; 3], old: *mut [u64; 3]) -> u64 {
+    syscall3(Syscall::Sigaction as u64, sig as u64, new as u64, old as u64)
+}
+
+pub fn sigprocmask(how: i32, new: *const u64, old: *mut u64) -> u64 {
+    syscall3(Syscall::Sigprocmask as u64, how as u64, new as u64, old as u64)
+}
+
+pub fn shutdown() -> ! {
+    syscall0(Syscall::Shutdown as u64);
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+pub fn read_shutdown_signal() -> u64 {
+    syscall0(Syscall::ReadShutdownSignal as u64)
+}
+
 pub fn uptime() -> u64 {
     syscall0(Syscall::Uptime as u64)
 }

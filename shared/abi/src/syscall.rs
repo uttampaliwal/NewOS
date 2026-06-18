@@ -49,6 +49,10 @@ pub enum Syscall {
     Sigprocmask = 34,
     Sigreturn = 35,
     Kill = 36,
+    Dup = 37,
+    Dup2 = 38,
+    Shutdown = 39,
+    ReadShutdownSignal = 40,
 }
 
 impl Syscall {
@@ -90,6 +94,10 @@ impl Syscall {
             34 => Some(Self::Sigprocmask),
             35 => Some(Self::Sigreturn),
             36 => Some(Self::Kill),
+            37 => Some(Self::Dup),
+            38 => Some(Self::Dup2),
+            39 => Some(Self::Shutdown),
+            40 => Some(Self::ReadShutdownSignal),
             _ => None,
         }
     }
@@ -379,5 +387,45 @@ mod tests {
     #[test]
     fn kill_syscall_round_trip() {
         assert_eq!(Syscall::from_u16(36), Some(Syscall::Kill));
+    }
+
+    #[test]
+    fn dup_syscall_id_is_thirty_seven() {
+        assert_eq!(Syscall::Dup as u16, 37);
+    }
+
+    #[test]
+    fn dup_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(37), Some(Syscall::Dup));
+    }
+
+    #[test]
+    fn dup2_syscall_id_is_thirty_eight() {
+        assert_eq!(Syscall::Dup2 as u16, 38);
+    }
+
+    #[test]
+    fn dup2_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(38), Some(Syscall::Dup2));
+    }
+
+    #[test]
+    fn shutdown_syscall_id_is_thirty_nine() {
+        assert_eq!(Syscall::Shutdown as u16, 39);
+    }
+
+    #[test]
+    fn shutdown_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(39), Some(Syscall::Shutdown));
+    }
+
+    #[test]
+    fn read_shutdown_signal_syscall_id_is_forty() {
+        assert_eq!(Syscall::ReadShutdownSignal as u16, 40);
+    }
+
+    #[test]
+    fn read_shutdown_signal_syscall_round_trip() {
+        assert_eq!(Syscall::from_u16(40), Some(Syscall::ReadShutdownSignal));
     }
 }

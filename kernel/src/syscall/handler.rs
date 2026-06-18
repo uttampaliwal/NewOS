@@ -70,6 +70,10 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
             SyscallResult::Success(0)
         }
         Syscall::Kill => handle_kill(args),
+        Syscall::Dup => handle_dup(args),
+        Syscall::Dup2 => handle_dup2(args),
+        Syscall::Shutdown => handle_shutdown(args),
+        Syscall::ReadShutdownSignal => handle_read_shutdown_signal(args),
     }
 }
 
@@ -1073,6 +1077,54 @@ fn handle_kill(args: SyscallArgs) -> SyscallResult {
     }
 }
 
+/// `dup(oldfd: i32) -> newfd`
+fn handle_dup(args: SyscallArgs) -> SyscallResult {
+    let oldfd = args.arg0 as usize;
+    let mut vfs = VFS.lock();
+    match vfs.dup_fd(oldfd) {
+        Some(newfd) => SyscallResult::Success(newfd as u64),
+        None => SyscallResult::Error(9), // EBADF
+    }
+}
+
+/// `dup2(oldfd: i32, newfd: i32) -> newfd`
+fn handle_dup2(args: SyscallArgs) -> SyscallResult {
+    let oldfd = args.arg0 as usize;
+    let newfd = args.arg1 as usize;
+    if newfd > 1023 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+    let mut vfs = VFS.lock();
+    match vfs.dup2_fd(oldfd, newfd) {
+        Some(fd) => SyscallResult::Success(fd as u64),
+        None => SyscallResult::Error(9), // EBADF
+    }
+}
+
+/// `shutdown() -> !`
+/// Powers off the machine.  Never returns.
+fn handle_shutdown(_args: SyscallArgs) -> SyscallResult {
+    crate::serial::println!("[syscall] shutdown() called by init");
+    // QEMU/ACPI poweroff: try several common ports.
+    unsafe {
+        // QEMU
+        core::arch::asm!("outw %ax, %dx", in("ax") 0x2000u16, in("dx") 0x604u16, options(att_syntax));
+        // Bochs/older QEMU fallback
+        core::arch::asm!("outw %ax, %dx", in("ax") 0x2000u16, in("dx") 0xB004u16, options(att_syntax));
+    }
+    loop {
+        x86_64::instructions::hlt();
+    }
+}
+
+/// `read_shutdown_signal() -> u64`
+/// Returns 1 if the ACPI power-button shutdown signal has been received,
+/// 0 otherwise.  Consumes the signal (clears it after reading).
+fn handle_read_shutdown_signal(_args: SyscallArgs) -> SyscallResult {
+    let pending = crate::acpi::take_init_shutdown_signal();
+    SyscallResult::Success(if pending { 1 } else { 0 })
+}
+
 pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallResult {
     let syscall = match Syscall::from_u16(header.number) {
         Some(s) => s,
@@ -1451,5 +1503,72 @@ mod tests {
 
         // Cleanup child_b.
         PROCESS_TABLE.lock().remove(&child_b_pid);
+    }
+
+    // ------------------------------------------------------------------
+    // Dup / Dup2 tests
+    // ------------------------------------------------------------------
+
+    fn make_test_fd(vfs: &mut crate::vfs::Vfs, name: &str) -> usize {
+        vfs.insert_fd(crate::vfs::FileDescriptor::new(
+            crate::vfs::InodeId(0),
+            alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+            crate::vfs::OpenFlags::RDWR,
+            crate::vfs::FdKind::Regular,
+            alloc::string::String::from(name),
+        ))
+    }
+
+    #[test]
+    fn dup_returns_new_fd() {
+        let mut vfs = crate::vfs::VFS.lock();
+        let fd = make_test_fd(&mut vfs, "test");
+        let newfd = vfs.dup_fd(fd).expect("dup should succeed");
+        assert_ne!(fd, newfd, "dup must return a different fd number");
+        assert!(vfs.get_fd(fd).is_some(), "original fd must remain open");
+        assert!(vfs.get_fd(newfd).is_some(), "new fd must exist");
+    }
+
+    #[test]
+    fn dup2_uses_specified_fd() {
+        let mut vfs = crate::vfs::VFS.lock();
+        let fd = make_test_fd(&mut vfs, "test");
+        let target = 99usize;
+        let result = vfs.dup2_fd(fd, target).expect("dup2 should succeed");
+        assert_eq!(result, target, "dup2 must return the target fd");
+        assert!(vfs.get_fd(fd).is_some(), "original fd must remain open");
+        assert!(vfs.get_fd(target).is_some(), "target fd must exist");
+        let _ = vfs.close_fd(target);
+    }
+
+    #[test]
+    fn dup2_closes_existing_target() {
+        let mut vfs = crate::vfs::VFS.lock();
+        let fd_a = make_test_fd(&mut vfs, "a");
+        let fd_b = make_test_fd(&mut vfs, "b");
+        let result = vfs.dup2_fd(fd_a, fd_b).expect("dup2 should succeed");
+        assert_eq!(result, fd_b, "dup2 must return fd_b");
+        assert!(vfs.get_fd(fd_b).is_some(), "target fd must still exist");
+    }
+
+    #[test]
+    fn dup2_same_fd_is_noop() {
+        let mut vfs = crate::vfs::VFS.lock();
+        let fd = make_test_fd(&mut vfs, "test");
+        let result = vfs.dup2_fd(fd, fd).expect("dup2(oldfd, oldfd) should succeed");
+        assert_eq!(result, fd, "dup2(oldfd, oldfd) must return oldfd");
+        assert!(vfs.get_fd(fd).is_some(), "fd must still exist");
+    }
+
+    #[test]
+    fn dup_bad_fd_returns_none() {
+        let mut vfs = crate::vfs::VFS.lock();
+        assert!(vfs.dup_fd(9999).is_none(), "dup of invalid fd must return None");
+    }
+
+    #[test]
+    fn dup2_bad_fd_returns_none() {
+        let mut vfs = crate::vfs::VFS.lock();
+        assert!(vfs.dup2_fd(9999, 100).is_none(), "dup2 of invalid oldfd must return None");
     }
 }

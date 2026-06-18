@@ -785,6 +785,41 @@ impl Vfs {
         idx
     }
 
+    /// Return a copy of the FileDescriptor at `fd_idx`, or `None`.
+    pub fn get_fd(&self, fd_idx: usize) -> Option<FileDescriptor> {
+        self.open_files.get(&fd_idx).cloned()
+    }
+
+    /// Insert a FileDescriptor at a free index and return the index.
+    /// Used by tests and init setup.
+    pub fn insert_fd(&mut self, fd: FileDescriptor) -> usize {
+        let idx = self.alloc_fd();
+        self.open_files.insert(idx, fd);
+        idx
+    }
+
+    /// Set up FDs 0, 1, 2 as /dev/tty for init processes.
+    ///
+    /// Closes any existing FDs 0–2, creates three TTY file descriptors,
+    /// and returns them as `[fd0, fd1, fd2]`.
+    pub fn setup_stdio(&mut self) -> [usize; 3] {
+        for i in 0..3 {
+            let _ = self.close_fd(i);
+        }
+        let tty = FileDescriptor {
+            inode: InodeId(2), // matches the legacy "tty" entry
+            backend: Arc::new(NullBackend),
+            offset: AtomicU64::new(0),
+            flags: OpenFlags::RDWR,
+            kind: FdKind::Regular,
+            name: alloc::string::String::from("tty"),
+        };
+        self.open_files.insert(0, tty.clone());
+        self.open_files.insert(1, tty.clone());
+        self.open_files.insert(2, tty);
+        [0, 1, 2]
+    }
+
     /// Create a socket fd wrapping an already‑connected `ConnectedEnd`.
     pub fn create_connected_socket_fd(&mut self, end: crate::ipc::unix_socket::ConnectedEnd) -> usize {
         let sock = Arc::new(UnixSocketState::from_connected_end(end));
@@ -1013,6 +1048,29 @@ impl Vfs {
     /// Close fd — legacy wrapper.
     pub fn close(&mut self, fd_idx: usize) -> bool {
         self.close_fd(fd_idx)
+    }
+
+    /// Duplicate `fd` — allocate a new fd number that refers to the same
+    /// open file description.  Returns the new fd, or `None` if `fd` is
+    /// not open.
+    pub fn dup_fd(&mut self, fd: usize) -> Option<usize> {
+        let entry = self.open_files.get(&fd)?.clone();
+        let new_fd = self.alloc_fd();
+        self.open_files.insert(new_fd, entry);
+        Some(new_fd)
+    }
+
+    /// Duplicate `oldfd` onto `newfd`.  If `newfd` was already open it is
+    /// closed first.  `dup2(oldfd, oldfd)` is a no-op that returns `oldfd`.
+    pub fn dup2_fd(&mut self, oldfd: usize, newfd: usize) -> Option<usize> {
+        if oldfd == newfd {
+            return if self.open_files.contains_key(&oldfd) { Some(oldfd) } else { None };
+        }
+        let entry = self.open_files.get(&oldfd)?.clone();
+        // Close newfd if it's open (ignore failure).
+        let _ = self.close_fd(newfd);
+        self.open_files.insert(newfd, entry);
+        Some(newfd)
     }
 
     /// Read from fd — legacy wrapper that also handles the TTY special case.

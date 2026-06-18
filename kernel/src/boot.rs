@@ -10,6 +10,8 @@ use alloc::sync::Arc;
 use lazy_static::lazy_static;
 use spin::Mutex;
 
+
+
 lazy_static! {
     pub static ref FRAME_ALLOCATOR: Mutex<Option<FrameAllocator<'static>>> = Mutex::new(None);
     pub static ref PHYS_MEM_OFFSET: Mutex<Option<VirtAddr>> = Mutex::new(None);
@@ -302,7 +304,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                 let _ = writeln!(writer, "[STG: INIT_PROC_REGISTERED]");
 
                 let init_task = crate::task::Task::new_user(
-                    init_proc,
+                    init_proc.clone(),
                     &mut mapper,
                     get_frame_allocator().lock().as_mut().unwrap(),
                     phys_mem_offset,
@@ -373,6 +375,18 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                         ));
                         let _ = writeln!(writer, "[STG: FAULT_TASK_ADDED]");
                         let _ = writeln!(writer, "[STG: FAULT_TESTER_READY]");
+                    }
+                }
+
+                // 5.3 Set up stdin (0), stdout (1), stderr (2) as /dev/tty
+                vfs.setup_stdio();
+                {
+                    let table = crate::process::PROCESS_TABLE.lock();
+                    if let Some(pcb_arc) = table.get(&init_proc.id()) {
+                        let mut pcb = pcb_arc.lock();
+                            pcb.fd_table[0] = vfs.get_fd(0);
+                        pcb.fd_table[1] = vfs.get_fd(1);
+                        pcb.fd_table[2] = vfs.get_fd(2);
                     }
                 }
 
