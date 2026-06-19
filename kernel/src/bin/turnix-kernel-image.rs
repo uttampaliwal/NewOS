@@ -21,7 +21,7 @@ _start:
     .section .bss.stack,"aw",@nobits
     .align 16
 boot_stack:
-    .skip 65536
+    .skip 262144
 boot_stack_top:
 "#
 );

@@ -320,28 +320,37 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                     let mut shell_elf_data = alloc::vec![0u8; shell_stat.size as usize];
                     if let Some(shell_len) = vfs.read(shell_fd, &mut shell_elf_data) {
                         let _ = writeln!(writer, "[STG: SHELL_PROC_BUILD]");
-                        let shell_proc = crate::process::Process::new_from_elf(
+                        let shell_proc = match crate::process::Process::new_from_elf(
                             &shell_elf_data[..shell_len],
                             get_frame_allocator().lock().as_mut().unwrap(),
                             phys_mem_offset,
-                        )
-                        .expect("failed to load shell process ELF");
-                        let _ = writeln!(writer, "[STG: SHELL_PROC_BUILT]");
+                        ) {
+                            Ok(p) => {
+                                let _ = writeln!(writer, "[STG: SHELL_PROC_BUILT]");
+                                Some(p)
+                            }
+                            Err(e) => {
+                                let _ = writeln!(writer, "[STG: SHELL_ELF_ERR {:?}]", e);
+                                None
+                            }
+                        };
 
                         // Add shell process to PROCESS_TABLE
-                        {
-                            let mut process_table = crate::process::PROCESS_TABLE.lock();
-                            process_table.insert(shell_proc.id(), shell_proc.inner.clone());
-                        }
-                        let _ = writeln!(writer, "[STG: SHELL_PROC_REGISTERED]");
+                        if let Some(ref shell_proc) = shell_proc {
+                            {
+                                let mut process_table = crate::process::PROCESS_TABLE.lock();
+                                process_table.insert(shell_proc.id(), shell_proc.inner.clone());
+                            }
+                            let _ = writeln!(writer, "[STG: SHELL_PROC_REGISTERED]");
 
-                        crate::task::scheduler::add_task(crate::task::Task::new_user(
-                            shell_proc,
-                            &mut mapper,
-                            get_frame_allocator().lock().as_mut().unwrap(),
-                            phys_mem_offset,
-                        ));
-                        let _ = writeln!(writer, "[STG: SHELL_TASK_ADDED]");
+                            crate::task::scheduler::add_task(crate::task::Task::new_user(
+                                shell_proc.clone(),
+                                &mut mapper,
+                                get_frame_allocator().lock().as_mut().unwrap(),
+                                phys_mem_offset,
+                            ));
+                            let _ = writeln!(writer, "[STG: SHELL_TASK_ADDED]");
+                        }
                         let _ = writeln!(writer, "[STG: SHELL_READY]");
                     }
                 }
@@ -352,28 +361,37 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                     let mut fault_elf_data = alloc::vec![0u8; fault_stat.size as usize];
                     if let Some(fault_len) = vfs.read(fault_fd, &mut fault_elf_data) {
                         let _ = writeln!(writer, "[STG: FAULT_PROC_BUILD]");
-                        let fault_proc = crate::process::Process::new_from_elf(
+                        let fault_proc = match crate::process::Process::new_from_elf(
                             &fault_elf_data[..fault_len],
                             get_frame_allocator().lock().as_mut().unwrap(),
                             phys_mem_offset,
-                        )
-                        .expect("failed to load fault-tester process ELF");
-                        let _ = writeln!(writer, "[STG: FAULT_PROC_BUILT]");
+                        ) {
+                            Ok(p) => {
+                                let _ = writeln!(writer, "[STG: FAULT_PROC_BUILT]");
+                                Some(p)
+                            }
+                            Err(e) => {
+                                let _ = writeln!(writer, "[STG: FAULT_ELF_ERR {:?}]", e);
+                                None
+                            }
+                        };
 
                         // Add fault-tester process to PROCESS_TABLE
-                        {
-                            let mut process_table = crate::process::PROCESS_TABLE.lock();
-                            process_table.insert(fault_proc.id(), fault_proc.inner.clone());
-                        }
-                        let _ = writeln!(writer, "[STG: FAULT_PROC_REGISTERED]");
+                        if let Some(ref fault_proc) = fault_proc {
+                            {
+                                let mut process_table = crate::process::PROCESS_TABLE.lock();
+                                process_table.insert(fault_proc.id(), fault_proc.inner.clone());
+                            }
+                            let _ = writeln!(writer, "[STG: FAULT_PROC_REGISTERED]");
 
-                        crate::task::scheduler::add_task(crate::task::Task::new_user(
-                            fault_proc,
-                            &mut mapper,
-                            get_frame_allocator().lock().as_mut().unwrap(),
-                            phys_mem_offset,
-                        ));
-                        let _ = writeln!(writer, "[STG: FAULT_TASK_ADDED]");
+                            crate::task::scheduler::add_task(crate::task::Task::new_user(
+                                fault_proc.clone(),
+                                &mut mapper,
+                                get_frame_allocator().lock().as_mut().unwrap(),
+                                phys_mem_offset,
+                            ));
+                            let _ = writeln!(writer, "[STG: FAULT_TASK_ADDED]");
+                        }
                         let _ = writeln!(writer, "[STG: FAULT_TESTER_READY]");
                     }
                 }

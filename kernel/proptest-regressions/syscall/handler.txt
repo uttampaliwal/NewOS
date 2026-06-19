@@ -7,3 +7,7 @@
 cc 696180c1bf8964440dc862d602cd696939610703a2a30353e697c1993acbfa24 # shrinks to exit_code = 27
 cc 8491ba41bb33baa22819dd2dff5008aee94fb9a2ca7d93028167be657a83f87b # shrinks to exit_code = 233
 cc 9bcbfa8ef9639211db41aed62dc3631954797205fa5a810ca5e8f0d9ebe9fc14 # shrinks to exit_code = 56
+cc 1adb9b5b6c6a3ec409edcc4fcc185b21e3abb3c56b0eb766a271fcba1c978182 # shrinks to exit_code = 156
+cc f965d5126354e0d09434c0081f6e18a95e40ab81fa19dde7b2943efbedc692f1 # shrinks to exit_code = 126
+cc ba2997a7fb5a45488e1d372799181a2e698d8fc45a944ec7be691861efb646fe # shrinks to exit_code = 241
+cc f3e95a2517fb0c27fc20b99536fac28eb071cbddbd1041827fe9821c3dbd559c # shrinks to exit_code = 253

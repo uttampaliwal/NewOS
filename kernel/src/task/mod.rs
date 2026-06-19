@@ -92,7 +92,7 @@ impl Task {
         mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
     ) -> Self {
-        const STACK_PAGES: u64 = 8;
+        const STACK_PAGES: u64 = 32;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
         const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
@@ -177,7 +177,7 @@ impl Task {
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: x86_64::VirtAddr,
     ) -> Self {
-        const STACK_PAGES: u64 = 8;
+        const STACK_PAGES: u64 = 32;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
         const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
@@ -286,7 +286,7 @@ impl Task {
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: VirtAddr,
     ) -> Self {
-        const STACK_PAGES: u64 = 8;
+        const STACK_PAGES: u64 = 32;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
         const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;
@@ -423,7 +423,7 @@ impl Task {
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: VirtAddr,
     ) -> Self {
-        const STACK_PAGES: u64 = 8;
+        const STACK_PAGES: u64 = 32;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
         const STACK_STRIDE: u64 = (STACK_PAGES + GUARD_PAGES + 1) * 4096;

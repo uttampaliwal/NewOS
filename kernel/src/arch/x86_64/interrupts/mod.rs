@@ -209,12 +209,7 @@ pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
     unsafe {
         LAPIC.lock().signal_eoi();
     }
-    let next_stack = crate::task::scheduler::timer_tick(stack_ptr);
-    if next_stack != 0 {
-        // Optional: add serial log for context switch
-        // crate::serial::print(format_args!("S"));
-    }
-    next_stack
+    crate::task::scheduler::timer_tick(stack_ptr)
 }
 
 #[unsafe(no_mangle)]
@@ -306,7 +301,28 @@ extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame,
     _error_code: u64,
 ) -> ! {
-    panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
+    use x86_64::registers::control::Cr2;
+    let cr2 = Cr2::read_raw();
+    crate::serial::println!("EXCEPTION: DOUBLE FAULT");
+    crate::serial::println!("  RIP={:#018x} CS={:#06x}",
+        stack_frame.instruction_pointer.as_u64(),
+        stack_frame.code_segment.0 as u64,
+    );
+    crate::serial::println!("  RSP={:#018x} SS={:#06x} CR2={:#018x}",
+        stack_frame.stack_pointer.as_u64(),
+        stack_frame.stack_segment.0 as u64,
+        cr2,
+    );
+    // Dump stack near RSP
+    let rsp = stack_frame.stack_pointer.as_u64();
+    unsafe {
+        for i in 0..16u64 {
+            let addr = rsp + i * 8;
+            let ptr = addr as *const u64;
+            crate::serial::println!("  [{:#018x}] = {:#018x}", addr, ptr.read_volatile());
+        }
+    }
+    panic!("DOUBLE FAULT");
 }
 
 extern "x86-interrupt" fn page_fault_handler(
@@ -330,6 +346,8 @@ extern "x86-interrupt" fn page_fault_handler(
         );
         crate::task::scheduler::exit_current_task();
     }
+
+    crate::serial::println!("[STG: PF_KERNEL addr={:?} err={:?}]", addr, error_code);
 
     let gs_base = GsBase::read();
     let kernel_gs_base = KernelGsBase::read();

@@ -339,7 +339,7 @@ mod tests {
             vma_set: crate::memory::vma::VmaSet::new(),
             mmap_next_addr: x86_64::VirtAddr::zero(),
             aslr_base: x86_64::VirtAddr::zero(),
-            fd_table: core::array::from_fn(|_| None),
+            fd_table: alloc::vec![None; 1024],
             signal_mask: crate::process::SignalSet::empty(),
             signal_handlers: [SignalAction::Default; 64],
             pending_signals: crate::process::SignalSet::empty(),

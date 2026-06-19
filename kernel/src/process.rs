@@ -131,7 +131,7 @@ pub struct ProcessControlBlock {
     pub mmap_next_addr: VirtAddr,
     pub aslr_base: VirtAddr,
     /// Per-process file-descriptor table (1024 entries).
-    pub fd_table: [Option<crate::vfs::FileDescriptor>; 1024],
+    pub fd_table: Vec<Option<crate::vfs::FileDescriptor>>,
     pub signal_mask: SignalSet,
     pub signal_handlers: [SignalAction; 64],
     pub pending_signals: SignalSet,
@@ -244,7 +244,7 @@ impl Process {
                         vma_set: VmaSet::new(),
                         mmap_next_addr: VirtAddr::new(DEFAULT_MMAP_BASE),
                         aslr_base: VirtAddr::zero(),
-                        fd_table: core::array::from_fn(|_| None),
+                        fd_table: alloc::vec![None; 1024],
                         signal_mask: SignalSet::empty(),
                         signal_handlers: [SignalAction::Default; 64],
                         pending_signals: SignalSet::empty(),
@@ -267,6 +267,7 @@ impl Process {
         let virtual_base = compute_load_base(elf_data, &header)?;
         crate::serial::println!("[STG: PROC_NEW_BASE]");
 
+        crate::serial::println!("[STG: PROC_CREATE_PML4]");
         let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
         crate::serial::println!("[STG: PROC_NEW_PML4]");
         let stack_size: u64 = 4096 * 8;
@@ -288,16 +289,18 @@ impl Process {
             vma_set: VmaSet::new(),
             mmap_next_addr: mmap_base,
             aslr_base,
-            fd_table: core::array::from_fn(|_| None),
+            fd_table: alloc::vec![None; 1024],
             signal_mask: SignalSet::empty(),
             signal_handlers: [SignalAction::Default; 64],
             pending_signals: SignalSet::empty(),
             pending_signal_frame: None,
         };
 
+        crate::serial::println!("[STG: PROC_INNER_BUILT]");
         let process = Self {
             inner: Arc::new(Mutex::new(inner)),
         };
+        crate::serial::println!("[STG: PROC_ARC_BUILT]");
 
         unsafe {
             // Map User Stack (read-write, non-executable)
@@ -435,11 +438,13 @@ impl Process {
                         .map(|_| index)
                 })
                 .collect::<Vec<_>>();
-            let retained_fd_table = core::array::from_fn(|index| {
+            let retained_fd_table: Vec<Option<crate::vfs::FileDescriptor>> = (0..1024)
+                .map(|index| {
                 inner.fd_table[index]
                     .clone()
                     .filter(|fd| !fd.flags.is_cloexec())
-            });
+            })
+                .collect();
             (inner.pml4_frame, inner.ppid, retained_fd_table, cloexec_fds)
         };
 
@@ -689,8 +694,8 @@ impl Process {
         let parent = self.inner.lock();
 
         // Clone fd table
-        let fd_table: [Option<crate::vfs::FileDescriptor>; 1024] =
-            core::array::from_fn(|i| parent.fd_table[i].clone());
+        let fd_table: Vec<Option<crate::vfs::FileDescriptor>> =
+            (0..1024).map(|i| parent.fd_table[i].clone()).collect();
 
         let new_inner = ProcessControlBlock {
             id: ProcessId::new(),
@@ -858,7 +863,7 @@ where
     const SECTION_TYPE_RELA: u32 = 4;
     const R_X86_64_RELATIVE: u32 = 8;
 
-    if header.elf_type != elf::ELF_TYPE_DYN || virtual_base == 0 {
+    if header.elf_type != elf::ELF_TYPE_DYN {
         return Ok(());
     }
 
@@ -935,11 +940,11 @@ where
             );
             let r_type = (r_info & 0xffff_ffff) as u32;
 
-            if r_type != R_X86_64_RELATIVE || r_offset < virtual_base {
+            if r_type != R_X86_64_RELATIVE {
                 continue;
             }
 
-            let target_virtual = VirtAddr::new(aslr_base.as_u64() + (r_offset - virtual_base));
+            let target_virtual = VirtAddr::new(aslr_base.as_u64() + r_offset);
             let target_physical = mapper
                 .translate_addr(target_virtual)
                 .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;

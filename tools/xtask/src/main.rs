@@ -377,6 +377,7 @@ fn run_uefi(workspace_root: &Path) {
             .expect("ESP root should exist"),
     );
     let mut qemu = ProcessCommand::new("qemu-system-x86_64");
+    qemu.arg("-cpu").arg("max");
     qemu.arg("-machine")
         .arg("q35")
         .arg("-m")

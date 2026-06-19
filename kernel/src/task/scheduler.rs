@@ -67,22 +67,18 @@ pub fn start_scheduling() -> ! {
 
     #[cfg(all(target_arch = "x86_64", target_os = "none"))]
     {
-        let mut next_ptr: usize = 0;
+        // Disable interrupts manually; they will be re-enabled by iretq.
+        x86_64::instructions::interrupts::disable();
 
-        x86_64::instructions::interrupts::without_interrupts(|| {
-            let mut sched = SCHEDULER.lock();
+        let mut sched = SCHEDULER.lock();
+        if let Some(mut next_task) = sched.tasks.pop_front() {
+            next_task.switch_to();
+            next_task.state = super::TaskState::Running;
+            sched.current_task = Some(next_task);
+            sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
+            let next_ptr = sched.current_task.as_ref().unwrap().stack_ptr;
+            drop(sched);
 
-            if let Some(mut next_task) = sched.tasks.pop_front() {
-                // Prepare hardware for the next task (TSS, CR3, GS Base)
-                next_task.switch_to();
-                next_task.state = super::TaskState::Running;
-                sched.current_task = Some(next_task);
-                sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
-                next_ptr = sched.current_task.as_ref().unwrap().stack_ptr;
-            }
-        });
-
-        if next_ptr != 0 {
             unsafe {
                 core::arch::asm!(
                     "mov rsp, {0}",
