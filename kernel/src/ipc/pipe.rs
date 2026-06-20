@@ -83,6 +83,10 @@ impl PipeBuffer {
     }
 
     pub fn write(&self, buf: &[u8]) -> usize {
+        if !self.is_read_end_open() {
+            // SIGPIPE would be delivered by the VFS layer; return 0 here.
+            return 0;
+        }
         let mut inner = self.inner.lock();
         inner.write(buf)
     }
@@ -318,5 +322,78 @@ mod tests {
                 i
             );
         }
+    }
+
+    #[test]
+    fn pipe_close_write_end_returns_eof_on_read() {
+        let pipe = PipeBuffer::new();
+        pipe.write(b"data");
+        pipe.close_write_end();
+        let mut buf = [0u8; 16];
+        let n = pipe.read(&mut buf);
+        assert_eq!(n, 4);
+        assert_eq!(&buf[..4], b"data");
+        // Second read returns 0 (EOF)
+        let n2 = pipe.read(&mut buf);
+        assert_eq!(n2, 0);
+    }
+
+    #[test]
+    fn pipe_close_read_end_returns_zero_on_write() {
+        let pipe = PipeBuffer::new();
+        // Fill pipe first
+        let fill = alloc::vec![0u8; PIPE_BUF_SIZE];
+        pipe.write(&fill);
+        pipe.close_read_end();
+        let n = pipe.write(b"hello");
+        assert_eq!(n, 0, "write after close_read_end should return 0");
+    }
+
+    #[test]
+    fn pipe_close_read_end_without_data_returns_zero_on_write() {
+        let pipe = PipeBuffer::new();
+        pipe.close_read_end();
+        let n = pipe.write(b"hello");
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn pipe_write_end_open_after_close() {
+        let pipe = PipeBuffer::new();
+        assert!(pipe.is_write_end_open());
+        pipe.close_write_end();
+        assert!(!pipe.is_write_end_open());
+    }
+
+    #[test]
+    fn pipe_read_end_open_after_close() {
+        let pipe = PipeBuffer::new();
+        assert!(pipe.is_read_end_open());
+        pipe.close_read_end();
+        assert!(!pipe.is_read_end_open());
+    }
+
+    #[test]
+    fn pipe_bytes_available_tracking() {
+        let pipe = PipeBuffer::new();
+        assert_eq!(pipe.bytes_available(), 0);
+        pipe.write(b"abc");
+        assert_eq!(pipe.bytes_available(), 3);
+        let mut buf = [0u8; 2];
+        pipe.read(&mut buf);
+        assert_eq!(pipe.bytes_available(), 1);
+        pipe.read(&mut buf);
+        assert_eq!(pipe.bytes_available(), 0);
+    }
+
+    #[test]
+    fn pipe_space_available_tracking() {
+        let pipe = PipeBuffer::new();
+        assert_eq!(pipe.space_available(), PIPE_BUF_SIZE);
+        pipe.write(&alloc::vec![0u8; 100]);
+        assert_eq!(pipe.space_available(), PIPE_BUF_SIZE - 100);
+        let mut buf = [0u8; 50];
+        pipe.read(&mut buf);
+        assert_eq!(pipe.space_available(), PIPE_BUF_SIZE - 50);
     }
 }

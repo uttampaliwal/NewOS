@@ -168,6 +168,9 @@ impl UnixSocketState {
 
     /// Bind this socket to `path` and start listening.
     pub fn bind(this: &Arc<Self>, path: &str) -> Result<String, ()> {
+        if path.is_empty() {
+            return Err(());
+        }
         let mut inner = this.inner.lock();
         match &*inner {
             SocketState::Idle => {}
@@ -451,5 +454,81 @@ mod tests {
 
         // Server should see peer as closed.
         assert!(server.is_peer_closed(), "server must detect peer close");
+    }
+
+    #[test]
+    fn socket_accept_empty_queue_returns_none() {
+        let path = "/tmp/test_accept_empty";
+        let listener = create_listener(path);
+        let result = UnixSocketState::accept(&listener);
+        assert!(result.is_none(), "accept on empty queue must return None");
+    }
+
+    #[test]
+    fn socket_connect_to_non_listener_fails() {
+        let path = "/tmp/test_non_listener";
+        // Create a socket but do NOT call bind (so it stays Idle).
+        let not_listening = Arc::new(UnixSocketState::new());
+        // Manually register it in the bound-sockets map without setting Listening state.
+        {
+            let mut map = BOUND_SOCKETS.lock();
+            map.insert(String::from(path), not_listening.clone());
+        }
+        // Connect to the registered-but-not-listening socket.
+        let client = Arc::new(UnixSocketState::new());
+        let result = UnixSocketState::connect(&client, path);
+        assert!(result.is_err(), "connect to non-listener must fail");
+        // Clean up.
+        unregister_bind(path);
+    }
+
+    #[test]
+    fn socket_read_not_connected_returns_zero() {
+        let sock = Arc::new(UnixSocketState::new());
+        let mut buf = [0u8; 16];
+        let n = sock.read(&mut buf);
+        assert_eq!(n, 0, "read from unconnected socket must return 0");
+    }
+
+    #[test]
+    fn socket_write_not_connected_returns_zero() {
+        let sock = Arc::new(UnixSocketState::new());
+        let n = sock.write(b"hello");
+        assert_eq!(n, 0, "write to unconnected socket must return 0");
+    }
+
+    #[test]
+    fn socket_bytes_available_not_connected() {
+        let sock = Arc::new(UnixSocketState::new());
+        assert_eq!(sock.bytes_available(), 0);
+    }
+
+    #[test]
+    fn socket_bind_empty_path_fails() {
+        let sock = Arc::new(UnixSocketState::new());
+        assert!(UnixSocketState::bind(&sock, "").is_err());
+    }
+
+    #[test]
+    fn socket_multiple_connections_accepted() {
+        let path = "/tmp/test_multiple_accept";
+        let listener = create_listener(path);
+
+        // Connect 3 clients
+        let c1 = Arc::new(UnixSocketState::new());
+        UnixSocketState::connect(&c1, path).unwrap();
+        let c2 = Arc::new(UnixSocketState::new());
+        UnixSocketState::connect(&c2, path).unwrap();
+        let c3 = Arc::new(UnixSocketState::new());
+        UnixSocketState::connect(&c3, path).unwrap();
+
+        // Accept all 3
+        for _ in 0..3 {
+            let accepted = UnixSocketState::accept(&listener);
+            assert!(accepted.is_some(), "must accept all connections");
+        }
+
+        // No more pending
+        assert!(UnixSocketState::accept(&listener).is_none());
     }
 }

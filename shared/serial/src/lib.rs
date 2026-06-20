@@ -1,10 +1,27 @@
 #![no_std]
 
 use core::fmt::{self, Write};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 pub const COM1_BASE: u16 = 0x3F8;
 
+/// Global flag to suppress serial port I/O (used in test mode).
+static SERIAL_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Disable hardware serial port access. Called by test harnesses.
+pub fn disable_serial() {
+    SERIAL_ENABLED.store(false, Ordering::SeqCst);
+}
+
+/// Re-enable hardware serial port access.
+pub fn enable_serial() {
+    SERIAL_ENABLED.store(true, Ordering::SeqCst);
+}
+
 pub fn init() {
+    if !SERIAL_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
     unsafe {
         out8(COM1_BASE + 1, 0x00);
         out8(COM1_BASE + 3, 0x80);
@@ -20,6 +37,9 @@ pub struct SerialWriter;
 
 impl SerialWriter {
     pub fn write_byte(&mut self, byte: u8) {
+        if !SERIAL_ENABLED.load(Ordering::Relaxed) {
+            return;
+        }
         unsafe {
             while (in8(COM1_BASE + 5) & 0x20) == 0 {}
             out8(COM1_BASE, byte);

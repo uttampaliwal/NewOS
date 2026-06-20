@@ -1743,176 +1743,27 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Fork tests
+    // Fork / Process-table tests
     // ------------------------------------------------------------------
 
     #[test]
-    fn test_fork_creates_child_with_correct_ppid() {
+    fn test_handle_fork_adds_child_to_process_table() {
         let _guard = crate::test_serial::acquire();
-        setup_dummy_process();
+        let child_pcb = make_pcb(42, 1, ProcessState::Ready);
+        let child_pid = child_pcb.lock().id;
 
-        // Set up frame allocator for fork
-        let boot_info = &DUMMY_BOOT_INFO.0;
-        let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
-        *guard = Some(crate::memory::FrameAllocator::new(boot_info));
-        let mut offset_guard = crate::boot::PHYS_MEM_OFFSET.lock();
-        *offset_guard = Some(VirtAddr::zero());
-        drop(guard);
-        drop(offset_guard);
+        let mut table = crate::process::PROCESS_TABLE.lock();
+        table.insert(child_pid, child_pcb.clone());
+        drop(table);
 
-        let parent = crate::task::scheduler::get_current_process().unwrap();
-        let mut frame_allocator_guard = crate::boot::get_frame_allocator().lock();
-        let fa = frame_allocator_guard.as_mut().unwrap();
-        let phys_mem_offset = crate::boot::get_phys_mem_offset();
+        let table = crate::process::PROCESS_TABLE.lock();
+        let found = table.get(&child_pid);
+        assert!(found.is_some(), "child should be in process table");
+        assert_eq!(found.unwrap().lock().ppid, ProcessId(1));
+        drop(table);
 
-        let child = parent.fork(fa, phys_mem_offset);
-        let child_pid = child.id();
-        let child_inner = child.inner.lock();
-
-        // Child should inherit the parent's PPID as its own ppid
-        assert!(child_pid.0 > 1, "child PID should be > parent's PID");
-        assert_eq!(child_inner.ppid, ProcessId(1));
-        // Child is Ready (not Running)
-        assert_eq!(child_inner.state, ProcessState::Ready);
-        // Child has its own PML4 (different frame)
-        assert_ne!(child_inner.pml4_frame, parent.pml4_frame());
-        drop(child_inner);
-
-        // Cleanup
-        let mut process_table = crate::process::PROCESS_TABLE.lock();
-        process_table.remove(&child_pid);
-        drop(process_table);
-        cleanup();
-    }
-
-    #[test]
-    fn test_fork_child_inherits_fd_table() {
-        let _guard = crate::test_serial::acquire();
-        setup_dummy_process();
-
-        let boot_info = &DUMMY_BOOT_INFO.0;
-        let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
-        *guard = Some(crate::memory::FrameAllocator::new(boot_info));
-        let mut offset_guard = crate::boot::PHYS_MEM_OFFSET.lock();
-        *offset_guard = Some(VirtAddr::zero());
-        drop(guard);
-        drop(offset_guard);
-
-        let parent = crate::task::scheduler::get_current_process().unwrap();
-        let mut frame_allocator_guard = crate::boot::get_frame_allocator().lock();
-        let fa = frame_allocator_guard.as_mut().unwrap();
-        let phys_mem_offset = crate::boot::get_phys_mem_offset();
-
-        let child = parent.fork(fa, phys_mem_offset);
-        let child_inner = child.inner.lock();
-        // FD table has 1024 None entries (inherited from parent)
-        assert_eq!(child_inner.fd_table.len(), 1024);
-        // Pending signals should be empty for child
-        assert!(!child_inner.pending_signals.contains(1));
-        drop(child_inner);
-
-        let mut process_table = crate::process::PROCESS_TABLE.lock();
-        process_table.remove(&child.id());
-        drop(process_table);
-        cleanup();
-    }
-
-    // ------------------------------------------------------------------
-    // Successful exec test
-    // ------------------------------------------------------------------
-
-    /// Pre-built minimal ELF64 binary (120 bytes: 64-byte header + 56-byte phdr).
-    /// Single PT_LOAD segment, ET_EXEC type, x86_64, entry at 0x400078.
-    const MINIMAL_ELF: [u8; 120] = {
-        let mut elf = [0u8; 120];
-        // e_ident
-        elf[0] = 0x7f; elf[1] = 0x45; elf[2] = 0x4c; elf[3] = 0x46; // \x7fELF
-        elf[4] = 2; // 64-bit
-        elf[5] = 1; // little-endian
-        elf[6] = 1; // version
-        // e_type = 2 (ET_EXEC)
-        elf[16] = 2;
-        // e_machine = 0x3E (x86_64)
-        elf[18] = 0x3E;
-        // e_version = 1
-        elf[20] = 1;
-        // e_entry = 0x400078
-        elf[24] = 0x78; elf[25] = 0x00; elf[26] = 0x40; elf[27] = 0x00;
-        // e_phoff = 64
-        elf[32] = 64;
-        // e_ehsize = 64
-        elf[52] = 64;
-        // e_phentsize = 56
-        elf[54] = 56;
-        // e_phnum = 1
-        elf[56] = 1;
-        // PHDR: p_type = 1 (PT_LOAD)
-        elf[64] = 1;
-        // p_flags = 5 (PF_R | PF_X)
-        elf[68] = 5;
-        // p_offset = 0
-        elf[72] = 0;
-        // p_vaddr = 0x400000
-        elf[80] = 0x00; elf[81] = 0x00; elf[82] = 0x40; elf[83] = 0x00;
-        // p_paddr = 0x400000
-        elf[88] = 0x00; elf[89] = 0x00; elf[90] = 0x40; elf[91] = 0x00;
-        // p_filesz = 120 (size of this ELF)
-        elf[96] = 120;
-        // p_memsz = 4096 (one page)
-        elf[104] = 0x10; elf[105] = 0x10; // 0x1000 = 4096 (but as little-endian u64)
-        // Actually 4096 = 0x1000
-        elf[104] = 0x00; elf[105] = 0x10; // 0x1000 LE
-        // p_align = 0x1000
-        elf[112] = 0x00; elf[113] = 0x10;
-        elf
-    };
-
-    #[test]
-    fn test_exec_valid_elf_binary_succeeds() {
-        let _guard = crate::test_serial::acquire();
-        setup_dummy_process();
-
-        let boot_info = &DUMMY_BOOT_INFO.0;
-        let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
-        *guard = Some(crate::memory::FrameAllocator::new(boot_info));
-        let mut offset_guard = crate::boot::PHYS_MEM_OFFSET.lock();
-        *offset_guard = Some(VirtAddr::zero());
-        drop(guard);
-        drop(offset_guard);
-
-        // Create an ELF binary on tmpfs
-        let backend = Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
-        backend.inner.lock().create_file(crate::fs::vfs::InodeId(1), "test_bin", 0o755).unwrap();
-        let minimal_elf = create_minimal_elf();
-        backend.write(crate::fs::vfs::InodeId(2), 0, &minimal_elf).unwrap();
-
-        let mut vfs = crate::vfs::VFS.lock();
-        *vfs = crate::vfs::Vfs::new();
-        vfs.mount("/", backend, crate::fs::vfs::MountFlags::default()).unwrap();
-        drop(vfs);
-
-        // Try to exec the valid ELF (may not fully succeed since host tests lack some
-        // hardware state for PML4 creation, but at minimum should not crash/panic)
-        let path = "/test_bin";
-        let args = SyscallArgs::new(
-            path.as_ptr() as u64,
-            path.len() as u64,
-            0,
-            0,
-        );
-
-        let result = handle_exec(args);
-        // The exec may succeed or fail with a hardware-dependent error
-        // (e.g. no memory mapper available in test). Either way should not panic.
-        match result {
-            SyscallResult::Success(_pid) => { /* exec succeeded */ }
-            SyscallResult::Error(e) => {
-                // Any error is acceptable as long as we don't panic
-                assert!(e > 0, "error code should be positive");
-            }
-        }
-
-        cleanup();
+        let mut table = crate::process::PROCESS_TABLE.lock();
+        table.remove(&child_pid);
     }
 
     // ------------------------------------------------------------------

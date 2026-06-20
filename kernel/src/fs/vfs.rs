@@ -1441,11 +1441,11 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// A simple in-memory backend: inode 1 = root dir, inodes 2… = files.
-    struct MemBackend {
+    pub struct MemBackend {
         inner: Mutex<MemBackendInner>,
     }
 
-    struct MemBackendInner {
+    pub struct MemBackendInner {
         files: BTreeMap<String, (InodeId, Vec<u8>)>,
         next_inode: u64,
     }
@@ -2226,5 +2226,132 @@ mod prop_tests {
                 "relative path for root mount must equal the original path"
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Write / Seek / Dup tests
+    // -----------------------------------------------------------------------
+
+    /// Create a file in a tmpfs backend's root directory by name.
+    fn create_tmpfs_file(tmpfs: &crate::fs::tmpfs::TmpfsBackend, name: &str) {
+        tmpfs
+            .inner
+            .lock()
+            .create_file(crate::fs::vfs::InodeId(1), name, 0o644)
+            .unwrap();
+    }
+
+    #[test]
+    fn write_fd_writes_to_file() {
+        let mut vfs = Vfs::new();
+        let tmpfs = alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        let b: Arc<dyn FsBackend> = tmpfs.clone();
+        vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
+        create_tmpfs_file(&tmpfs, "test.txt");
+        let fd = vfs.open_with_creds("/test.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let n = vfs.write_fd(fd, b"hello world").unwrap();
+        assert_eq!(n, 11);
+        let mut buf = [0u8; 32];
+        assert!(vfs.seek_fd(fd, 0));
+        let n2 = vfs.read_fd(fd, &mut buf).unwrap();
+        assert_eq!(n2, 11);
+        assert_eq!(&buf[..11], b"hello world");
+    }
+
+    #[test]
+    fn write_fd_sequential_writes_dont_overwrite() {
+        let mut vfs = Vfs::new();
+        let tmpfs = alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        let b: Arc<dyn FsBackend> = tmpfs.clone();
+        vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
+        create_tmpfs_file(&tmpfs, "log.txt");
+        let fd = vfs.open_with_creds("/log.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        vfs.write_fd(fd, b"line1\n").unwrap();
+        vfs.write_fd(fd, b"line2\n").unwrap();
+        let mut buf = [0u8; 32];
+        assert!(vfs.seek_fd(fd, 0));
+        let n = vfs.read_fd(fd, &mut buf).unwrap();
+        assert_eq!(n, 12);
+        assert_eq!(&buf[..12], b"line1\nline2\n");
+    }
+
+    #[test]
+    fn seek_fd_changes_read_position() {
+        let mut vfs = Vfs::new();
+        let tmpfs = alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        let b: Arc<dyn FsBackend> = tmpfs.clone();
+        vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
+        create_tmpfs_file(&tmpfs, "seek.txt");
+        let fd = vfs.open_with_creds("/seek.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        vfs.write_fd(fd, b"abcdefghij").unwrap();
+        assert!(vfs.seek_fd(fd, 3));
+        let mut buf = [0u8; 4];
+        let n = vfs.read_fd(fd, &mut buf).unwrap();
+        assert_eq!(n, 4);
+        assert_eq!(&buf[..4], b"defg");
+    }
+
+    #[test]
+    fn seek_fd_beyond_eof_returns_zero_read() {
+        let mut vfs = Vfs::new();
+        let tmpfs = alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        let b: Arc<dyn FsBackend> = tmpfs.clone();
+        vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
+        create_tmpfs_file(&tmpfs, "short.txt");
+        let fd = vfs.open_with_creds("/short.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        vfs.write_fd(fd, b"hi").unwrap();
+        assert!(vfs.seek_fd(fd, 100));
+        let mut buf = [0u8; 4];
+        let n = vfs.read_fd(fd, &mut buf).unwrap();
+        assert_eq!(n, 0, "read past EOF should return 0");
+    }
+
+    #[test]
+    fn dup_fd_duplicates_fd() {
+        let mut vfs = Vfs::new();
+        let tmpfs = alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        let b: Arc<dyn FsBackend> = tmpfs.clone();
+        vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
+        create_tmpfs_file(&tmpfs, "dup.txt");
+        let fd = vfs.open_with_creds("/dup.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        vfs.write_fd(fd, b"original").unwrap();
+        let newfd = vfs.dup_fd(fd).unwrap();
+        assert_ne!(fd, newfd);
+        let mut buf = [0u8; 16];
+        assert!(vfs.seek_fd(newfd, 0));
+        let n = vfs.read_fd(newfd, &mut buf).unwrap();
+        assert_eq!(&buf[..n], b"original");
+    }
+
+    #[test]
+    fn dup2_fd_replaces_target() {
+        let mut vfs = Vfs::new();
+        let tmpfs = alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        let b: Arc<dyn FsBackend> = tmpfs.clone();
+        vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
+        create_tmpfs_file(&tmpfs, "src.txt");
+        create_tmpfs_file(&tmpfs, "dst.txt");
+        let fd = vfs.open_with_creds("/src.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let target = vfs.open_with_creds("/dst.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let result = vfs.dup2_fd(fd, target).unwrap();
+        assert_eq!(result, target);
+        assert!(vfs.seek_fd(target, 0));
+        vfs.write_fd(target, b"from src").unwrap();
+        assert!(vfs.seek_fd(fd, 0));
+        let mut buf = [0u8; 16];
+        let n = vfs.read_fd(fd, &mut buf).unwrap();
+        assert_eq!(&buf[..n], b"from src");
+    }
+
+    #[test]
+    fn dup_bad_fd_returns_none() {
+        let mut vfs = Vfs::new();
+        assert!(vfs.dup_fd(9999).is_none());
+    }
+
+    #[test]
+    fn dup2_bad_fd_returns_none() {
+        let mut vfs = Vfs::new();
+        assert!(vfs.dup2_fd(9999, 1).is_none());
     }
 }

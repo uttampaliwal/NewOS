@@ -18,7 +18,7 @@ pub struct ElfHeader {
     pub elf_type: u16,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ProgramHeader {
     pub file_offset: u64,
     pub virtual_address: u64,
@@ -29,7 +29,7 @@ pub struct ProgramHeader {
     pub align: u64,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseError {
     FileTooSmall,
     BadMagic,
@@ -265,5 +265,103 @@ mod tests {
         assert_eq!(ph.file_size, 0x1000);
         assert_eq!(ph.memory_size, 0x1000);
         assert_eq!(ph.align, 0x1000);
+    }
+
+    #[test]
+    fn test_parse_header_too_small() {
+        assert_eq!(parse_header(&[0u8; 63]), Err(ParseError::FileTooSmall));
+    }
+
+    #[test]
+    fn test_parse_header_bad_magic() {
+        let mut data = [0u8; 64];
+        data[0..4].copy_from_slice(b"\x00ELF");
+        assert_eq!(parse_header(&data), Err(ParseError::BadMagic));
+    }
+
+    #[test]
+    fn test_parse_header_unsupported_class() {
+        let mut data = [0u8; 64];
+        data[0..4].copy_from_slice(ELF_MAGIC);
+        data[4] = 1; // 32-bit
+        assert_eq!(parse_header(&data), Err(ParseError::UnsupportedClass));
+    }
+
+    #[test]
+    fn test_parse_header_unsupported_endian() {
+        let mut data = [0u8; 64];
+        data[0..4].copy_from_slice(ELF_MAGIC);
+        data[4] = ELF_CLASS_64;
+        data[5] = 2; // big-endian
+        assert_eq!(parse_header(&data), Err(ParseError::UnsupportedEndian));
+    }
+
+    #[test]
+    fn test_parse_header_unsupported_type() {
+        let mut data = [0u8; 64];
+        data[0..4].copy_from_slice(ELF_MAGIC);
+        data[4] = ELF_CLASS_64;
+        data[5] = ELF_DATA_LITTLE_ENDIAN;
+        data[16..18].copy_from_slice(&1u16.to_le_bytes()); // ET_REL
+        assert_eq!(parse_header(&data), Err(ParseError::UnsupportedType));
+    }
+
+    #[test]
+    fn test_parse_header_unsupported_machine() {
+        let mut data = [0u8; 64];
+        data[0..4].copy_from_slice(ELF_MAGIC);
+        data[4] = ELF_CLASS_64;
+        data[5] = ELF_DATA_LITTLE_ENDIAN;
+        data[16..18].copy_from_slice(&ELF_TYPE_EXEC.to_le_bytes());
+        data[18..20].copy_from_slice(&0x28u16.to_le_bytes()); // ARM
+        assert_eq!(parse_header(&data), Err(ParseError::UnsupportedMachine));
+    }
+
+    #[test]
+    fn test_parse_header_invalid_phentsize() {
+        let mut data = [0u8; 64];
+        data[0..4].copy_from_slice(ELF_MAGIC);
+        data[4] = ELF_CLASS_64;
+        data[5] = ELF_DATA_LITTLE_ENDIAN;
+        data[16..18].copy_from_slice(&ELF_TYPE_EXEC.to_le_bytes());
+        data[18..20].copy_from_slice(&ELF_MACHINE_X86_64.to_le_bytes());
+        data[54..56].copy_from_slice(&48u16.to_le_bytes()); // wrong phentsize
+        assert_eq!(parse_header(&data), Err(ParseError::InvalidProgramHeaderSize));
+    }
+
+    #[test]
+    fn test_parse_program_header_out_of_bounds() {
+        let mut data = [0u8; 64];
+        data[0..4].copy_from_slice(ELF_MAGIC);
+        data[4] = ELF_CLASS_64;
+        data[5] = ELF_DATA_LITTLE_ENDIAN;
+        data[16..18].copy_from_slice(&ELF_TYPE_EXEC.to_le_bytes());
+        data[18..20].copy_from_slice(&ELF_MACHINE_X86_64.to_le_bytes());
+        data[54..56].copy_from_slice(&56u16.to_le_bytes());
+        data[56..58].copy_from_slice(&1u16.to_le_bytes());
+        let header = parse_header(&data).unwrap();
+        assert_eq!(
+            parse_program_header(&data, header, 5),
+            Err(ParseError::ProgramHeaderOutOfBounds)
+        );
+    }
+
+    #[test]
+    fn test_parse_dyn_elf_header_success() {
+        let mut data = [0u8; 64];
+        data[0..4].copy_from_slice(ELF_MAGIC);
+        data[4] = ELF_CLASS_64;
+        data[5] = ELF_DATA_LITTLE_ENDIAN;
+        data[16..18].copy_from_slice(&ELF_TYPE_DYN.to_le_bytes());
+        data[18..20].copy_from_slice(&ELF_MACHINE_X86_64.to_le_bytes());
+        data[24..32].copy_from_slice(&0x2000u64.to_le_bytes()); // entry
+        data[32..40].copy_from_slice(&0x40u64.to_le_bytes()); // phoff
+        data[54..56].copy_from_slice(&56u16.to_le_bytes()); // phentsize
+        data[56..58].copy_from_slice(&2u16.to_le_bytes()); // phnum
+
+        let header = parse_header(&data).unwrap();
+        assert_eq!(header.elf_type, ELF_TYPE_DYN);
+        assert_eq!(header.entry, 0x2000);
+        assert_eq!(header.program_header_count, 2);
     }
 }

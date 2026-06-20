@@ -114,6 +114,7 @@ pub fn reparent_to_init(orphan_pid: ProcessId) {
     let table = PROCESS_TABLE.lock();
     if let Some(pcb) = table.get(&orphan_pid) {
         pcb.lock().ppid = ProcessId(1);
+        #[cfg(not(test))]
         crate::serial::println!("[process] reparented PID {:?} to init", orphan_pid);
     }
 }
@@ -239,15 +240,28 @@ impl Process {
     }
 
     pub fn kernel_process() -> Self {
+        /// Read the current PML4 frame.  Cr3 is inaccessible from userspace on
+        /// some hosts, so in test mode we use frame 0 (never dereferenced in tests).
+        fn read_pml4() -> PhysFrame {
+            #[cfg(not(test))]
+            {
+                let (pml4, _) = x86_64::registers::control::Cr3::read();
+                pml4
+            }
+            #[cfg(test)]
+            {
+                PhysFrame::containing_address(x86_64::PhysAddr::new(0))
+            }
+        }
+
         lazy_static::lazy_static! {
             static ref KERNEL_PROC: Process = {
-                let (pml4, _) = x86_64::registers::control::Cr3::read();
                 Process {
                     inner: Arc::new(Mutex::new(ProcessControlBlock {
                         id: ProcessId(0),
                         ppid: ProcessId(0),
                         state: ProcessState::Running,
-                        pml4_frame: pml4,
+                        pml4_frame: read_pml4(),
                         entry_point: VirtAddr::zero(),
                         stack_top: VirtAddr::zero(),
                         threads: Vec::new(),
@@ -1064,12 +1078,13 @@ mod tests {
     use x86_64::structures::paging::PhysFrame;
 
     fn test_proc(_name: &str) -> ProcessControlBlock {
-        let (pml4, _) = x86_64::registers::control::Cr3::read();
+        // Cr3 is inaccessible from userspace tests, so store frame 0.
+        let frame0 = PhysFrame::containing_address(x86_64::PhysAddr::new(0));
         ProcessControlBlock {
             id: ProcessId::new(),
             ppid: ProcessId(0),
             state: ProcessState::Ready,
-            pml4_frame: pml4,
+            pml4_frame: frame0,
             entry_point: VirtAddr::new(0x400000),
             stack_top: VirtAddr::new(0x7fffff000000),
             threads: vec![],
