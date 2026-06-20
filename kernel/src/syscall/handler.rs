@@ -37,6 +37,7 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Close => handle_close(args),
         Syscall::Exec => handle_exec(args),
         Syscall::Fork => handle_fork(args),
+        Syscall::Clone => handle_clone(args),
         Syscall::Wait => handle_wait(args),
         Syscall::Waitpid => handle_waitpid(args),
         Syscall::Yielder => handle_yielder(args),
@@ -233,10 +234,20 @@ fn handle_seek(args: SyscallArgs) -> SyscallResult {
 }
 
 fn handle_getpid(_args: SyscallArgs) -> SyscallResult {
-    match crate::task::scheduler::get_current_task_id() {
-        Some(tid) => SyscallResult::Success(tid.as_usize() as u64),
-        None => SyscallResult::Error(1),
+    let tid = match crate::task::scheduler::get_current_task_id() {
+        Some(tid) => tid,
+        None => return SyscallResult::Error(1),
+    };
+    let pid = crate::process::ProcessId(tid.as_usize());
+    // If we have a PID namespace, translate to ns-local PID.
+    if let Some(proc) = crate::task::scheduler::get_current_process() {
+        let pcb = proc.inner.lock();
+        let ns = pcb.nsproxy.effective_pid_ns();
+        if let Some(local) = ns.global_to_local(pid) {
+            return SyscallResult::Success(local as u64);
+        }
     }
+    SyscallResult::Success(tid.as_usize() as u64)
 }
 
 fn handle_uptime(_args: SyscallArgs) -> SyscallResult {
@@ -621,8 +632,63 @@ pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::Syscall
     child_pid
 }
 
+/// Clone syscall handler — wraps fork behaviour but passes namespace flags.
+pub fn handle_clone_with_frame(frame: &crate::arch::x86_64::syscall_arch::SyscallFrame) -> u64 {
+    let flags = frame.rdi; // arg0: clone flags (CLONE_VM, CLONE_NEWPID, etc.)
+    let _child_stack = frame.rsi; // arg1: child stack (unused — we use our own stack)
+
+    let parent_process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return !0,
+    };
+
+    let mut frame_allocator_guard = crate::boot::get_frame_allocator().lock();
+    let frame_allocator = match frame_allocator_guard.as_mut() {
+        Some(fa) => fa,
+        None => return !0,
+    };
+    let phys_mem_offset = crate::boot::get_phys_mem_offset();
+
+    let child_process = parent_process.clone_process(flags, frame_allocator, phys_mem_offset);
+    let child_pid = child_process.id().0 as u64;
+
+    drop(frame_allocator_guard);
+
+    let (kernel_pml4_frame, _) = x86_64::registers::control::Cr3::read();
+    let mut mapper = unsafe {
+        let pml4_ptr = (phys_mem_offset + kernel_pml4_frame.start_address().as_u64())
+            .as_mut_ptr::<x86_64::structures::paging::PageTable>();
+        x86_64::structures::paging::OffsetPageTable::new(&mut *pml4_ptr, phys_mem_offset)
+    };
+
+    let mut frame_allocator_guard2 = crate::boot::get_frame_allocator().lock();
+    let frame_allocator2 = frame_allocator_guard2.as_mut().unwrap();
+
+    let child_task = crate::task::Task::new_forked_user(
+        child_process.clone(),
+        frame,
+        &mut mapper,
+        frame_allocator2,
+        phys_mem_offset,
+    );
+
+    {
+        let mut process_table = crate::process::PROCESS_TABLE.lock();
+        process_table.insert(child_process.id(), child_process.inner.clone());
+    }
+
+    crate::task::scheduler::add_task(child_task);
+
+    child_pid
+}
+
 fn handle_fork(_args: SyscallArgs) -> SyscallResult {
     // This is just a placeholder; the real implementation is in handle_fork_with_frame
+    SyscallResult::Error(0)
+}
+
+fn handle_clone(_args: SyscallArgs) -> SyscallResult {
+    // Placeholder; real implementation is in handle_clone_with_frame
     SyscallResult::Error(0)
 }
 
@@ -1238,6 +1304,7 @@ mod tests {
                 pending_signals: SignalSet::empty(),
                 pending_signal_frame: None,
                 sec_ctx: crate::security::SecurityContext::root(),
+                nsproxy: crate::security::namespaces::NsProxy::new(),
             }))
         };
         let task = Task {
@@ -1367,6 +1434,7 @@ mod tests {
             pending_signals: SignalSet::empty(),
             pending_signal_frame: None,
             sec_ctx: crate::security::SecurityContext::root(),
+            nsproxy: crate::security::namespaces::NsProxy::new(),
         }))
     }
 

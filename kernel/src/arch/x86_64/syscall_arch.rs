@@ -133,6 +133,10 @@ pub extern "C" fn syscall_dispatch(frame: &mut SyscallFrame) -> u64 {
             return crate::syscall::handler::handle_fork_with_frame(frame);
         }
 
+        if syscall == Syscall::Clone {
+            return crate::syscall::handler::handle_clone_with_frame(frame);
+        }
+
         // Sigreturn needs access to the frame to restore saved registers.
         if syscall == Syscall::Sigreturn {
             let result = crate::task::signals::handle_sigreturn_with_frame(frame);

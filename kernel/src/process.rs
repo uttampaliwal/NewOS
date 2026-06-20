@@ -4,6 +4,7 @@ use crate::memory::paging;
 use crate::memory::vma::{Vma, VmaBacking, VmaError, VmaFlags, VmaProt, VmaSet};
 use crate::memory::wx;
 use crate::security::capabilities::CapabilitySet;
+use crate::security::namespaces::NsProxy;
 use crate::security::SecurityContext;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
@@ -141,6 +142,8 @@ pub struct ProcessControlBlock {
     pub pending_signal_frame: Option<u64>,
     /// Per-process POSIX capability sets.
     pub sec_ctx: SecurityContext,
+    /// Per-process namespace proxy.
+    pub nsproxy: NsProxy,
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +257,7 @@ impl Process {
                         pending_signals: SignalSet::empty(),
                         pending_signal_frame: None,
                         sec_ctx: SecurityContext::root(),
+                        nsproxy: NsProxy::new(),
                     }))
                 }
             };
@@ -300,6 +304,7 @@ impl Process {
             pending_signals: SignalSet::empty(),
             pending_signal_frame: None,
             sec_ctx: SecurityContext::new(0, 0, CapabilitySet::basic()),
+            nsproxy: NsProxy::new(),
         };
 
         crate::serial::println!("[STG: PROC_INNER_BUILT]");
@@ -484,6 +489,7 @@ impl Process {
                 pending_signals: SignalSet::empty(),
                 pending_signal_frame: None,
                 sec_ctx: SecurityContext::new(0, 0, CapabilitySet::basic()),
+                nsproxy: NsProxy::new(),
             })),
         };
 
@@ -726,10 +732,59 @@ impl Process {
             pending_signals: SignalSet::empty(),
             pending_signal_frame: None,
             sec_ctx: parent.sec_ctx.clone(),
+            nsproxy: NsProxy::from_flags(0, &parent.nsproxy),
         };
 
         Self {
             inner: Arc::new(Mutex::new(new_inner)),
+        }
+    }
+
+    /// Create a new process via clone with optional namespace creation.
+    pub fn clone_process(
+        &self,
+        flags: u64,
+        frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+        physical_memory_offset: VirtAddr,
+    ) -> Self {
+        let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
+
+        paging::clone_user_mappings_cow(
+            self.pml4_frame(),
+            pml4_frame,
+            frame_allocator,
+            physical_memory_offset,
+        );
+
+        let parent = self.inner.lock();
+
+        let fd_table: Vec<Option<crate::vfs::FileDescriptor>> =
+            (0..1024).map(|i| parent.fd_table[i].clone()).collect();
+
+        let nsproxy = NsProxy::from_flags(flags, &parent.nsproxy);
+
+        let child_inner = ProcessControlBlock {
+            id: ProcessId::new(),
+            ppid: parent.id,
+            state: ProcessState::Ready,
+            pml4_frame,
+            entry_point: parent.entry_point,
+            stack_top: aslr::randomise_stack_base(),
+            threads: Vec::new(),
+            vma_set: parent.vma_set.clone(),
+            mmap_next_addr: aslr::randomise_heap_base(),
+            aslr_base: parent.aslr_base,
+            fd_table,
+            signal_mask: parent.signal_mask,
+            signal_handlers: parent.signal_handlers,
+            pending_signals: SignalSet::empty(),
+            pending_signal_frame: None,
+            sec_ctx: parent.sec_ctx.clone(),
+            nsproxy,
+        };
+
+        Self {
+            inner: Arc::new(Mutex::new(child_inner)),
         }
     }
 

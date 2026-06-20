@@ -55,6 +55,7 @@ pub enum Syscall {
     ReadShutdownSignal = 40,
     Capget = 41,
     Capset = 42,
+    Clone = 43,
 }
 
 impl Syscall {
@@ -102,6 +103,7 @@ impl Syscall {
             40 => Some(Self::ReadShutdownSignal),
             41 => Some(Self::Capget),
             42 => Some(Self::Capset),
+            43 => Some(Self::Clone),
             _ => None,
         }
     }
