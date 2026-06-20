@@ -11,6 +11,7 @@ members = [
     "userland/libturnix",
     "userland/fault-tester",
     "userland/std",
+    "userland/package-manager",
 ]
 default-members = [
     "shared/abi",

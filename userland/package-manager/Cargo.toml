@@ -1,0 +1,13 @@
+[package]
+name = "package-manager"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+varisat = "0.2"
+semver = { version = "1", features = ["serde"] }
+tpkg-format = { path = "../../shared/tpkg-format" }
+
+[dev-dependencies]
+proptest = "1"

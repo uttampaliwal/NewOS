@@ -475,27 +475,27 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 28.2**
     - Use `proptest` to generate strings that violate the grammar; assert all return `Err` with non-empty message
 
-- [ ] 37. Implement the SAT-based dependency solver in `userland/package-manager/src/solver.rs`
-  - [ ] 37.1 Create `userland/package-manager/` as a new workspace crate; add `varisat` and `semver` as dependencies
+- [x] 37. Implement the SAT-based dependency solver in `userland/package-manager/src/solver.rs`
+  - [x] 37.1 Create `userland/package-manager/` as a new workspace crate; add `varisat` and `semver` as dependencies
     - Implement `DependencySolver` with `packages: BTreeMap<PackageName, Vec<PackageVersion>>`
     - Implement `solve(requests: &[(PackageName, VersionReq)]) -> Result<InstallPlan, SolverError>` using `varisat` CDCL SAT solver
     - Encode version constraints as SAT clauses; decode the satisfying assignment into an `InstallPlan` in topological order
     - Return `SolverError::Conflict` for unsatisfiable constraints, `SolverError::Cycle` for dependency cycles, `SolverError::NotFound` for unknown packages
     - Select the highest compatible version when multiple versions satisfy constraints
     - _Requirements: 30.1, 30.2, 30.3, 30.4, 30.5_
-  - [ ]* 37.2 Write property test for Dependency Solver Correctness
+  - [x]* 37.2 Write property test for Dependency Solver Correctness
     - **Property 26: Dependency Solver Correctness**
     - **Validates: Requirements 30.1**
     - Use `proptest` with `arb_satisfiable_deps()` generator; assert every package in the plan satisfies all version constraints
-  - [ ]* 37.3 Write property test for Dependency Solver Conflict Detection
+  - [x]* 37.3 Write property test for Dependency Solver Conflict Detection
     - **Property 27: Dependency Solver Conflict Detection**
     - **Validates: Requirements 30.2**
     - Use `proptest` to generate unsatisfiable constraint sets; assert solver returns `SolverError::Conflict`
-  - [ ]* 37.4 Write property test for Dependency Solver Newest Version Preference
+  - [x]* 37.4 Write property test for Dependency Solver Newest Version Preference
     - **Property 28: Dependency Solver Newest Version Preference**
     - **Validates: Requirements 30.4**
     - Use `proptest` to generate multiple compatible versions; assert solver selects the highest
-  - [ ]* 37.5 Write property test for Dependency Solver Cycle Detection
+  - [x]* 37.5 Write property test for Dependency Solver Cycle Detection
     - **Property 29: Dependency Solver Cycle Detection**
     - **Validates: Requirements 30.5**
     - Use `proptest` to generate dependency graphs with directed cycles; assert solver returns `SolverError::Cycle`
