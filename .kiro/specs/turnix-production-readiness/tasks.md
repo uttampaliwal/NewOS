@@ -512,14 +512,14 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that expired TUF metadata is rejected
     - _Requirements: 29.2, 29.3_
 
-- [ ] 39. Implement the snapshot manager and install/rollback pipeline
-  - [ ] 39.1 Create `userland/package-manager/src/snapshot.rs` with `Snapshot`, `SnapshotId`, `SnapshotTrigger` types
+- [x] 39. Implement the snapshot manager and install/rollback pipeline
+  - [x] 39.1 Create `userland/package-manager/src/snapshot.rs` with `Snapshot`, `SnapshotId`, `SnapshotTrigger` types
     - Implement `SnapshotManager::create_snapshot(trigger: SnapshotTrigger) -> Result<Snapshot, SnapshotError>` using ext4 copy-on-write snapshot inodes
     - Implement `SnapshotManager::rollback(id: SnapshotId) -> Result<(), SnapshotError>`
     - Implement the install pipeline in `userland/package-manager/src/install.rs`: create pre-install snapshot → fetch package → verify checksum → extract to staging → apply to filesystem → update package database; on any failure, automatically rollback to the pre-install snapshot
     - Implement `tpkg install`, `tpkg remove`, `tpkg upgrade`, `tpkg list`, `tpkg search` CLI commands in `userland/package-manager/src/main.rs`
     - _Requirements: 31.1, 31.2, 31.3, 31.4, 31.5, 32.1, 32.2, 32.3, 32.4, 32.5_
-  - [ ]* 39.2 Write unit tests for snapshot rollback
+  - [x]* 39.2 Write unit tests for snapshot rollback
     - Test that a failed install leaves the filesystem in the pre-install state
     - Test that `rollback` restores the correct snapshot
     - _Requirements: 31.3, 31.4_

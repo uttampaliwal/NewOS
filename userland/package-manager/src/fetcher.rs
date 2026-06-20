@@ -179,7 +179,7 @@ fn classify_tough_error(msg: String) -> FetchError {
 /// and verify `.tpkg` archives.
 #[derive(Debug)]
 pub struct PackageFetcher {
-    client: RepositoryClient,
+    client: Option<RepositoryClient>,
     temp_dir: PathBuf,
 }
 
@@ -187,14 +187,26 @@ impl PackageFetcher {
     /// Create a new `PackageFetcher` backed by the given TUF repository client.
     pub fn new(client: RepositoryClient) -> Self {
         Self {
-            client,
+            client: Some(client),
             temp_dir: PathBuf::from("/tmp/turnix-packages"),
+        }
+    }
+
+    /// Create a `PackageFetcher` without a TUF client (for testing).
+    /// `fetch` will return an error if called without a client.
+    pub fn new_without_client(temp_dir: PathBuf) -> Self {
+        Self {
+            client: None,
+            temp_dir,
         }
     }
 
     /// Create a new `PackageFetcher` with a custom download cache directory.
     pub fn with_temp_dir(client: RepositoryClient, temp_dir: PathBuf) -> Self {
-        Self { client, temp_dir }
+        Self {
+            client: Some(client),
+            temp_dir,
+        }
     }
 
     /// Download and verify a resolved package.
@@ -206,11 +218,13 @@ impl PackageFetcher {
     ///
     /// Returns the path to the downloaded `.tpkg` archive.
     pub async fn fetch(&self, resolved: &ResolvedPackage) -> Result<PathBuf, FetchError> {
-        let target_name = format!("{}-{}.tpkg", resolved.name, resolved.version);
-        let output_path = self
+        let client = self
             .client
-            .download_target(&target_name, &self.temp_dir)
-            .await?;
+            .as_ref()
+            .ok_or_else(|| FetchError::TufError("no TUF repository configured".into()))?;
+
+        let target_name = format!("{}-{}.tpkg", resolved.name, resolved.version);
+        let output_path = client.download_target(&target_name, &self.temp_dir).await?;
 
         // Extra verification: if the source specifies a SHA-256 checksum,
         // verify it against the downloaded data.
@@ -223,9 +237,9 @@ impl PackageFetcher {
         Ok(output_path)
     }
 
-    /// Return a reference to the underlying repository client.
-    pub fn client(&self) -> &RepositoryClient {
-        &self.client
+    /// Return a reference to the underlying repository client, if any.
+    pub fn client(&self) -> Option<&RepositoryClient> {
+        self.client.as_ref()
     }
 }
 

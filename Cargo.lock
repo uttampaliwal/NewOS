@@ -1114,6 +1114,8 @@ dependencies = [
  "hex",
  "proptest",
  "semver",
+ "serde",
+ "serde_json",
  "sha2",
  "tempfile",
  "tokio",
