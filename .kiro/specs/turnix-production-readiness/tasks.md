@@ -524,7 +524,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that `rollback` restores the correct snapshot
     - _Requirements: 31.3, 31.4_
 
-- [ ] 40. Phase 5 checkpoint — verify package management
+- [x] 40. Phase 5 checkpoint — verify package management
   - Ensure all Phase 5 property tests and unit tests pass; verify `tpkg install hello-world` downloads, verifies, installs, and the binary runs; verify a conflicting dependency set returns a clear error
   - Ensure all tests pass, ask the user if questions arise.
 
