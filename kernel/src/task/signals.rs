@@ -341,6 +341,7 @@ mod tests {
             signal_handlers: [SignalAction::Default; 64],
             pending_signals: crate::process::SignalSet::empty(),
             pending_signal_frame: None,
+            sec_ctx: crate::security::SecurityContext::root(),
         };
         let process = Process {
             inner: Arc::new(Mutex::new(pcb)),

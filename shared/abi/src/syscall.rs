@@ -53,6 +53,8 @@ pub enum Syscall {
     Dup2 = 38,
     Shutdown = 39,
     ReadShutdownSignal = 40,
+    Capget = 41,
+    Capset = 42,
 }
 
 impl Syscall {
@@ -98,6 +100,8 @@ impl Syscall {
             38 => Some(Self::Dup2),
             39 => Some(Self::Shutdown),
             40 => Some(Self::ReadShutdownSignal),
+            41 => Some(Self::Capget),
+            42 => Some(Self::Capset),
             _ => None,
         }
     }
@@ -123,6 +127,26 @@ impl SyscallHeader {
             reserved: 0,
         }
     }
+}
+
+/// Version number for capget/capset (must be `LINUX_CAPABILITY_VERSION_3 = 0x20080522`).
+pub const LINUX_CAPABILITY_VERSION: u32 = 0x20080522;
+
+/// Capability header for capget/capset.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapHeader {
+    pub version: u32,
+    pub pid: i32,
+}
+
+/// Capability data for capget/capset (maps to POSIX cap_user_data_t).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapData {
+    pub effective: u64,
+    pub permitted: u64,
+    pub inheritable: u64,
 }
 
 #[repr(C)]

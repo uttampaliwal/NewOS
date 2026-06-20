@@ -74,6 +74,8 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Dup2 => handle_dup2(args),
         Syscall::Shutdown => handle_shutdown(args),
         Syscall::ReadShutdownSignal => handle_read_shutdown_signal(args),
+        Syscall::Capget => handle_capget(args),
+        Syscall::Capset => handle_capset(args),
     }
 }
 
@@ -118,12 +120,75 @@ fn handle_brk(_args: SyscallArgs) -> SyscallResult {
 }
 
 fn handle_getuid(_args: SyscallArgs) -> SyscallResult {
-    // Return 0 for root user (no user management yet)
-    SyscallResult::Success(0)
+    let ctx = crate::security::current_context();
+    SyscallResult::Success(ctx.uid as u64)
 }
 
 fn handle_getgid(_args: SyscallArgs) -> SyscallResult {
-    // Return 0 for root group (no group management yet)
+    let ctx = crate::security::current_context();
+    SyscallResult::Success(ctx.gid as u64)
+}
+
+fn handle_capget(args: SyscallArgs) -> SyscallResult {
+    let header_ptr = args.arg0 as *const turnix_abi::syscall::CapHeader;
+    let data_ptr = args.arg1 as *mut turnix_abi::syscall::CapData;
+    if header_ptr.is_null() || data_ptr.is_null() {
+        return SyscallResult::Error(-1);
+    }
+    let header = unsafe { core::ptr::read(header_ptr) };
+    if header.version != turnix_abi::syscall::LINUX_CAPABILITY_VERSION {
+        return SyscallResult::Error(-1);
+    }
+    let caps = {
+        let current = match crate::task::scheduler::get_current_process() {
+            Some(p) => p,
+            None => return SyscallResult::Error(-1),
+        };
+        let inner = current.inner.lock();
+        inner.sec_ctx.caps
+    };
+    let data = turnix_abi::syscall::CapData {
+        effective: caps.effective,
+        permitted: caps.permitted,
+        inheritable: caps.inheritable,
+    };
+    unsafe { core::ptr::write(data_ptr, data) };
+    SyscallResult::Success(0)
+}
+
+fn handle_capset(args: SyscallArgs) -> SyscallResult {
+    let header_ptr = args.arg0 as *const turnix_abi::syscall::CapHeader;
+    let data_ptr = args.arg1 as *const turnix_abi::syscall::CapData;
+    if header_ptr.is_null() || data_ptr.is_null() {
+        return SyscallResult::Error(-1);
+    }
+    let header = unsafe { core::ptr::read(header_ptr) };
+    if header.version != turnix_abi::syscall::LINUX_CAPABILITY_VERSION {
+        return SyscallResult::Error(-1);
+    }
+    let new_data = unsafe { core::ptr::read(data_ptr) };
+
+    let current = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(-1),
+    };
+    let mut inner = current.inner.lock();
+
+    // CAP_SETPCAP is required to change capability sets.
+    if !inner.sec_ctx.has_capability(crate::security::capabilities::Capability::Setpcap) {
+        return SyscallResult::Error(-1); // EPERM
+    }
+
+    // Only allow setting bits that are in the permitted set (safe capabilities).
+    let allow_mask = inner.sec_ctx.caps.permitted;
+    if (new_data.effective | new_data.permitted | new_data.inheritable) & !allow_mask != 0 {
+        return SyscallResult::Error(-1); // EPERM - cannot add capabilities not in permitted
+    }
+
+    inner.sec_ctx.caps.effective = new_data.effective;
+    inner.sec_ctx.caps.permitted = new_data.permitted;
+    inner.sec_ctx.caps.inheritable = new_data.inheritable;
+
     SyscallResult::Success(0)
 }
 
@@ -1172,6 +1237,7 @@ mod tests {
                 signal_handlers: [SignalAction::Default; 64],
                 pending_signals: SignalSet::empty(),
                 pending_signal_frame: None,
+                sec_ctx: crate::security::SecurityContext::root(),
             }))
         };
         let task = Task {
@@ -1300,6 +1366,7 @@ mod tests {
             signal_handlers: [SignalAction::Default; 64],
             pending_signals: SignalSet::empty(),
             pending_signal_frame: None,
+            sec_ctx: crate::security::SecurityContext::root(),
         }))
     }
 

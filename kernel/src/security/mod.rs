@@ -1,116 +1,109 @@
 //! Security features for Turnix OS
-//! Implements basic userspace isolation and capabilities
+//! Implements POSIX 64-bit capabilities and basic security context.
+
+pub mod capabilities;
+
+use capabilities::CapabilitySet;
 
 use spin::Mutex;
 
-/// Capability rights
-pub struct Capabilities {
-    pub can_read: bool,
-    pub can_write: bool,
-    pub can_exec: bool,
-    pub can_network: bool,
-    pub can_admin: bool,
-}
-
-impl Capabilities {
-    /// Full capabilities (for kernel/superuser)
-    pub fn full() -> Self {
-        Self {
-            can_read: true,
-            can_write: true,
-            can_exec: true,
-            can_network: true,
-            can_admin: true,
-        }
-    }
-
-    /// Basic user capabilities
-    pub fn basic() -> Self {
-        Self {
-            can_read: true,
-            can_write: true,
-            can_exec: true,
-            can_network: false,
-            can_admin: false,
-        }
-    }
-
-    /// Restricted capabilities
-    pub fn restricted() -> Self {
-        Self {
-            can_read: true,
-            can_write: false,
-            can_exec: false,
-            can_network: false,
-            can_admin: false,
-        }
-    }
-}
-
-/// Process security context
+/// Process security context (per-process, stored in ProcessControlBlock).
+#[derive(Debug, Clone)]
 pub struct SecurityContext {
     pub uid: u32,
     pub gid: u32,
-    pub caps: Capabilities,
+    pub caps: CapabilitySet,
     pub is_privileged: bool,
 }
 
+impl SecurityContext {
+    pub fn root() -> Self {
+        Self {
+            uid: 0,
+            gid: 0,
+            caps: CapabilitySet::root(),
+            is_privileged: true,
+        }
+    }
+
+    pub fn new(uid: u32, gid: u32, caps: CapabilitySet) -> Self {
+        Self {
+            uid,
+            gid,
+            caps,
+            is_privileged: uid == 0,
+        }
+    }
+
+    pub fn has_capability(&self, cap: capabilities::Capability) -> bool {
+        self.caps.has(cap)
+    }
+
+    pub fn has_effective(&self, cap: capabilities::Capability) -> bool {
+        self.caps.has(cap)
+    }
+
+    pub fn has_permitted(&self, cap: capabilities::Capability) -> bool {
+        self.caps.has_permitted(cap)
+    }
+}
+
+// Global fallback context for kernel threads / boot phase.
 static CURRENT_CONTEXT: Mutex<Option<SecurityContext>> = Mutex::new(None);
 
 /// Initialize security subsystem
 pub fn init() {
     crate::serial::println!("[SEC] Initializing security subsystem...");
 
-    *CURRENT_CONTEXT.lock() = Some(SecurityContext {
-        uid: 0, // Root user
-        gid: 0,
-        caps: Capabilities::full(),
-        is_privileged: true,
-    });
+    *CURRENT_CONTEXT.lock() = Some(SecurityContext::root());
 
     crate::serial::println!("[SEC] Security subsystem initialized");
 }
 
-/// Set security context for a process
-pub fn set_context(uid: u32, gid: u32, caps: Capabilities) {
-    *CURRENT_CONTEXT.lock() = Some(SecurityContext {
-        uid,
-        gid,
-        caps,
-        is_privileged: uid == 0,
-    });
+/// Set the global fallback security context (used for kernel threads).
+pub fn set_context(uid: u32, gid: u32, caps: CapabilitySet) {
+    *CURRENT_CONTEXT.lock() = Some(SecurityContext::new(uid, gid, caps));
 
     crate::serial::println!("[SEC] Context set: UID={}, GID={}", uid, gid);
 }
 
-/// Check if current process has a capability
-pub fn check_capability(cap: &str) -> bool {
+/// Get the global fallback context.
+pub fn current_context() -> SecurityContext {
+    CURRENT_CONTEXT
+        .lock()
+        .clone()
+        .unwrap_or_else(SecurityContext::root)
+}
+
+/// Check if current context has a specific POSIX capability.
+pub fn check_capability(cap: capabilities::Capability) -> bool {
     let ctx = CURRENT_CONTEXT.lock();
     match &*ctx {
-        Some(ctx) => match cap {
-            "read" => ctx.caps.can_read,
-            "write" => ctx.caps.can_write,
-            "exec" => ctx.caps.can_exec,
-            "network" => ctx.caps.can_network,
-            "admin" => ctx.caps.can_admin,
-            _ => false,
-        },
-        None => false,
+        Some(ctx) => ctx.has_capability(cap),
+        None => true, // Default to root
     }
 }
 
-/// Get current user ID
+/// Get current user ID from global context.
 pub fn get_uid() -> u32 {
     let ctx = CURRENT_CONTEXT.lock();
     match &*ctx {
         Some(ctx) => ctx.uid,
-        None => 0, // Default to root
+        None => 0,
+    }
+}
+
+/// Get current group ID from global context.
+pub fn get_gid() -> u32 {
+    let ctx = CURRENT_CONTEXT.lock();
+    match &*ctx {
+        Some(ctx) => ctx.gid,
+        None => 0,
     }
 }
 
 /// Authenticate user (stub - would verify password)
 pub fn authenticate(_username: &str, _password: &str) -> bool {
-    // Stub implementation
     crate::serial::println!("[SEC] Authentication stub - always succeeds");
     true
 }

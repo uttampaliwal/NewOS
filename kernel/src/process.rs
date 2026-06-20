@@ -3,6 +3,8 @@ use crate::memory::aslr;
 use crate::memory::paging;
 use crate::memory::vma::{Vma, VmaBacking, VmaError, VmaFlags, VmaProt, VmaSet};
 use crate::memory::wx;
+use crate::security::capabilities::CapabilitySet;
+use crate::security::SecurityContext;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
     Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB, Translate,
@@ -137,6 +139,8 @@ pub struct ProcessControlBlock {
     pub pending_signals: SignalSet,
     /// User-space address of the active SignalFrame, or None.
     pub pending_signal_frame: Option<u64>,
+    /// Per-process POSIX capability sets.
+    pub sec_ctx: SecurityContext,
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +253,7 @@ impl Process {
                         signal_handlers: [SignalAction::Default; 64],
                         pending_signals: SignalSet::empty(),
                         pending_signal_frame: None,
+                        sec_ctx: SecurityContext::root(),
                     }))
                 }
             };
@@ -294,6 +299,7 @@ impl Process {
             signal_handlers: [SignalAction::Default; 64],
             pending_signals: SignalSet::empty(),
             pending_signal_frame: None,
+            sec_ctx: SecurityContext::new(0, 0, CapabilitySet::basic()),
         };
 
         crate::serial::println!("[STG: PROC_INNER_BUILT]");
@@ -477,6 +483,7 @@ impl Process {
                 signal_handlers: [SignalAction::Default; 64],
                 pending_signals: SignalSet::empty(),
                 pending_signal_frame: None,
+                sec_ctx: SecurityContext::new(0, 0, CapabilitySet::basic()),
             })),
         };
 
@@ -669,6 +676,11 @@ impl Process {
             current_inner.signal_handlers = [SignalAction::Default; 64];
             current_inner.pending_signals = SignalSet::empty();
             current_inner.state = ProcessState::Running;
+            // Apply POSIX exec_transform on capabilities.
+            // TODO: when VFS xattr is available, read FileCaps from the executable
+            // inode and use exec_transform_with_filecaps instead.
+            let new_caps = current_inner.sec_ctx.caps.exec_transform();
+            current_inner.sec_ctx.caps = new_caps;
         }
 
         paging::destroy_user_mappings(old_pml4_frame, frame_allocator, physical_memory_offset);
@@ -713,6 +725,7 @@ impl Process {
             signal_handlers: parent.signal_handlers,
             pending_signals: SignalSet::empty(),
             pending_signal_frame: None,
+            sec_ctx: parent.sec_ctx.clone(),
         };
 
         Self {
