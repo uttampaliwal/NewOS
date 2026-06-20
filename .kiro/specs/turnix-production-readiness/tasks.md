@@ -459,18 +459,18 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
 
 ## Phase 5 — Package Management
 
-- [ ] 36. Create the `shared/tpkg-format` crate with manifest types
-  - [ ] 36.1 Create `shared/tpkg-format/` as a new workspace crate; add it to `Cargo.toml` workspace members
+- [x] 36. Create the `shared/tpkg-format` crate with manifest types
+  - [x] 36.1 Create `shared/tpkg-format/` as a new workspace crate; add it to `Cargo.toml` workspace members
     - Define `TpkgManifest`, `PackageName`, `InstallSpec`, `BuildSpec`, `Scripts`, `DataFile` structs with `serde::Serialize`/`Deserialize` and TOML parsing via the `toml` crate
     - Define `InstallPlan`, `ResolvedPackage`, `PackageSource` structs
     - Implement strict validation: reject manifests with missing required fields, invalid semver strings, or invalid package names (return descriptive `Err`)
     - Add `proptest` as a dev-dependency; implement `arb_valid_manifest()` and `arb_package_name()` generators
     - _Requirements: 28.1, 28.2, 28.3_
-  - [ ]* 36.2 Write property test for Manifest Parse-Serialize Round-Trip
+  - [x]* 36.2 Write property test for Manifest Parse-Serialize Round-Trip
     - **Property 24: Manifest Parse-Serialize Round-Trip**
     - **Validates: Requirements 28.3**
     - Use `proptest` with `arb_valid_manifest()`; assert parse → serialize → parse produces structurally equivalent manifest
-  - [ ]* 36.3 Write property test for Invalid Manifest Rejection
+  - [x]* 36.3 Write property test for Invalid Manifest Rejection
     - **Property 25: Invalid Manifest Rejection**
     - **Validates: Requirements 28.2**
     - Use `proptest` to generate strings that violate the grammar; assert all return `Err` with non-empty message

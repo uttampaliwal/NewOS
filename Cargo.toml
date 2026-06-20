@@ -3,6 +3,7 @@ members = [
     "boot/uefi-loader",
     "shared/abi",
     "shared/serial",
+    "shared/tpkg-format",
     "tools/xtask",
     "kernel",
     "userland/init",
