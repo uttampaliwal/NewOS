@@ -1,64 +1,77 @@
-# Architecture
+# Turnix OS Architecture
 
-## Product direction
+Turnix is a SOTA, Rust-first operating system designed to combine the safety of type-safe languages with the power and control of POSIX-like environments. It is structured as a modular monolith where subsystems are cleanly isolated via explicit interfaces.
 
-turnix aims to feel familiar to Linux users while keeping a cleaner internal design. It is not a Linux clone and not a distro. It is a new operating system with Linux-like workability.
+---
 
-## Core architectural choices
+## 🏗️ Layered Architecture
 
-- `Kernel model`: Rust-first modular monolith
-- `Primary platform`: x86_64 on QEMU first, then one reference real machine
-- `Boot strategy`: UEFI-first bring-up with a thin loader, then freestanding kernel handoff
-- `Early UX`: terminal-first
-- `Future desktop`: Wayland-oriented compositor and desktop stack
-- `Compatibility`: Linux-like behavior and strong source portability, not Linux binary compatibility as an early target
-- `Security`: secure-by-default, least privilege, signed artifacts, rollback-friendly system design
+Turnix is organized into four main vertical layers:
 
-## Layer model
+```
++-----------------------------------------------------------+
+|                        USER SPACE                         |
+|   init daemon | interactive shell | fault-tester | apps   |
++-----------------------------------------------------------+
+                             |
+                   System Call Boundary
+                             |
++-----------------------------------------------------------+
+|                       KERNEL CORE                         |
+|   Scheduler   |   VFS (Mounts)   |  VMM (Demand Paging)   |
+|   Signals     |   Pipes & IPC    |  Capabilities / LSM    |
++-----------------------------------------------------------+
+                             |
++-----------------------------------------------------------+
+|                     DRIVER FRAMEWORK                      |
+|   PCIe ECAM   |   ACPI AML Evaluator   |  DRM Framebuffer |
+|   VirtIO-Net  |   NVMe Controller      |  XHCI USB Host   |
++-----------------------------------------------------------+
+                             |
++-----------------------------------------------------------+
+|                     FIRMWARE & BOOT                       |
+|          UEFI Loader  <--->  EDK2 / OVMF Firmware         |
++-----------------------------------------------------------+
+```
 
-### 1. Firmware and boot
+---
 
-The first bring-up step uses a thin UEFI loader because it matches modern hardware, works well on the current Windows and QEMU host, and keeps the early learning loop short. This loader is a staging point, not the long-term kernel architecture.
+## 🛡️ Core Architectural Components
 
-We have now crossed the first real boundary: the UEFI loader stages a separate freestanding kernel image, exits boot services, and jumps into the kernel with an explicit `BootInfo` contract.
+### 1. Firmware and Boot (UEFI)
+*   **Thin Loader**: Located in `boot/uefi-loader`, it executes under UEFI firmware, reads the freestanding kernel ELF from disk, sets up basic identity paging, exits UEFI boot services, and transfers control to the kernel with a structured `BootInfo` handoff.
 
-The next job is to deepen that freestanding kernel runtime with memory-management and interrupt setup instead of adding more firmware-side complexity.
+### 2. Memory Management Subsystem (VMM)
+*   **Virtual Memory Areas (VMAs)**: Tracks virtual address space allocations (`VmaSet`) via sorted maps to prevent region overlaps.
+*   **Demand Paging**: Zero-fills user pages on access, intercepts page faults, and maps physical frames dynamically.
+*   **ASLR & KASLR**: Randomizes load bases for user applications (`exec`) and slides the kernel entry point dynamically (`KASLR`) based on `RDRAND` boot seeds.
+*   **W^X Hardening**: A boot self-check walk ensures that no page in the page tables holds both Writable and Executable permissions.
+*   **Swap & Reclaim**: Clock-based LRU evicts cold anonymous frames to a swap partition when free memory runs low.
+*   **OOM Killer**: Calculates process scores based on resident set sizes (RSS) and priority to safely reclaim memory when resources are exhausted.
 
-### 2. Kernel core
+### 3. POSIX System Services
+*   **Process Table**: PCB tracking process state, signal masks, and file descriptors.
+*   **Lifecycle**: Safe kernel wrappers for `fork`, `exec` segment loading, and parent `wait`/`waitpid` reaping.
+*   **IPC**: High-throughput ring-buffered pipes (triggering `SIGPIPE` on write to closed readers) and Unix Domain sockets (`AF_UNIX`).
+*   **VFS**: Supports filesystem mount tables resolved by mount-point length, translating requests to `tmpfs` and `ext4` filesystem drivers.
 
-The kernel owns:
+### 4. Pluggable Security Layer
+*   **POSIX Capabilities**: standard 64-bit capability sets (`permitted`, `effective`, `inheritable`, `bounding`, `ambient`) to restrict privileged operations.
+*   **Namespaces**: Mount, Network, PID (local init remapping), and User (UID/GID translation) namespaces.
+*   **Seccomp-BPF**: System call filter inheritance using classic BPF evaluation.
+*   **LSM Hook Framework**: Pluggable hooks with a default Unix DAC implementation.
+*   **IMA/EVM**: Integrity Measurement Architecture log ring buffer and EVM checksum verifying file metadata.
+*   **Stack Canaries**: Stack corruption checks placed at the base of task stacks.
 
-- CPU initialization
-- interrupts and timers
-- physical and virtual memory management
-- task scheduling
-- syscall dispatch
-- core device and filesystem abstractions
+### 5. Unified Driver Framework
+*   **Registration**: A unified `DeviceRegistry` holds device descriptors. Drivers implement the `DeviceDriver` trait with `probe`, `initialize`, `suspend`, and `resume` entry points.
+*   **ACPI/PCIe**: Evaluates ACPI MCFG tables to map ECAM addresses, enumerate all PCIe devices, and parse AML DSDT namespaces for power management.
+*   **I/O Drivers**: Custom drivers for VirtIO-Net negotiation, NVMe command queues (PRP-based data transfers), and USB XHCI hosts (handling USB Keyboard input events).
 
-Even in the current UEFI-first milestone, we keep a visible handoff boundary between loader-facing code and kernel-facing code. That habit will make the later freestanding transition much cleaner.
+---
 
-The current execution baseline is intentionally conservative: `kernel threads first, user mode later`. We still want user processes, ELF loading, and a Linux-like userspace model, but we are only reintroducing them after the higher-half kernel, interrupt model, stack discipline, and scheduler frame layout are stable.
+## 📝 Design Invariants
 
-### 3. System services
-
-Long term, more policy should live outside the kernel than inside it. The kernel should provide mechanisms; higher-level services should provide user-facing behavior where possible.
-
-### 4. Userland
-
-Userland begins with an `init` process, a shell, basic utilities, and a native libc/runtime boundary. We then grow toward a Linux-like application environment and later a graphical desktop.
-
-## Design rules
-
-- Keep unsafe Rust small and justified.
-- Favor explicit traits and typed handles over global state.
-- Make subsystems observable with logs, metrics, and error enums.
-- Prefer standards over custom formats unless we have a strong reason otherwise.
-- Document the reason for each non-obvious architectural choice.
-
-## Detailed Documentation
-
-- [Process and Thread Model](adr-0005-process-thread-model.md)
-- [Syscall ABI](syscall-abi.md)
-- [Scheduler Model](scheduler.md)
-- [Interrupts and GDT](adr-0004-interrupts-and-gdt.md)
-- [Virtual Memory and Heap](adr-0003-virtual-memory-and-heap.md)
+*   **Minimizing Unsafe**: Unsafe Rust is constrained to low-level hardware registers, page tables, and context switching. Every `unsafe` block must be documented with a `// SAFETY:` invariant check.
+*   **Concurrency Safety**: Synchronization is enforced using lock abstractions (`spin::Mutex`). Lock ordering rules are documented to prevent deadlocks.
+*   **Observability**: System progress is exposed via serial logging and structured log logs.

@@ -1,59 +1,73 @@
-# Quickstart
+# Quickstart Guide
 
-This repository is intentionally organized for learning. Start here before touching the kernel code.
+This guide describes how to set up, build, run, and verify the Turnix operating system workspace.
 
-## Read first
+---
 
-1. [Project Overview](../README.md)
-2. [Architecture](architecture.md)
-3. [Roadmap](roadmap.md)
-4. [Windows Host Setup](windows-host-setup.md)
-5. [Phase 1 First Boot Plan](phase-1-first-boot.md)
-6. [ADR 0002 UEFI-First Bring-Up](adr-0002-uefi-first-bringup.md)
-7. [Phase 2 Freestanding Handoff](phase-2-freestanding-handoff.md)
-8. [Phase 3 Physical Memory Bring-Up](phase-3-memory-bringup.md)
+## 🛠️ Environment Prerequisites
 
-## Development rhythm
+Turnix requires a **nightly Rust** toolchain, **QEMU**, and **EDK2 UEFI** firmware.
 
-For each milestone we will keep the same flow:
+To verify your environment's compatibility, run:
+```bash
+cargo fmt --check
+cargo xtask doctor
+```
 
-1. Write or update the design note.
-2. Implement the smallest useful slice.
-3. Verify it locally.
-4. Record what we learned and what changes next.
+### 1. OVMF Firmware Setup
+UEFI firmware paths vary depending on the host distribution. If `cargo xtask doctor` reports missing firmware, set the corresponding environment variables in your shell (e.g. for Arch Linux):
+```bash
+export TURNIX_OVMF_CODE="/usr/share/edk2/x64/OVMF_CODE.4m.fd"
+export TURNIX_OVMF_VARS="/usr/share/edk2/x64/OVMF_VARS.4m.fd"
+```
 
-## Phase 0 outcome
+---
 
-Phase 0 is complete when:
+## 🚀 Running Turnix
 
-- the repository structure is stable
-- the host setup guide is clear
-- shared crates compile on the Windows host
-- the kernel crate shape is ready for the first boot milestone
+### 1. Interactive Boot (with QEMU display)
+Build the loaders, freestanding kernel, ramdisk, and run them inside QEMU:
+```bash
+cargo xtask run-uefi
+```
 
-## Verified on the current machine
+### 2. Headless Boot (serial output only)
+To run the boot sequence headlessly (e.g., in a server environment or CI runner):
+```bash
+TURNIX_QEMU_DISPLAY=none cargo xtask test-qemu
+```
+*Note: In headless mode, the scheduler will run the kernel worker tasks (printing `w` continuously) and execute the user space init daemon.*
 
-- `cargo test` passes for the host-buildable workspace members
-- `cargo xtask status` runs successfully
-- `cargo check -p turnix-kernel --lib` succeeds
-- QEMU 11 is installed and on the path
-- nightly Rust is installed and updated
-- the `x86_64-unknown-uefi` and `x86_64-unknown-none` targets are installed for nightly
-- the EDK2 UEFI firmware image is available through the QEMU install
-- `cargo xtask run-uefi` successfully reaches the freestanding kernel path in QEMU
-- the freestanding kernel can summarize conventional memory and allocate sample physical frames
-- the kernel can start its stabilized higher-half scheduler baseline with multiple kernel tasks
+---
 
-## Next practical step
+## 🧪 Testing & Verification
 
-Start with:
+Turnix includes a multi-layered testing workflow to verify changes and prevent regressions:
 
-1. `cargo xtask doctor`
-2. `cargo xtask run-uefi`
-3. `cargo xtask uefi-loader` also works as a compatibility alias if that is the command name you already learned
+### 1. Host Workspace Tests
+Verifies platform-independent workspace members, init manifest parsers, and system ABI data structures:
+```bash
+cargo test --all-targets
+```
 
-If your firmware files live somewhere unusual, set:
+### 2. Kernel-Specific Tests
+Verifies the higher-half memory mappings, demand paging invariants, VMAs, POSIX capability sets, BPF seccomp instruction sets, and Unix socket data integrity on the host:
+```bash
+cargo test -p turnix-kernel
+```
 
-- `turnix_OVMF_CODE`
-- `turnix_OVMF_VARS`
-- `turnix_QEMU_ACCEL`
+### 3. UEFI / QEMU Integration Smoke Tests
+Launches QEMU in headless mode, builds the UEFI loader, and verifies the full guest OS boot loop up to scheduling user space tasks:
+```bash
+TURNIX_QEMU_DISPLAY=none cargo xtask test-qemu
+```
+
+---
+
+## 📝 Development Workflow
+
+To submit changes to the codebase, please follow these steps:
+1. Run local tests: `cargo test --all-targets` and `cargo test -p turnix-kernel`.
+2. Format code and run check style: `cargo fmt` and `cargo clippy --workspace --all-targets`.
+3. Verify QEMU boots: `cargo xtask test-qemu`.
+4. Submit your pull request to the `turnix-next` integration branch.
