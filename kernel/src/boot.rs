@@ -89,6 +89,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     }
     let _ = writeln!(writer, "[STG: SWAP_INIT]");
 
+    // 2.6 Initialize security subsystem (capabilities, LSM, etc.)
+    crate::security::init();
+    let _ = writeln!(writer, "[STG: SECURITY_INIT]");
+
     // 3. Initialize Architecture
     crate::gdt::init();
     crate::interrupts::init(phys_mem_offset);

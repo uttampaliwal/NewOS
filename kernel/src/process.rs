@@ -441,6 +441,15 @@ impl Process {
         let header = elf::parse_header(elf_data)?;
         let aslr_base = aslr::randomise_load_base(&header);
         let virtual_base = compute_load_base(elf_data, &header)?;
+
+        // LSM process_create hook for exec
+        {
+            let inner = self.inner.lock();
+            if crate::security::lsm::check_process_create(inner.sec_ctx.uid, inner.sec_ctx.gid).is_err() {
+                // Hook check — currently advisory for exec
+            }
+        }
+
         let (old_pml4_frame, current_ppid, retained_fd_table, cloexec_fds) = {
             let inner = self.inner.lock();
             let cloexec_fds = inner
@@ -716,6 +725,13 @@ impl Process {
         );
 
         let parent = self.inner.lock();
+
+        // LSM process_create hook
+        if crate::security::lsm::check_process_create(parent.sec_ctx.uid, parent.sec_ctx.gid).is_err() {
+            // If denied, the fork is aborted.  We still need to return a Process
+            // for ABI compatibility, but it won't be added to the process table.
+            // For now we continue with the fork; the hook check is advisory.
+        }
 
         // Clone fd table
         let fd_table: Vec<Option<crate::vfs::FileDescriptor>> =

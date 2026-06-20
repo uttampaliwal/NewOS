@@ -4,6 +4,7 @@
 pub mod capabilities;
 pub mod namespaces;
 pub mod seccomp;
+pub mod lsm;
 
 use capabilities::CapabilitySet;
 
@@ -58,6 +59,8 @@ pub fn init() {
     crate::serial::println!("[SEC] Initializing security subsystem...");
 
     *CURRENT_CONTEXT.lock() = Some(SecurityContext::root());
+
+    crate::security::lsm::init();
 
     crate::serial::println!("[SEC] Security subsystem initialized");
 }

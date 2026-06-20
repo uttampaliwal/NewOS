@@ -176,6 +176,17 @@ fn handle_capset(args: SyscallArgs) -> SyscallResult {
     };
     let mut inner = current.inner.lock();
 
+    // LSM capability_check hook
+    if crate::security::lsm::check_capability(
+        crate::security::capabilities::Capability::Setpcap as u32,
+        inner.sec_ctx.uid,
+        inner.sec_ctx.gid,
+    )
+    .is_err()
+    {
+        return SyscallResult::Error(-1); // EPERM
+    }
+
     // CAP_SETPCAP is required to change capability sets.
     if !inner.sec_ctx.has_capability(crate::security::capabilities::Capability::Setpcap) {
         return SyscallResult::Error(-1); // EPERM
@@ -1165,6 +1176,12 @@ fn handle_connect(args: SyscallArgs) -> SyscallResult {
         Some(s) => s,
         None => return SyscallResult::Error(9), // EBADF
     };
+
+    // LSM net_connect hook
+    let ctx = crate::security::current_context();
+    if crate::security::lsm::check_net_connect(path, ctx.uid, ctx.gid).is_err() {
+        return SyscallResult::Error(1); // EPERM
+    }
 
     match UnixSocketState::connect(&sock, path) {
         Ok(_) => SyscallResult::Success(0),

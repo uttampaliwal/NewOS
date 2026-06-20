@@ -669,6 +669,11 @@ impl Vfs {
             return Err(FsError::PermissionDenied);
         }
 
+        // LSM file_open hook
+        if crate::security::lsm::check_file_open(path, access as u32, uid, gid).is_err() {
+            return Err(FsError::PermissionDenied);
+        }
+
         // Reject write open on read-only mount.
         if flags.writable() && (mount_entry.flags.0 & MountFlags::RDONLY.0 != 0) {
             return Err(FsError::PermissionDenied);
@@ -892,6 +897,26 @@ impl Vfs {
         if !fd.flags.writable() {
             return None;
         }
+
+        // LSM ipc_send hook for pipe and socket writes
+        if matches!(&fd.kind, FdKind::Pipe(_) | FdKind::UnixSocket(_)) {
+            let uid = crate::security::current_context().uid;
+            let gid = crate::security::current_context().gid;
+            if crate::security::lsm::check_ipc_send(
+                match &fd.kind {
+                    FdKind::Pipe(_) => 1,
+                    FdKind::UnixSocket(_) => 2,
+                    _ => 0,
+                },
+                uid,
+                gid,
+            )
+            .is_err()
+            {
+                return None;
+            }
+        }
+
         match &fd.kind {
             FdKind::Pipe(pipe_buf) => {
                 // If read end is closed, writing is not allowed.
