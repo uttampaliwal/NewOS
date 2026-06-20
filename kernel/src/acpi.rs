@@ -1940,4 +1940,126 @@ mod tests {
         assert_eq!(routes[1].gsi, 18);
         assert_eq!(routes[0].vector, routes[1].vector);
     }
+
+    // -----------------------------------------------------------------------
+    // Edge-case tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn rsdp_points_to_invalid_rsdt() {
+        // RSDP points to an RSDT with corrupted checksum
+        let rsdt_address = 0x100usize;
+        let mut image = vec![0u8; 0x200];
+        let mut rsdt = build_rsdt_blob(&[]); // empty RSDT with valid checksum
+        rsdt[9] = rsdt[9].wrapping_add(1); // corrupt checksum
+        write_blob(&mut image, 0, &build_rsdp_blob(rsdt_address as u32));
+        write_blob(&mut image, rsdt_address, &rsdt);
+        let result = unsafe { AcpiTables::from_rsdp(TestAcpiTableHandler::new(image), 0) };
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_rsdt_sdt_list() {
+        let rsdt_address = 0x100usize;
+        let mut image = vec![0u8; 0x200];
+        write_blob(&mut image, 0, &build_rsdp_blob(rsdt_address as u32));
+        write_blob(&mut image, rsdt_address, &build_rsdt_blob(&[]));
+
+        let tables = unsafe { AcpiTables::from_rsdp(TestAcpiTableHandler::new(image), 0) }.unwrap();
+        assert!(tables.sdts.is_empty());
+        assert!(tables.dsdt.is_none());
+    }
+
+    #[test]
+    fn parse_s0_sleep_types_from_package() {
+        // S0 is "working" state — has no SLP_TYP values
+        let context = AmlContext::new(Box::new(NullHandler), DebugVerbosity::None);
+        let value = AmlValue::Package(alloc::vec![AmlValue::Integer(0), AmlValue::Integer(0)]);
+        let sleep = parse_s5_sleep_types(&context, &value).unwrap();
+        assert_eq!(sleep.s5_type_a, 0);
+        assert_eq!(sleep.s5_type_b, Some(0));
+    }
+
+    #[test]
+    fn prt_with_no_routes_returns_empty() {
+        let ssdt = build_prt_ssdt_blob(&[]);
+        let mut context = AmlContext::new(Box::new(NullHandler), DebugVerbosity::None);
+        parse_test_aml_table_blob(&mut context, &ssdt).unwrap();
+        let prt_path = AmlName::from_str("\\_SB.PCI0._PRT").unwrap();
+        let prt = PciRoutingTable::from_prt_path(&prt_path, &mut context).unwrap();
+        // With no entries, routing should work but find nothing
+        assert!(prt.route(0, 0, Pin::IntA, &mut context).is_err());
+    }
+
+    #[test]
+    fn resolve_ioapic_gsi_zero() {
+        let io_apics = alloc::vec![IoApicDescriptor {
+            address: 0xfec0_0000,
+            gsi_base: 0
+        }];
+        // GSI 0 should map to input 0 on the first IOAPIC
+        assert_eq!(resolve_ioapic_for_gsi(&io_apics, 0), Some((0xfec0_0000, 0)));
+    }
+
+    #[test]
+    fn resolve_ioapic_gsi_below_first_base() {
+        let io_apics = alloc::vec![IoApicDescriptor {
+            address: 0xfec0_0000,
+            gsi_base: 24
+        }];
+        // GSI < first base is not mappable (returns None)
+        assert_eq!(resolve_ioapic_for_gsi(&io_apics, 10), None);
+    }
+
+    #[test]
+    fn invoke_method_returns_immediately() {
+        let mut context = AmlContext::new(Box::new(NullHandler), DebugVerbosity::None);
+        let fast_path = AmlName::from_str("\\FAST").unwrap();
+        context
+            .namespace
+            .add_value(
+                fast_path.clone(),
+                AmlValue::native_method(1, false, 0, |_| {
+                    Ok(AmlValue::Integer(42))
+                }),
+            )
+            .unwrap();
+
+        let clock = TestClock::new();
+        let result = invoke_method_with_timeout(&mut context, &fast_path, &clock);
+        assert!(result.is_ok());
+        assert!(matches!(result.unwrap(), AmlValue::Integer(42)));
+    }
+
+    #[test]
+    fn power_button_no_bit_not_handled() {
+        let power = PowerManagementInfo {
+            sci_gsi: 9,
+            power_button_mode: PowerButtonMode::FixedFeature,
+            pm1a_event_block: GenericAddress {
+                address_space: AddressSpace::SystemIo,
+                bit_width: 32,
+                bit_offset: 0,
+                access_size: acpi::platform::address::AccessSize::WordAccess,
+                address: 0x1000,
+            },
+            pm1b_event_block: None,
+            pm1a_control_block: GenericAddress {
+                address_space: AddressSpace::SystemIo,
+                bit_width: 16,
+                bit_offset: 0,
+                access_size: acpi::platform::address::AccessSize::WordAccess,
+                address: 0x2000,
+            },
+            pm1b_control_block: None,
+            sleep_values: None,
+            current_state: AcpiPowerState::S0,
+        };
+        let mut access = TestRegisterAccess::new();
+        // No power button bit set
+        access.values.insert(0x1000, 0);
+        register_init_task(crate::task::TaskId(1));
+        let result = handle_power_button_event_with_access(power, &mut access).unwrap();
+        assert!(!result);
+    }
 }

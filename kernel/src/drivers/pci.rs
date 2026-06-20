@@ -78,3 +78,37 @@ fn enumerate_pci(phys_mem_offset: VirtAddr) {
     }
     crate::serial::println!("[PCI] Scan complete.");
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_config_address_format() {
+        // Verify the PCI config address format:
+        // bit 31 = 1 (enable), bus 16-23, device 11-15, function 8-10, offset 2-7
+        let address = ((0u32) << 16) | ((0u32) << 11) | ((0u32) << 8) | (0u32 & 0xFC) | 0x80000000;
+        assert_eq!(address, 0x80000000);
+    }
+
+    #[test]
+    fn test_vendor_id_sentinel() {
+        // 0xFFFF is the invalid vendor sentinel
+        assert_eq!(!0u16, 0xFFFF);
+    }
+
+    #[test]
+    fn test_config_offset_alignment() {
+        // Config offset must be aligned to 4 bytes in the address field
+        let offset = 0u8;
+        assert_eq!(offset & 0xFC, 0);
+        let offset = 4u8;
+        assert_eq!(offset & 0xFC, 4);
+        let offset = 0x0Au8;
+        assert_eq!(offset & 0xFC, 8);
+        let offset = 0xFFu8;
+        assert_eq!(offset & 0xFC, 0xFC);
+    }
+}

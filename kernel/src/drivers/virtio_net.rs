@@ -832,4 +832,71 @@ mod tests {
         );
         assert_eq!(free_count, 0);
     }
+
+    // -----------------------------------------------------------------------
+    // Edge-case tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_virtio_no_feature_flags() {
+        let features: u64 = 0;
+        assert!(features & VIRTIO_NET_F_MAC == 0);
+        assert!(features & VIRTIO_F_VERSION_1 == 0);
+    }
+
+    #[test]
+    fn test_virtio_all_feature_flags() {
+        let features: u64 = !0u64;
+        assert!(features & VIRTIO_NET_F_MAC != 0);
+        assert!(features & VIRTIO_F_VERSION_1 != 0);
+    }
+
+    #[test]
+    fn test_virtqueue_empty_free_list() {
+        let desc_len = core::mem::size_of::<Desc>() * QUEUE_SIZE as usize;
+        let mut desc_mem = alloc::vec![0u8; desc_len];
+        let desc = unsafe { &mut *(desc_mem.as_mut_ptr() as *mut [Desc; QUEUE_SIZE as usize]) };
+        // Initialize with all descriptors in use (self-loop or 0xFFFF)
+        for i in 0..QUEUE_SIZE as usize {
+            desc[i].next = 0xFFFF;
+        }
+        let mut free_head = 0xFFFFu16;
+        let mut free_count = 0u16;
+        assert!(alloc_all(desc, &mut free_head, &mut free_count).is_empty());
+    }
+
+    #[test]
+    fn test_virtio_modern_device_id() {
+        let vendor = 0x1AF4;
+        let device = 0x1041; // Virtio 1.0+ modern device
+        assert_eq!(vendor, VIRTIO_VENDOR);
+        assert_eq!(device, VIRTIO_NET_MODERN);
+    }
+
+    #[test]
+    fn test_virtio_transitional_device_id() {
+        let vendor = 0x1AF4;
+        let device = 0x1000; // Virtio 0.95 transitional device
+        assert_eq!(vendor, VIRTIO_VENDOR);
+        assert_eq!(device, VIRTIO_NET_TRANSITIONAL);
+    }
+
+    #[test]
+    fn test_probe_rejection_bad_vendor() {
+        let info = DeviceInfo {
+            vendor_id: 0x1AF4, // correct vendor
+            device_id: 0x1042, // virtio-blk, not net
+            class_code: 0x01,
+            subclass: 0x00,
+            prog_if: 0x00,
+            bus: 0,
+            device: 0,
+            function: 0,
+            bars: [None, None, None, None, None, None],
+            interrupt_line: None,
+            interrupt_pin: None,
+            irq: None,
+        };
+        assert!(VirtioNetDriver::probe(&info).is_err());
+    }
 }

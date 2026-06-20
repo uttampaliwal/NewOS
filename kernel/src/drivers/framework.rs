@@ -597,6 +597,115 @@ mod tests {
         assert_eq!(cloned.device_id, info.device_id);
     }
 
+    // --- Edge-case tests ---
+
+    #[test]
+    fn registry_replace_all_bars() {
+        let mut reg = DeviceRegistry::new();
+        let info = DeviceInfo {
+            vendor_id: 0x1234,
+            device_id: 0x5678,
+            class_code: 0x02,
+            subclass: 0x00,
+            prog_if: 0x00,
+            bus: 0,
+            device: 0,
+            function: 0,
+            bars: [
+                Some(Bar::Memory32 { base: 0xA0000000, size: 0x1000, prefetchable: false }),
+                Some(Bar::Memory64 { base: 0x100000000, size: 0x20000, prefetchable: true }),
+                Some(Bar::Io { port: 0x3F8, size: 8 }),
+                None, None, None,
+            ],
+            interrupt_line: Some(10),
+            interrupt_pin: Some(1),
+            irq: Some(5),
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.vendor_id, 0x1234);
+        match (&cloned.bars[0], &info.bars[0]) {
+            (Some(Bar::Memory32 { base: b1, size: s1, prefetchable: p1 }),
+             Some(Bar::Memory32 { base: b2, size: s2, prefetchable: p2 })) => {
+                assert_eq!(b1, b2);
+                assert_eq!(s1, s2);
+                assert_eq!(p1, p2);
+            }
+            _ => panic!("BAR0 mismatch"),
+        }
+        match (&cloned.bars[1], &info.bars[1]) {
+            (Some(Bar::Memory64 { base: b1, size: s1, prefetchable: p1 }),
+             Some(Bar::Memory64 { base: b2, size: s2, prefetchable: p2 })) => {
+                assert_eq!(b1, b2);
+                assert_eq!(s1, s2);
+                assert_eq!(p1, p2);
+            }
+            _ => panic!("BAR1 mismatch"),
+        }
+        match (&cloned.bars[2], &info.bars[2]) {
+            (Some(Bar::Io { port: p1, size: s1 }),
+             Some(Bar::Io { port: p2, size: s2 })) => {
+                assert_eq!(p1, p2);
+                assert_eq!(s1, s2);
+            }
+            _ => panic!("BAR2 mismatch"),
+        }
+        assert!(cloned.bars[3].is_none());
+        assert_eq!(cloned.irq, Some(5));
+    }
+
+    #[test]
+    fn device_key_max_boundaries() {
+        let k1 = DeviceKey::new(u8::MAX, 31, 7, u16::MAX, u16::MAX);
+        let k2 = DeviceKey::new(0, 0, 0, 0, 0);
+        assert!(k2 < k1);
+        assert_eq!(k1, DeviceKey::new(u8::MAX, 31, 7, u16::MAX, u16::MAX));
+    }
+
+    #[test]
+    fn iter_empty_registry_yields_nothing() {
+        let reg = DeviceRegistry::new();
+        assert_eq!(reg.iter().count(), 0);
+        assert_eq!(reg.iter_device_infos().count(), 0);
+    }
+
+    #[test]
+    fn register_device_info_round_trip() {
+        let mut reg = DeviceRegistry::new();
+        let key = DeviceKey::new(0, 1, 0, 0x1234, 0x5678);
+        let info = make_device_info(0x1234, 0x5678);
+        reg.register_device_info(key.clone(), info.clone());
+        let retrieved = reg.get_device_info(&key).unwrap();
+        assert_eq!(retrieved.vendor_id, 0x1234);
+        assert_eq!(retrieved.device_id, 0x5678);
+    }
+
+    #[test]
+    fn device_info_missing_returns_none() {
+        let reg = DeviceRegistry::new();
+        let key = DeviceKey::new(0, 0, 0, 0xFFFF, 0xFFFF);
+        assert!(reg.get_device_info(&key).is_none());
+    }
+
+    #[test]
+    fn register_many_devices_and_clear() {
+        let mut reg = DeviceRegistry::new();
+        for i in 0u8..10 {
+            let key = DeviceKey::new(0, i, 0, 0x1000 + i as u16, i as u16);
+            let info = make_device_info(0x1000 + i as u16, i as u16);
+            let driver = MockDriver::probe(&info).unwrap();
+            reg.register(key, driver);
+        }
+        assert_eq!(reg.len(), 10);
+        // Overwrite all with new ones
+        for i in 0u8..10 {
+            let key = DeviceKey::new(0, i, 0, 0x2000 + i as u16, i as u16);
+            let info = make_device_info(0x2000 + i as u16, i as u16);
+            let driver = MockDriver::probe(&info).unwrap();
+            reg.register(key, driver);
+        }
+        assert_eq!(reg.len(), 20);
+    }
+
     // ---------------------------------------------------------------------------
     // Property-based tests
     // ---------------------------------------------------------------------------

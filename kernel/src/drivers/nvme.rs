@@ -1609,4 +1609,90 @@ mod tests {
         write_io_cqe(&mut ctrl, 0, 99, false);
         assert!(ctrl.poll_cq(1, 99, 100_000).is_ok());
     }
+
+    // -----------------------------------------------------------------------
+    // Edge-case tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_namespace_zero_capacity() {
+        let ns = NvmeNamespace {
+            nsid: 1,
+            nsze: 0,
+            lba_size: 512,
+            capacity: 0,
+        };
+        assert_eq!(ns.capacity, 0);
+        assert_eq!(ns.nsze, 0);
+    }
+
+    #[test]
+    fn test_lba_format_min_max() {
+        let lbaf_min = LbaFormat { raw: 0 }; // 2^0 = 1 byte
+        assert_eq!(lbaf_min.lba_data_size(), 1);
+        let lbaf_max = LbaFormat { raw: 15 }; // 2^15 = 32768
+        assert_eq!(lbaf_max.lba_data_size(), 32768);
+    }
+
+    #[test]
+    fn test_doorbell_max_stride() {
+        let max_stride = 4u64 << 7; // DSTRD max = 7
+        let ctrl = NvmeController {
+            bar0: 0,
+            phys_mem_offset: 0,
+            admin_sq_mem: alloc::vec![],
+            admin_cq_mem: alloc::vec![],
+            io_sq_mem: alloc::vec![],
+            io_cq_mem: alloc::vec![],
+            admin_sq_tail: AtomicU16::new(0),
+            admin_cq_head: AtomicU16::new(0),
+            io_sq_tail: AtomicU16::new(0),
+            io_cq_head: AtomicU16::new(0),
+            next_cid: AtomicU16::new(1),
+            doorbell_stride: max_stride,
+            cq_expected_phase: [AtomicBool::new(true), AtomicBool::new(true)],
+            namespaces: Vec::new(),
+            device_info: DeviceInfo {
+                vendor_id: 0,
+                device_id: 0,
+                class_code: 0,
+                subclass: 0,
+                prog_if: 0,
+                bus: 0,
+                device: 0,
+                function: 0,
+                bars: [None, None, None, None, None, None],
+                interrupt_line: None,
+                interrupt_pin: None,
+                irq: None,
+            },
+        };
+        assert_eq!(ctrl.sq_doorbell(0), 0x1000);
+        assert_eq!(ctrl.cq_doorbell(0), 0x1000 + max_stride);
+        assert_eq!(ctrl.sq_doorbell(1), 0x1000 + 2 * max_stride);
+    }
+
+    #[test]
+    fn test_next_cid_wraparound() {
+        let mut ctrl = make_ctrl_for_queue_tests();
+        ctrl.next_cid.store(u16::MAX, Ordering::Relaxed);
+        // Allocate next CID
+        let cid = ctrl.next_cid.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(cid, u16::MAX);
+        // Next wrap to 0
+        let next_cid = ctrl.next_cid.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(next_cid, 0);
+    }
+
+    #[test]
+    fn test_namespace_large_capacity() {
+        let ns = NvmeNamespace {
+            nsid: 1,
+            nsze: u64::MAX / 4096,
+            lba_size: 4096,
+            capacity: (u64::MAX / 4096) * 4096,
+        };
+        assert_eq!(ns.nsze, u64::MAX / 4096);
+        assert!(ns.capacity > 0);
+    }
 }

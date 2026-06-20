@@ -406,4 +406,69 @@ mod tests {
             "Equal keys should be equal"
         );
     }
+
+    #[test]
+    fn test_all_bars_zeroed() {
+        let config = [0u32; 16];
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+        for (i, bar) in bars.iter().enumerate() {
+            assert!(bar.is_none(), "BAR {} with value 0 should be None", i);
+        }
+    }
+
+    #[test]
+    fn test_all_bars_io_space() {
+        let mut config = [0u32; 16];
+        for i in 0..6 {
+            // I/O BAR: bit 0 = 1 for I/O, bits 31:2 = port address (4-byte aligned)
+            let port = 0x3F0u32 + (i as u32 * 4);
+            config[4 + i] = port | 0x1;
+        }
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+        for (i, bar) in bars.iter().enumerate() {
+            match bar {
+                Some(Bar::Io { port, .. }) => {
+                    assert_eq!(*port, 0x3F0u16 + (i as u16 * 4));
+                }
+                other => panic!("Expected Io BAR at index {}, got {:?}", i, other),
+            }
+        }
+    }
+
+    #[test]
+    fn test_max_bars_64bit_only() {
+        let mut config = [0u32; 16];
+        // Three 64-bit BARs (BAR0, BAR2, BAR4) consume 6 slots
+        config[4] = 0x00000004; // BAR0: 64-bit low
+        config[5] = 0x00000001; // BAR0 high
+        config[6] = 0x00000004; // BAR2: 64-bit low
+        config[7] = 0x00000002; // BAR2 high
+        config[8] = 0x00000004; // BAR4: 64-bit low
+        config[9] = 0x00000003; // BAR4 high
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+        assert!(bars[0].is_some());
+        assert!(bars[1].is_none());
+        assert!(bars[2].is_some());
+        assert!(bars[3].is_none());
+        assert!(bars[4].is_some());
+        assert!(bars[5].is_none());
+    }
+
+    #[test]
+    fn test_64bit_bar_large_base() {
+        let mut config = [0u32; 16];
+        config[4] = 0x00000004;
+        config[5] = 0xFFFF_FFF0; // high part with high bits set
+        let reader = |off: u16| config[(off / 4) as usize];
+        let bars = parse_bars(&reader);
+        match bars[0] {
+            Some(Bar::Memory64 { base, .. }) => {
+                assert_eq!(base, 0xFFFF_FFF0_0000_0000);
+            }
+            _ => panic!("Expected Memory64 BAR"),
+        }
+    }
 }

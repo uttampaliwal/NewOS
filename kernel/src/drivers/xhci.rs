@@ -1482,4 +1482,92 @@ mod tests {
         };
         assert_ne!(info.prog_if, XHCI_PROG_IF);
     }
+
+    // -----------------------------------------------------------------------
+    // Edge-case tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_all_port_speed_values() {
+        // All 16 possible raw speed values (0-15)
+        for raw in 0u32..=15 {
+            let speed = PortSpeed::from_raw(raw);
+            match raw {
+                SPEED_LOW => {
+                    assert_eq!(speed, PortSpeed::Usb10Low);
+                    assert!(speed.is_usb2());
+                }
+                SPEED_FULL => {
+                    assert_eq!(speed, PortSpeed::Usb11Full);
+                    assert!(speed.is_usb2());
+                }
+                SPEED_HIGH => {
+                    assert_eq!(speed, PortSpeed::Usb20High);
+                    assert!(speed.is_usb2());
+                }
+                SPEED_SUPER => {
+                    assert_eq!(speed, PortSpeed::Usb30Super);
+                    assert!(speed.is_usb3());
+                }
+                _ => assert_eq!(speed, PortSpeed::None),
+            }
+        }
+    }
+
+    #[test]
+    fn test_portsc_all_bits_set_parsing() {
+        // All PORTSC bits set (including reserved)
+        let raw = 0xFFFF_FFFFu32;
+        let status = XhciController::parse_port_status(0, raw);
+        assert!(status.connected);
+        assert!(status.enabled);
+        // Speed bits = 0xF which maps to None (unknown speed)
+        assert_eq!(status.speed, PortSpeed::None);
+        assert!(status.connect_change);
+        assert!(status.reset_change);
+    }
+
+    #[test]
+    fn test_xhci_port_status_portsc_only_change_bits() {
+        // Only change bits set, no connection/enable
+        let raw = PORTSC_CSC | PORTSC_PRC;
+        let status = XhciController::parse_port_status(0, raw);
+        assert!(!status.connected);
+        assert!(!status.enabled);
+        assert_eq!(status.speed, PortSpeed::None);
+        assert!(status.connect_change);
+        assert!(status.reset_change);
+    }
+
+    #[test]
+    fn test_mass_storage_devices_clear_after_register() {
+        // Clear first
+        USB_STORAGE_DEVICES.lock().clear();
+
+        let d1 = UsbMassStorageDevice {
+            port_num: 1,
+            block_count: 1000,
+            block_size: 512,
+            ready: true,
+        };
+        let d2 = UsbMassStorageDevice {
+            port_num: 2,
+            block_count: 2000,
+            block_size: 4096,
+            ready: false,
+        };
+        register_mass_storage_device(d1);
+        register_mass_storage_device(d2);
+        assert_eq!(USB_STORAGE_DEVICES.lock().len(), 2);
+
+        USB_STORAGE_DEVICES.lock().clear();
+        assert!(USB_STORAGE_DEVICES.lock().is_empty());
+    }
+
+    #[test]
+    fn test_enumerate_zero_ports() {
+        let ports: alloc::vec::Vec<XhciPortStatus> = alloc::vec![];
+        let connected: Vec<_> = ports.iter().filter(|p| p.connected).collect();
+        assert!(connected.is_empty());
+    }
 }

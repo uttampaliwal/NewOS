@@ -40,3 +40,52 @@ pub fn poll() {
         // Network polling will be wired up when the stack is active.
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_network_state_initial() {
+        let state = NetworkState {
+            initialized: false,
+            mac_address: [0u8; 6],
+        };
+        assert!(!state.initialized);
+        assert_eq!(state.mac_address, [0u8; 6]);
+    }
+
+    #[test]
+    fn test_network_state_after_init() {
+        let state = NetworkState {
+            initialized: true,
+            mac_address: [0x02, 0x00, 0xAD, 0xDE, 0x00, 0x01],
+        };
+        assert!(state.initialized);
+        assert_eq!(state.mac_address[0], 0x02);
+    }
+
+    #[test]
+    fn test_mac_address_all_zeros() {
+        let state = NetworkState {
+            initialized: true,
+            mac_address: [0u8; 6],
+        };
+        assert!(state.initialized);
+        assert_eq!(state.mac_address, [0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn test_mac_address_broadcast() {
+        let state = NetworkState {
+            initialized: true,
+            mac_address: [0xFFu8; 6],
+        };
+        assert!(state.initialized);
+        assert_eq!(state.mac_address, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+    }
+}
