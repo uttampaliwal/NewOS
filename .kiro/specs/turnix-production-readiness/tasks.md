@@ -452,7 +452,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that the measurement log grows by one entry per exec
     - _Requirements: 26.1_
 
-- [ ] 35. Phase 4 checkpoint — verify security framework
+- [x] 35. Phase 4 checkpoint — verify security framework
   - Ensure all Phase 4 property tests and unit tests pass; verify QEMU boots with capability checks enforced, seccomp filter blocks a forbidden syscall, and IMA measurement log is populated after init exec
   - Ensure all tests pass, ask the user if questions arise.
 
