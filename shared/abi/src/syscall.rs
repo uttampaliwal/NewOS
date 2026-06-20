@@ -56,6 +56,7 @@ pub enum Syscall {
     Capget = 41,
     Capset = 42,
     Clone = 43,
+    Prctl = 44,
 }
 
 impl Syscall {
@@ -104,6 +105,7 @@ impl Syscall {
             41 => Some(Self::Capget),
             42 => Some(Self::Capset),
             43 => Some(Self::Clone),
+            44 => Some(Self::Prctl),
             _ => None,
         }
     }

@@ -343,6 +343,7 @@ mod tests {
             pending_signal_frame: None,
             sec_ctx: crate::security::SecurityContext::root(),
             nsproxy: crate::security::namespaces::NsProxy::new(),
+            seccomp_filter: None,
         };
         let process = Process {
             inner: Arc::new(Mutex::new(pcb)),

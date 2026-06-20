@@ -77,6 +77,7 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::ReadShutdownSignal => handle_read_shutdown_signal(args),
         Syscall::Capget => handle_capget(args),
         Syscall::Capset => handle_capset(args),
+        Syscall::Prctl => handle_prctl(args),
     }
 }
 
@@ -190,6 +191,82 @@ fn handle_capset(args: SyscallArgs) -> SyscallResult {
     inner.sec_ctx.caps.permitted = new_data.permitted;
     inner.sec_ctx.caps.inheritable = new_data.inheritable;
 
+    SyscallResult::Success(0)
+}
+
+/// Handle prctl syscall — only supports PR_SET_SECCOMP.
+fn handle_prctl(args: SyscallArgs) -> SyscallResult {
+    let option = args.arg0 as u32;
+    let arg1 = args.arg1 as u32;
+    let arg2 = args.arg2; // user-space pointer to sock_fprog
+
+    if option != crate::security::seccomp::PR_SET_SECCOMP {
+        return SyscallResult::Error(-1); // Unknown option
+    }
+
+    if arg1 != crate::security::seccomp::SECCOMP_MODE_FILTER {
+        return SyscallResult::Error(-1); // Only FILTER mode supported
+    }
+
+    // Read the sock_fprog structure from user space:
+    // struct sock_fprog {
+    //     unsigned short len;    // number of instructions
+    //     struct sock_filter *filter; // pointer to instructions
+    // };
+    let sock_fprog_ptr = arg2 as *const u8;
+    if sock_fprog_ptr.is_null() {
+        return SyscallResult::Error(-14); // EFAULT
+    }
+
+    // Read len (u16) at offset 0
+    let filter_len = unsafe { core::ptr::read_unaligned(sock_fprog_ptr as *const u16) } as usize;
+    // Read filter pointer (u64) at offset 2 (with alignment padding on x86_64, typically 8)
+    // The sock_fprog struct has: len: u16, padding: [u8; 6], filter: *const sock_filter
+    let filter_ptr = unsafe {
+        let ptr_ptr = (sock_fprog_ptr as usize + 8) as *const *const crate::security::seccomp::BpfInstruction;
+        core::ptr::read(ptr_ptr)
+    };
+
+    if filter_len == 0 || filter_len > 4096 || filter_ptr.is_null() {
+        return SyscallResult::Error(-22); // EINVAL
+    }
+
+    // Read instructions from user space
+    let mut instructions = alloc::vec![
+        crate::security::seccomp::BpfInstruction {
+            code: 0,
+            jt: 0,
+            jf: 0,
+            k: 0
+        };
+        filter_len
+    ];
+    for i in 0..filter_len {
+        unsafe {
+            let insn_ptr = filter_ptr.add(i);
+            instructions[i] = core::ptr::read_unaligned(insn_ptr);
+        }
+    }
+
+    // Create the filter
+    let filter = match crate::security::seccomp::SeccompFilter::new(instructions, true) {
+        Some(f) => f,
+        None => return SyscallResult::Error(-22), // EINVAL
+    };
+
+    // Install the filter on the current process
+    let current = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(-1),
+    };
+    let mut inner = current.inner.lock();
+
+    // If a filter is already installed, reject (cannot change seccomp policy)
+    if inner.seccomp_filter.is_some() {
+        return SyscallResult::Error(-1); // EPERM
+    }
+
+    inner.seccomp_filter = Some(filter);
     SyscallResult::Success(0)
 }
 
@@ -1305,6 +1382,7 @@ mod tests {
                 pending_signal_frame: None,
                 sec_ctx: crate::security::SecurityContext::root(),
                 nsproxy: crate::security::namespaces::NsProxy::new(),
+                seccomp_filter: None,
             }))
         };
         let task = Task {
@@ -1435,6 +1513,7 @@ mod tests {
             pending_signal_frame: None,
             sec_ctx: crate::security::SecurityContext::root(),
             nsproxy: crate::security::namespaces::NsProxy::new(),
+            seccomp_filter: None,
         }))
     }
 

@@ -5,6 +5,7 @@ use crate::memory::vma::{Vma, VmaBacking, VmaError, VmaFlags, VmaProt, VmaSet};
 use crate::memory::wx;
 use crate::security::capabilities::CapabilitySet;
 use crate::security::namespaces::NsProxy;
+use crate::security::seccomp::SeccompFilter;
 use crate::security::SecurityContext;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
@@ -144,6 +145,8 @@ pub struct ProcessControlBlock {
     pub sec_ctx: SecurityContext,
     /// Per-process namespace proxy.
     pub nsproxy: NsProxy,
+    /// Per-process seccomp filter (None = disabled).
+    pub seccomp_filter: Option<SeccompFilter>,
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +261,7 @@ impl Process {
                         pending_signal_frame: None,
                         sec_ctx: SecurityContext::root(),
                         nsproxy: NsProxy::new(),
+                        seccomp_filter: None,
                     }))
                 }
             };
@@ -305,6 +309,7 @@ impl Process {
             pending_signal_frame: None,
             sec_ctx: SecurityContext::new(0, 0, CapabilitySet::basic()),
             nsproxy: NsProxy::new(),
+            seccomp_filter: None,
         };
 
         crate::serial::println!("[STG: PROC_INNER_BUILT]");
@@ -490,6 +495,7 @@ impl Process {
                 pending_signal_frame: None,
                 sec_ctx: SecurityContext::new(0, 0, CapabilitySet::basic()),
                 nsproxy: NsProxy::new(),
+                seccomp_filter: None,
             })),
         };
 
@@ -733,6 +739,7 @@ impl Process {
             pending_signal_frame: None,
             sec_ctx: parent.sec_ctx.clone(),
             nsproxy: NsProxy::from_flags(0, &parent.nsproxy),
+            seccomp_filter: parent.seccomp_filter.clone().map(|f| f.inherit_on_fork()),
         };
 
         Self {
@@ -781,6 +788,7 @@ impl Process {
             pending_signal_frame: None,
             sec_ctx: parent.sec_ctx.clone(),
             nsproxy,
+            seccomp_filter: parent.seccomp_filter.clone().map(|f| f.inherit_on_fork()),
         };
 
         Self {

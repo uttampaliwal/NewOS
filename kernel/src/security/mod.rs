@@ -3,6 +3,7 @@
 
 pub mod capabilities;
 pub mod namespaces;
+pub mod seccomp;
 
 use capabilities::CapabilitySet;
 

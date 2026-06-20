@@ -115,6 +115,26 @@ unsafe extern "C" {
     fn syscall_entry();
 }
 
+/// Evaluate the seccomp filter for the current process.
+/// Returns `Some(action)` if a filter is installed, `None` otherwise.
+fn evaluate_seccomp(
+    syscall_num: u16,
+    args: &turnix_abi::syscall::SyscallArgs,
+) -> Option<crate::security::seccomp::SeccompAction> {
+    let proc = crate::task::scheduler::get_current_process()?;
+    let inner = proc.inner.lock();
+    let filter = inner.seccomp_filter.as_ref()?;
+
+    let data = crate::security::seccomp::SeccompData {
+        nr: syscall_num as u32,
+        arch: 0xC000003E, // AUDIT_ARCH_X86_64
+        ip: 0,
+        args: [args.arg0, args.arg1, args.arg2, args.arg3, 0, 0],
+    };
+
+    Some(filter.evaluate(&data))
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn syscall_dispatch(frame: &mut SyscallFrame) -> u64 {
     use turnix_abi::syscall::{Syscall, SyscallArgs};
@@ -125,6 +145,20 @@ pub extern "C" fn syscall_dispatch(frame: &mut SyscallFrame) -> u64 {
         arg2: frame.rdx,
         arg3: frame.r10,
     };
+
+    // Seccomp-BPF evaluation (checked before any syscall dispatch).
+    if let Some(action) = evaluate_seccomp(syscall_num, &args) {
+        match action {
+            crate::security::seccomp::SeccompAction::Allow => {}
+            crate::security::seccomp::SeccompAction::Errno(e) => {
+                return -(e as i64) as u64; // Return -errno
+            }
+            _ => {
+                // Kill the process: exit the current task.
+                crate::task::scheduler::exit_current_task();
+            }
+        }
+    }
 
     if let Some(syscall) = Syscall::from_u16(syscall_num) {
         // Fork needs direct access to the saved frame so the child can
