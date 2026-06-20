@@ -19,9 +19,13 @@ pub const SERVICE_TOML: &[u8] = b"\
 path = \"ipc-broker\"
 after = []
 
+[service.service-manager]
+path = \"service-manager\"
+after = [\"ipc-broker\"]
+
 [service.shell]
 path = \"shell\"
-after = [\"ipc-broker\"]
+after = [\"service-manager\"]
 
 [service.fault-tester]
 path = \"fault-tester\"

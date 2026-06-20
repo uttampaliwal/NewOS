@@ -553,8 +553,8 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that a `MethodCall` to an unregistered service returns `BrokerError::ServiceNotFound` (`test_method_call_unregistered_service`)
     - _Requirements: 35.3_
 
-- [ ] 43. Implement the service manager daemon in `userland/service-manager/`
-  - [ ] 43.1 Create `userland/service-manager/` as a new workspace crate; add it to `Cargo.toml` workspace members
+- [x] 43. Implement the service manager daemon in `userland/service-manager/`
+  - [x] 43.1 Create `userland/service-manager/` as a new workspace crate; add it to `Cargo.toml` workspace members
     - Define `ServiceUnit` (TOML-deserialized), `RestartPolicy` (`Never`, `OnFailure`, `Always`), `SocketSpec`
     - Implement service dependency graph resolution (topological sort of `after`/`requires` fields)
     - Implement service lifecycle: start (fork/exec), monitor (wait for exit), restart with exponential back-off per `RestartPolicy`
@@ -562,9 +562,9 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Implement socket activation: pre-open the socket and pass the FD to the service on start
     - Expose service status via IPC broker (start/stop/status methods)
     - _Requirements: 33.1, 33.2, 33.3, 33.4, 33.5, 33.6_
-  - [ ]* 43.2 Write unit tests for service unit file parsing
-    - Test that a valid TOML service unit deserializes correctly
-    - Test that `after` dependency cycles are detected and reported
+  - [x]* 43.2 Write unit tests for service unit file parsing
+    - Test that a valid TOML service unit deserializes correctly (`test_valid_toml_deserializes`)
+    - Test that `after` dependency cycles are detected and reported (`test_cycle_detected`, `test_self_cycle_detected`, `test_load_units_with_cycle_rejected`)
     - _Requirements: 33.1_
 
 - [ ] 44. Implement the log daemon in `userland/log-daemon/`
