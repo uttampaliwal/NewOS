@@ -1052,3 +1052,162 @@ where
 
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::vec;
+    use x86_64::structures::paging::PhysFrame;
+
+    fn test_proc(_name: &str) -> ProcessControlBlock {
+        let (pml4, _) = x86_64::registers::control::Cr3::read();
+        ProcessControlBlock {
+            id: ProcessId::new(),
+            ppid: ProcessId(0),
+            state: ProcessState::Ready,
+            pml4_frame: pml4,
+            entry_point: VirtAddr::new(0x400000),
+            stack_top: VirtAddr::new(0x7fffff000000),
+            threads: vec![],
+            vma_set: VmaSet::new(),
+            mmap_next_addr: VirtAddr::new(DEFAULT_MMAP_BASE),
+            aslr_base: VirtAddr::zero(),
+            fd_table: vec![None; 1024],
+            signal_mask: SignalSet::empty(),
+            signal_handlers: [SignalAction::Default; 64],
+            pending_signals: SignalSet::empty(),
+            pending_signal_frame: None,
+            sec_ctx: SecurityContext::root(),
+            nsproxy: NsProxy::new(),
+            seccomp_filter: None,
+        }
+    }
+
+    #[test]
+    fn process_id_new_increments() {
+        let id1 = ProcessId::new();
+        let id2 = ProcessId::new();
+        assert_ne!(id1.0, id2.0);
+        assert!(id2.0 > id1.0);
+    }
+
+    #[test]
+    fn process_id_default() {
+        let id = ProcessId::default();
+        assert!(id.0 >= 1);
+    }
+
+    #[test]
+    fn process_control_block_default_state() {
+        let pcb = test_proc("test");
+        assert_eq!(pcb.state, ProcessState::Ready);
+        assert_eq!(pcb.fd_table.len(), 1024);
+        assert_eq!(pcb.signal_handlers.len(), 64);
+        assert!(!pcb.pending_signals.contains(1));
+    }
+
+    #[test]
+    fn process_control_block_transitions_to_zombie() {
+        let mut pcb = test_proc("zombie");
+        assert_eq!(pcb.state, ProcessState::Ready);
+        pcb.state = ProcessState::Zombie { exit_code: 42 };
+        assert_eq!(pcb.state, ProcessState::Zombie { exit_code: 42 });
+        if let ProcessState::Zombie { exit_code } = pcb.state {
+            assert_eq!(exit_code, 42);
+        } else {
+            panic!("expected Zombie state");
+        }
+    }
+
+    #[test]
+    fn signal_set_insert_contains_remove() {
+        let mut set = SignalSet::empty();
+        assert!(!set.contains(5));
+        set.insert(5);
+        assert!(set.contains(5));
+        set.remove(5);
+        assert!(!set.contains(5));
+    }
+
+    #[test]
+    fn signal_set_multiple_signals() {
+        let mut set = SignalSet::empty();
+        set.insert(1);
+        set.insert(9);
+        set.insert(17);
+        assert!(set.contains(1));
+        assert!(set.contains(9));
+        assert!(set.contains(17));
+        assert!(!set.contains(2));
+    }
+
+    #[test]
+    fn signal_action_default_is_default() {
+        let act = SignalAction::Default;
+        assert_eq!(act, SignalAction::Default);
+    }
+
+    #[test]
+    fn signal_action_handler_addr() {
+        let act = SignalAction::Handler(0xdeadbeef);
+        match act {
+            SignalAction::Handler(addr) => assert_eq!(addr, 0xdeadbeef),
+            _ => panic!("expected Handler"),
+        }
+    }
+
+    #[test]
+    fn process_table_insert_lookup() {
+        let pcb = Arc::new(Mutex::new(test_proc("table_test")));
+        let pid = pcb.lock().id;
+        PROCESS_TABLE.lock().insert(pid, pcb.clone());
+        let lookup = PROCESS_TABLE.lock().get(&pid).cloned();
+        assert!(lookup.is_some());
+        assert_eq!(lookup.unwrap().lock().id, pid);
+        PROCESS_TABLE.lock().remove(&pid);
+        assert!(PROCESS_TABLE.lock().get(&pid).is_none());
+    }
+
+    #[test]
+    fn process_table_remove_nonexistent() {
+        let id = ProcessId(99999);
+        let before = PROCESS_TABLE.lock().len();
+        PROCESS_TABLE.lock().remove(&id);
+        assert_eq!(PROCESS_TABLE.lock().len(), before);
+    }
+
+    #[test]
+    fn reparent_to_init_changes_ppid() {
+        let pcb = Arc::new(Mutex::new(test_proc("orphan")));
+        let pid = pcb.lock().id;
+        assert_ne!(pcb.lock().ppid, ProcessId(1));
+        PROCESS_TABLE.lock().insert(pid, pcb.clone());
+        reparent_to_init(pid);
+        assert_eq!(pcb.lock().ppid, ProcessId(1));
+        PROCESS_TABLE.lock().remove(&pid);
+    }
+
+    #[test]
+    fn reparent_to_init_nonexistent_pid() {
+        // Should not panic for a non-existent PID
+        reparent_to_init(ProcessId(99999));
+    }
+
+    #[test]
+    fn process_block_reason_differentiation() {
+        let blocked_io = ProcessState::Blocked(BlockReason::WaitingForIo);
+        let blocked_child = ProcessState::Blocked(BlockReason::WaitingForChild);
+        assert_ne!(blocked_io, blocked_child);
+        assert_eq!(blocked_io, ProcessState::Blocked(BlockReason::WaitingForIo));
+    }
+
+    #[test]
+    fn process_kernel_proc_id_zero() {
+        let kp = Process::kernel_process();
+        assert_eq!(kp.id(), ProcessId(0));
+    }
+}
