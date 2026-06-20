@@ -16,6 +16,7 @@ members = [
     "userland/ipc-broker",
     "userland/service-manager",
     "userland/log-daemon",
+    "userland/network-manager",
 ]
 default-members = [
     "shared/abi",

@@ -1,0 +1,21 @@
+[package]
+name = "network-manager"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+smoltcp = { version = "0.9.0", default-features = false, features = [
+    "alloc",
+    "proto-ipv4",
+    "medium-ethernet",
+    "socket-udp",
+    "socket-dhcpv4",
+    "socket-dns",
+] }
+ipc-proto = { path = "../../shared/ipc-proto" }
+
+[dev-dependencies]
+heapless = "0.7"
