@@ -531,12 +531,12 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
 
 ## Phase 6 — System Services Layer
 
-- [ ] 41. Create the `shared/ipc-proto` crate and IPC message types
-  - [ ] 41.1 Create `shared/ipc-proto/` as a new workspace crate; add it to `Cargo.toml` workspace members
+- [x] 41. Create the `shared/ipc-proto` crate and IPC message types
+  - [x] 41.1 Create `shared/ipc-proto/` as a new workspace crate; add it to `Cargo.toml` workspace members
     - Define `IpcMessage` enum (`MethodCall`, `MethodReturn`, `Signal`, `PropertyGet`, `PropertySet`), `IpcValue`, `IpcError` with `serde::Serialize`/`Deserialize`
     - Implement `IpcMessage` serialization to/from a length-prefixed binary format using `bincode` or `postcard`
     - _Requirements: 35.1, 35.2_
-  - [ ]* 41.2 Write unit tests for IPC message serialization round-trip
+  - [x]* 41.2 Write unit tests for IPC message serialization round-trip
     - Test that each `IpcMessage` variant serializes and deserializes to the same value
     - _Requirements: 35.2_
 

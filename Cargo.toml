@@ -2,6 +2,7 @@
 members = [
     "boot/uefi-loader",
     "shared/abi",
+    "shared/ipc-proto",
     "shared/serial",
     "shared/tpkg-format",
     "tools/xtask",
