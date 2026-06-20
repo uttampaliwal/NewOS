@@ -540,17 +540,17 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that each `IpcMessage` variant serializes and deserializes to the same value
     - _Requirements: 35.2_
 
-- [ ] 42. Implement the IPC broker daemon in `userland/ipc-broker/`
-  - [ ] 42.1 Create `userland/ipc-broker/` as a new workspace crate; add it to `Cargo.toml` workspace members
-    - Implement the broker as an async event loop (using `async-std` or `smol`) listening on a Unix domain socket at `/run/ipc.sock`
-    - Implement service registration: services connect and register their interface name
+- [x] 42. Implement the IPC broker daemon in `userland/ipc-broker/`
+  - [x] 42.1 Create `userland/ipc-broker/` as a new workspace crate; add it to `Cargo.toml` workspace members
+    - Implement the broker as an event loop (using `smol` channels + `SocketTransport`) listening on a Unix domain socket at `/run/ipc.sock`
+    - Implement service registration: services connect and register their interface name via `MethodCall` to `org.turnix.Broker/Register`
     - Implement method call routing: broker receives `MethodCall`, looks up the destination service, forwards the message, and routes the `MethodReturn` back to the caller
     - Implement signal broadcast: `Signal` messages are delivered to all subscribers of the interface
     - Wire the IPC broker into the init daemon's service manifest so it starts before other services
     - _Requirements: 35.1, 35.2, 35.3, 35.4, 35.5_
-  - [ ]* 42.2 Write unit tests for IPC method call routing
-    - Test that a `MethodCall` to a registered service is forwarded and the reply is returned to the caller
-    - Test that a `MethodCall` to an unregistered service returns `IpcError::ServiceNotFound`
+  - [x]* 42.2 Write unit tests for IPC method call routing
+    - Test that a `MethodCall` to a registered service is forwarded and the reply is returned to the caller (`test_service_registration_and_method_call`)
+    - Test that a `MethodCall` to an unregistered service returns `BrokerError::ServiceNotFound` (`test_method_call_unregistered_service`)
     - _Requirements: 35.3_
 
 - [ ] 43. Implement the service manager daemon in `userland/service-manager/`
