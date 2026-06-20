@@ -401,8 +401,8 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 22.4**
     - Use `proptest` to drop a capability from permitted set; assert it cannot be re-acquired in effective set without exec of a file with that capability (implemented as `drop_irreversibility_property` test)
 
-- [ ] 31. Implement PID, mount, network, and user namespaces in `kernel/src/security/namespaces.rs`
-  - [ ] 31.1 Create `kernel/src/security/namespaces.rs` with `PidNamespace`, `MountNamespace`, `NetNamespace`, and `UserNamespace` structs
+- [x] 31. Implement PID, mount, network, and user namespaces in `kernel/src/security/namespaces.rs`
+  - [x] 31.1 Create `kernel/src/security/namespaces.rs` with `PidNamespace`, `MountNamespace`, `NetNamespace`, and `UserNamespace` structs
     - Implement `clone` syscall with `CLONE_NEWPID`, `CLONE_NEWNS`, `CLONE_NEWNET`, `CLONE_NEWUSER` flags
     - `PidNamespace`: each namespace has its own PID counter starting at 1; processes see only PIDs within their namespace
     - `MountNamespace`: each namespace has its own mount table (copy of parent's on creation)
@@ -410,24 +410,24 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - `UserNamespace`: UID/GID mapping between namespace and host
     - Add `pid_ns`, `mnt_ns`, `net_ns`, `user_ns` fields to `ProcessControlBlock`
     - _Requirements: 23.1, 23.2, 23.3, 23.4, 23.5_
-  - [ ]* 31.2 Write unit tests for namespace isolation
+  - [x]* 31.2 Write unit tests for namespace isolation
     - Test that a process in a new PID namespace sees PID 1 as its own init
     - Test that mount namespace isolation prevents cross-namespace mount visibility
     - _Requirements: 23.1, 23.2_
 
-- [ ] 32. Implement seccomp-BPF in `kernel/src/security/seccomp.rs`
-  - [ ] 32.1 Create `kernel/src/security/seccomp.rs` with a minimal classic BPF interpreter (`BpfInstruction`, `SeccompFilter`, `SeccompAction`)
+- [x] 32. Implement seccomp-BPF in `kernel/src/security/seccomp.rs`
+  - [x] 32.1 Create `kernel/src/security/seccomp.rs` with a minimal classic BPF interpreter (`BpfInstruction`, `SeccompFilter`, `SeccompAction`)
     - Implement `SeccompFilter::evaluate(syscall_nr: u32, args: &[u64; 6]) -> SeccompAction`
     - Implement `SeccompFilter::inherit_on_fork()` (clone the filter)
     - Implement `prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, ...)` syscall to install a filter on the current process
     - Enforce that a child process cannot install a less restrictive filter than its parent
     - Wire seccomp evaluation into the syscall dispatch path in `kernel/src/syscall/handler.rs` (before dispatching to the handler)
     - _Requirements: 24.1, 24.2, 24.3, 24.4, 24.5, 24.6_
-  - [ ]* 32.2 Write property test for Seccomp Filter Inheritance
+  - [x]* 32.2 Write property test for Seccomp Filter Inheritance
     - **Property 23: Seccomp Filter Inheritance**
     - **Validates: Requirements 24.5, 24.6**
     - Use `proptest` to generate seccomp filters; assert forked child has the same filter and cannot install a less restrictive one
-  - [ ]* 32.3 Write unit tests for BPF instruction evaluation
+  - [x]* 32.3 Write unit tests for BPF instruction evaluation
     - Test `BPF_RET | BPF_K` with `SECCOMP_RET_ALLOW` and `SECCOMP_RET_KILL`
     - Test `BPF_LD | BPF_W | BPF_ABS` loading syscall number from seccomp data
     - _Requirements: 24.1_
