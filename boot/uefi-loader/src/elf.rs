@@ -127,11 +127,11 @@ pub fn load_kernel(image: &[u8], kaslr_offset: u64) -> Result<LoadedKernel, Load
         }
     }
 
-    // Apply RELA relocations for KASLR (only when the binary is PIE/ET_DYN
-    // and a non-zero offset was requested).
-    if kaslr_offset != 0 {
-        apply_relocations(image, physical_base, virtual_base, kaslr_offset)?;
-    }
+    // Apply RELA relocations for PIE/DYN binaries to populate the .got and
+    // other absolute-address fixups.  Even with kaslr_offset = 0 the linker
+    // may leave GOT entries zeroed (relying on the loader to fill them from
+    // the RELA table), so always process them.
+    apply_relocations(image, physical_base, virtual_base, kaslr_offset)?;
 
     Ok(LoadedKernel {
         entry_point: header.entry_point,

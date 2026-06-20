@@ -1315,6 +1315,7 @@ mod tests {
     proptest! {
         #[test]
         fn test_prop_wait_exit_status_round_trip(exit_code in 0i32..=255) {
+            let _guard = crate::test_serial::acquire();
             use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
 
             let _parent_pid = ProcessId(900);
@@ -1382,6 +1383,7 @@ mod tests {
     /// and exit code, and that the child is removed from the process table.
     #[test]
     fn test_wait_reaps_zombie_child() {
+        let _guard = crate::test_serial::acquire();
         use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
 
         let _parent_pid = ProcessId(200);
@@ -1428,6 +1430,7 @@ mod tests {
     /// has no children at all.
     #[test]
     fn test_wait_returns_echild_when_no_children() {
+        let _guard = crate::test_serial::acquire();
         use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
 
         // Make sure the process table has no children of PID 300.

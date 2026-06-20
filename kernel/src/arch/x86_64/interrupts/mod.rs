@@ -80,15 +80,6 @@ global_asm!(
     r#"
     .global timer_interrupt_entry
     timer_interrupt_entry:
-        // TRACE: write 'T' to serial port 0x3f8
-        push rax
-        push rdx
-        mov dx, 0x3f8
-        mov al, 84 // 'T'
-        out dx, al
-        pop rdx
-        pop rax
-
         // 1. Swap GS if we came from Ring 3
         // Check CS in the IRETQ frame (RSP+120+8)
         test qword ptr [rsp + 8], 0x3
@@ -209,7 +200,18 @@ pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
     unsafe {
         LAPIC.lock().signal_eoi();
     }
-    crate::task::scheduler::timer_tick(stack_ptr)
+    // Read saved CS from the CPU interrupt frame.
+    // After 15 saved GPRs (120 bytes), the CPU frame is:
+    //   RIP(8), CS(8), RFLAGS(8), RSP(8), SS(8)
+    // CS is at stack_ptr + 128.
+    let cs = unsafe { core::ptr::read_volatile((stack_ptr + 128) as *const u64) as u16 };
+    if cs & 0x3 == 0x3 {
+        // Came from user mode — preemption allowed.
+        crate::task::scheduler::timer_tick(stack_ptr)
+    } else {
+        // Came from kernel mode — do not preempt kernel tasks.
+        stack_ptr
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -348,6 +350,28 @@ extern "x86-interrupt" fn page_fault_handler(
     }
 
     crate::serial::println!("[STG: PF_KERNEL addr={:?} err={:?}]", addr, error_code);
+
+    {
+        use x86_64::registers::control::Cr3;
+        let (cr3_val, _) = Cr3::read();
+        let pml4_phys = cr3_val.start_address();
+        crate::serial::println!(
+            "[PF] CR3={:#x} RSP=0x{:x}",
+            pml4_phys.as_u64(),
+            stack_frame.stack_pointer.as_u64(),
+        );
+        // Dump current instruction bytes at RIP if we can read them safely
+        let rip = stack_frame.instruction_pointer;
+        crate::serial::print(format_args!("[PF] RIP bytes:"));
+        for i in 0..16 {
+            let byte_ptr = (rip.as_u64() + i) as *const u8;
+            unsafe {
+                let val = core::ptr::read_volatile(byte_ptr);
+                crate::serial::print(format_args!(" {:02x}", val));
+            }
+        }
+        crate::serial::println!("");
+    }
 
     let gs_base = GsBase::read();
     let kernel_gs_base = KernelGsBase::read();

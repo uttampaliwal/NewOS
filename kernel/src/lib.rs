@@ -10,6 +10,34 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
+/// Global test serialization lock — all tests mutating shared state
+/// (PROCESS_TABLE, scheduler) must acquire this guard.
+/// Uses an atomic spin internally so it does not depend on std's
+/// thread-parking primitives, which can interact badly with the
+/// kernel's no_std-alien test binary.
+#[cfg(test)]
+pub mod test_serial {
+    use core::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+
+    static LOCKED: AtomicBool = AtomicBool::new(false);
+
+    pub struct Guard;
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            LOCKED.store(false, Ordering::SeqCst);
+        }
+    }
+
+    pub fn acquire() -> Guard {
+        while LOCKED.swap(true, Ordering::SeqCst) {
+            std::hint::spin_loop();
+        }
+        Guard
+    }
+}
+
 pub mod arch;
 
 // Re-export arch-specific modules at their original paths so

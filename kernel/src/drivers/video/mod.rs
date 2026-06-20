@@ -144,8 +144,9 @@ impl<'a> TextConsole<'a> {
 
 impl Framebuffer {
     pub fn new(fb: &BootFramebuffer) -> Self {
+        let phys_mem_offset = crate::boot::get_phys_mem_offset();
         Self {
-            addr: fb.addr,
+            addr: phys_mem_offset.as_u64() + fb.addr,
             width: fb.width,
             height: fb.height,
             pitch: fb.pitch,

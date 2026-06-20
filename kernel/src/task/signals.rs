@@ -313,9 +313,6 @@ mod tests {
     use crate::process::{Process, ProcessControlBlock, ProcessId, SignalAction};
     use crate::task::{Task, TaskId};
 
-    /// Serialise all signal tests so they don't race on the global scheduler.
-    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     struct TestEnv {
         process: Process,
         stack_layout: core::alloc::Layout,
@@ -394,7 +391,7 @@ mod tests {
             sig_num in 1u8..=31,
             handler_addr in 0x1_0000_0000u64..0x2_0000_0000u64,
         ) {
-            let _guard = SERIAL.lock().unwrap();
+            let _guard = crate::test_serial::acquire();
             if sig_num == SIGKILL || sig_num == SIGSTOP {
                 return Ok(());
             }
@@ -453,7 +450,7 @@ mod tests {
         fn signal_mask_blocking(
             sig_num in 1u8..=31,
         ) {
-            let _guard = SERIAL.lock().unwrap();
+            let _guard = crate::test_serial::acquire();
             if sig_num == SIGKILL || sig_num == SIGSTOP {
                 return Ok(());
             }
@@ -493,7 +490,7 @@ mod tests {
 
     #[test]
     fn signal_default_ignore_clears_pending() {
-        let _guard = SERIAL.lock().unwrap();
+        let _guard = crate::test_serial::acquire();
         let env = setup_test_env();
         {
             let mut inner = env.process.inner.lock();
@@ -519,7 +516,7 @@ mod tests {
 
     #[test]
     fn sigaction_stores_handler() {
-        let _guard = SERIAL.lock().unwrap();
+        let _guard = crate::test_serial::acquire();
         let env = setup_test_env();
         {
             let mut inner = env.process.inner.lock();
@@ -537,7 +534,7 @@ mod tests {
 
     #[test]
     fn sigprocmask_blocks_and_unblocks() {
-        let _guard = SERIAL.lock().unwrap();
+        let _guard = crate::test_serial::acquire();
         let env = setup_test_env();
         {
             let mut inner = env.process.inner.lock();
@@ -559,7 +556,7 @@ mod tests {
 
     #[test]
     fn signal_mask_blocking_sig26() {
-        let _guard = SERIAL.lock().unwrap();
+        let _guard = crate::test_serial::acquire();
         let sig_num: u8 = 26;
         let env = setup_test_env();
         let handler_addr = 0x1_0000_0000u64;

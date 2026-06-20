@@ -853,7 +853,7 @@ fn apply_relative_relocations<M>(
     elf_data: &[u8],
     header: &elf::ElfHeader,
     aslr_base: VirtAddr,
-    virtual_base: u64,
+    _virtual_base: u64,
     mapper: &M,
     physical_memory_offset: VirtAddr,
 ) -> Result<(), elf::ParseError>
@@ -879,8 +879,6 @@ where
     if section_header_offset == 0 || section_header_entry_size < 64 || section_header_count == 0 {
         return Ok(());
     }
-
-    let load_delta = aslr_base.as_u64().wrapping_sub(virtual_base);
 
     for index in 0..section_header_count {
         let start = section_header_offset
@@ -952,7 +950,10 @@ where
                 (physical_memory_offset + target_physical.as_u64()).as_mut_ptr::<u64>();
 
             unsafe {
-                core::ptr::write_volatile(target_ptr, r_addend.wrapping_add(load_delta));
+                // R_X86_64_RELATIVE: *(r_offset + base) = base + A
+                // where A (addend) is relative to the PIE assumed base (0),
+                // and base = aslr_base (the actual load address).
+                core::ptr::write_volatile(target_ptr, r_addend.wrapping_add(aslr_base.as_u64()));
             }
         }
     }

@@ -11,3 +11,4 @@ cc 1adb9b5b6c6a3ec409edcc4fcc185b21e3abb3c56b0eb766a271fcba1c978182 # shrinks to
 cc f965d5126354e0d09434c0081f6e18a95e40ab81fa19dde7b2943efbedc692f1 # shrinks to exit_code = 126
 cc ba2997a7fb5a45488e1d372799181a2e698d8fc45a944ec7be691861efb646fe # shrinks to exit_code = 241
 cc f3e95a2517fb0c27fc20b99536fac28eb071cbddbd1041827fe9821c3dbd559c # shrinks to exit_code = 253
+cc ffc1e9571eb53425c21d3b30a1352bd21de3d1d2b920a5b6a2636a837d0edae4 # shrinks to exit_code = 170
