@@ -97,7 +97,7 @@ fn main() -> Status {
         .expect("failed to allocate BootInfo");
     let boot_info_ptr = boot_info_page.as_ptr() as *mut BootInfo;
 
-    let scratchpad_pages = 256; // Increased for more mappings
+    let scratchpad_pages = 2048; // 1 TiB phys offset + kernel + ramdisk
     let scratchpad_ptr = boot::allocate_pages(
         AllocateType::AnyPages,
         MemoryType::LOADER_DATA,
@@ -106,17 +106,25 @@ fn main() -> Status {
     .expect("failed to allocate scratchpad");
     let scratchpad_phys = scratchpad_ptr.as_ptr() as u64;
 
+    // 3. Allocate a buffer for the memory map (must persist after exit_boot_services).
     let map_meta = boot::memory_map(MemoryType::LOADER_DATA)
         .expect("failed to get map meta")
         .meta();
+    let map_buf_pages = map_meta.map_size.div_ceil(4096) + 1;
     let map_buffer_ptr = boot::allocate_pages(
         AllocateType::AnyPages,
         MemoryType::LOADER_DATA,
-        map_meta.map_size.div_ceil(4096) + 1,
+        map_buf_pages,
     )
     .expect("failed to allocate map buffer");
 
-    // 3. Build the NEW PML4 while we still have Boot Services
+    // Compute the highest physical address needed. The memory map only covers
+    // system RAM, not PCI MMIO BARs, so we also include a generous upper bound.
+    // Map physical memory up to 1 TiB (PML4E 256 + 257) so 64-bit PCI MMIO BARs
+    // allocated by OVMF (often in the hundreds-of-GiB range) are accessible.
+    let max_phys_addr = 1024u64 * 1024 * 1024 * 1024;
+
+    // 4. Build the NEW PML4 while we still have Boot Services
     let new_pml4_phys = scratchpad_phys;
     let new_pml4 = unsafe { &mut *(new_pml4_phys as *mut PageTable) };
 
@@ -129,6 +137,7 @@ fn main() -> Status {
             ramdisk_phys,
             ramdisk_size,
             kaslr_offset,
+            max_phys_addr,
         );
     }
 
@@ -146,10 +155,24 @@ fn main() -> Status {
     serial_println!("exiting boot services");
 
     // Find ACPI RSDP before exiting boot services
-    let rsdp_addr = 0;
-    // TODO: Fix RSDP detection for uefi 0.37 API
-    // For now, RSDP detection is disabled - ACPI will be unavailable
-    serial_println!("RSDP detection disabled for now");
+    let rsdp_addr = uefi::system::with_config_table(|entries| {
+        for entry in entries {
+            if entry.guid == uefi::table::cfg::ConfigTableEntry::ACPI2_GUID {
+                let addr = entry.address as u64;
+                serial_println!("ACPI 2.0 RSDP at 0x{:x}", addr);
+                return addr;
+            }
+        }
+        for entry in entries {
+            if entry.guid == uefi::table::cfg::ConfigTableEntry::ACPI_GUID {
+                let addr = entry.address as u64;
+                serial_println!("ACPI 1.0 RSDP at 0x{:x}", addr);
+                return addr;
+            }
+        }
+        serial_println!("No RSDP in UEFI config table");
+        0
+    });
 
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
 
@@ -227,6 +250,7 @@ unsafe fn setup_mappings(
     ramdisk_phys: u64,
     ramdisk_size: u64,
     kaslr_offset: u64,
+    max_phys_addr: u64,
 ) {
     let (old_pml4_frame, _) = Cr3::read();
     let old_pml4 = unsafe { &*(old_pml4_frame.start_address().as_u64() as *const PageTable) };
@@ -255,20 +279,39 @@ unsafe fn setup_mappings(
     }
     let mut scratch_alloc = ScratchAllocator(&mut alloc);
 
-    // 2. Map Kernel to Higher-Half using 4KB pages
+    // 2. Map each kernel LOAD segment to Higher-Half using 4KB pages,
+    //    applying ELF PHDR permissions (R+X for .text, R for .rodata,
+    //    R+W for .data/.bss) and NX for non-code segments.
+    fn phdr_to_page_flags(phdr_flags: u32) -> PageTableFlags {
+        let mut flags = PageTableFlags::PRESENT;
+        if phdr_flags & 2 != 0 {
+            // PF_W
+            flags |= PageTableFlags::WRITABLE;
+        }
+        if phdr_flags & 1 == 0 {
+            // PF_X not set → NX
+            flags |= PageTableFlags::NO_EXECUTE;
+        }
+        flags
+    }
     let kernel_load_addr = KERNEL_VIRTUAL_BASE + kaslr_offset;
-    let page_count = kernel.image_size.div_ceil(4096);
-    for i in 0..page_count {
-        let page: Page<Size4KiB> =
-            Page::containing_address(VirtAddr::new(kernel_load_addr + i * 4096));
-        let frame =
-            PhysFrame::containing_address(x86_64::PhysAddr::new(kernel.physical_base + i * 4096));
-        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-        unsafe {
-            mapper
-                .map_to(page, frame, flags, &mut scratch_alloc)
-                .expect("failed to map kernel")
-                .ignore();
+    for seg in &kernel.segments[..kernel.segment_count] {
+        let offset = seg.virtual_address.wrapping_sub(kernel.virtual_base);
+        let seg_va = kernel_load_addr + offset;
+        let seg_pages = seg.memory_size.div_ceil(4096);
+        let page_flags = phdr_to_page_flags(seg.flags);
+        for i in 0..seg_pages {
+            let page: Page<Size4KiB> =
+                Page::containing_address(VirtAddr::new(seg_va + i * 4096));
+            let frame = PhysFrame::containing_address(x86_64::PhysAddr::new(
+                kernel.physical_base + offset + i * 4096,
+            ));
+            unsafe {
+                mapper
+                    .map_to(page, frame, page_flags, &mut scratch_alloc)
+                    .expect("failed to map kernel segment")
+                    .ignore();
+            }
         }
     }
 
@@ -290,9 +333,10 @@ unsafe fn setup_mappings(
         }
     }
 
-    // 4. Map first 4GB of physical RAM to Higher-Half Offset (0xffff800000000000)
+    // 4. Map physical RAM to Higher-Half Offset (0xffff800000000000)
     // USING 2MB HUGE PAGES for efficiency.
-    for i in 0..(4096 / 2) {
+    let phys_map_entries = (max_phys_addr / (2 * 1024 * 1024)) as usize;
+    for i in 0..phys_map_entries {
         let addr = PHYSICAL_MEMORY_OFFSET + (i as u64) * 2 * 1024 * 1024;
         let page: x86_64::structures::paging::Page<Size2MiB> =
             x86_64::structures::paging::Page::containing_address(VirtAddr::new(addr));

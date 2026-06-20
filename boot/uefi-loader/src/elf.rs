@@ -17,10 +17,20 @@ const SECTION_TYPE_RELA: u32 = 4;
 const R_X86_64_RELATIVE: u32 = 8;
 
 #[derive(Debug, Clone, Copy)]
+pub struct LoadSegment {
+    pub virtual_address: u64,
+    pub memory_size: u64,
+    pub flags: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct LoadedKernel {
     pub entry_point: u64,
     pub physical_base: u64,
+    pub virtual_base: u64,
     pub image_size: u64,
+    pub segments: [LoadSegment; 8],
+    pub segment_count: usize,
 }
 
 #[allow(dead_code)]
@@ -57,6 +67,7 @@ struct ProgramHeader {
     _physical_address: u64,
     file_size: usize,
     memory_size: usize,
+    flags: u32,
 }
 
 pub fn load_kernel(image: &[u8], kaslr_offset: u64) -> Result<LoadedKernel, LoadError> {
@@ -65,6 +76,12 @@ pub fn load_kernel(image: &[u8], kaslr_offset: u64) -> Result<LoadedKernel, Load
     let mut loadable = 0usize;
     let mut virtual_base = u64::MAX;
     let mut virtual_end = 0u64;
+    let mut segments = [LoadSegment {
+        virtual_address: 0,
+        memory_size: 0,
+        flags: 0,
+    }; 8];
+    let mut segment_count = 0usize;
 
     for index in 0..header.program_header_count {
         let program_header = parse_program_header(image, header, index)?;
@@ -76,6 +93,14 @@ pub fn load_kernel(image: &[u8], kaslr_offset: u64) -> Result<LoadedKernel, Load
                 .checked_add(program_header.memory_size as u64)
                 .ok_or(LoadError::SegmentAddressOverflow)?;
             virtual_end = virtual_end.max(segment_end);
+            if segment_count < segments.len() {
+                segments[segment_count] = LoadSegment {
+                    virtual_address: program_header.virtual_address,
+                    memory_size: program_header.memory_size as u64,
+                    flags: program_header.flags,
+                };
+                segment_count += 1;
+            }
         }
     }
 
@@ -136,7 +161,10 @@ pub fn load_kernel(image: &[u8], kaslr_offset: u64) -> Result<LoadedKernel, Load
     Ok(LoadedKernel {
         entry_point: header.entry_point,
         physical_base,
+        virtual_base,
         image_size,
+        segments,
+        segment_count,
     })
 }
 
@@ -352,12 +380,15 @@ fn parse_program_header(
         return Err(LoadError::SegmentOutOfBounds);
     }
 
+    let flags = read_u32(program_header, 4)?;
+
     Ok(Some(ProgramHeader {
         file_offset: read_u64(program_header, 8)? as usize,
         virtual_address,
         _physical_address: physical_address,
         file_size,
         memory_size,
+        flags,
     }))
 }
 
