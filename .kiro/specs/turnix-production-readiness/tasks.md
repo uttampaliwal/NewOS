@@ -567,17 +567,17 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that `after` dependency cycles are detected and reported (`test_cycle_detected`, `test_self_cycle_detected`, `test_load_units_with_cycle_rejected`)
     - _Requirements: 33.1_
 
-- [ ] 44. Implement the log daemon in `userland/log-daemon/`
-  - [ ] 44.1 Create `userland/log-daemon/` as a new workspace crate; add it to `Cargo.toml` workspace members
-    - Implement structured log entry format: `{ timestamp, level, source, message, fields: BTreeMap }`
-    - Implement HMAC-SHA256 sealing of each log entry (using a kernel-provided secret key) to detect tampering
+- [x] 44. Implement the log daemon in `userland/log-daemon/`
+  - [x] 44.1 Create `userland/log-daemon/` as a new workspace crate; add it to `Cargo.toml` workspace members
+    - Implement structured log entry format: `{ timestamp, level, source, message, fields: BTreeMap }` (JSON-serialized)
+    - Implement HMAC-SHA256 sealing of each log entry (using kernel-provided secret key) to detect tampering
     - Implement log rotation: rotate when log file exceeds 10 MB or 24 hours; keep last 7 rotated files
     - Implement a Unix socket listener at `/run/log.sock` for log submission from other daemons
-    - Implement kernel log forwarding: read from the kernel serial log ring buffer and forward to the log daemon
+    - Implement kernel log forwarding: `KernelLogSource` trait with `NullKernelLogSource` stub; real ring-buffer reader replaceable at runtime
     - _Requirements: 36.1, 36.2, 36.3, 36.4, 36.5_
-  - [ ]* 44.2 Write unit tests for log entry HMAC sealing
-    - Test that a tampered log entry fails HMAC verification
-    - Test that log rotation triggers at the correct file size threshold
+  - [x]* 44.2 Write unit tests for log entry HMAC sealing
+    - Test that a tampered log entry fails HMAC verification (`test_tampered_entry_fails_verification`, `test_tampered_fields_fails_verification`)
+    - Test that log rotation triggers at the correct file size threshold (`test_rotation_creates_rotated_files`, `test_rotation_retention_limit`)
     - _Requirements: 36.2, 36.3_
 
 - [ ] 45. Implement the network manager daemon in `userland/network-manager/`

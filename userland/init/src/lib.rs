@@ -23,9 +23,13 @@ after = []
 path = \"service-manager\"
 after = [\"ipc-broker\"]
 
+[service.log-daemon]
+path = \"log-daemon\"
+after = [\"ipc-broker\"]
+
 [service.shell]
 path = \"shell\"
-after = [\"service-manager\"]
+after = [\"service-manager\", \"log-daemon\"]
 
 [service.fault-tester]
 path = \"fault-tester\"
