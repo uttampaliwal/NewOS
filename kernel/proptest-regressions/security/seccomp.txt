@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 80fe155da4c27e87f17daae238ad3a1548657476298265a9a93531daabb748e7 # shrinks to filter = SeccompFilter { instructions: [BpfInstruction { code: 34164, jt: 0, jf: 0, k: 32 }], no_new_privs: false }, syscall_nr = 0, test_data = [0, 0, 0, 0, 0, 0]

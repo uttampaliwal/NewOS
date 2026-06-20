@@ -45,6 +45,9 @@ pub const BPF_NEG: u16 = 0x80;
 pub const BPF_MOD: u16 = 0x90;
 pub const BPF_XOR: u16 = 0xa0;
 
+pub const BPF_K: u16  = 0x00;
+pub const BPF_X: u16  = 0x08;
+
 pub const BPF_TAX: u16 = 0x00;
 pub const BPF_TXA: u16 = 0x80;
 
@@ -275,9 +278,9 @@ impl SeccompFilter {
                         }
                         BPF_OR  => acc |= insn.k,
                         BPF_AND => acc &= insn.k,
-                        BPF_LSH => acc <<= insn.k,
-                        BPF_RSH => acc >>= insn.k,
-                        BPF_NEG => acc = !acc + 1,
+                        BPF_LSH => acc = acc.wrapping_shl(insn.k),
+                        BPF_RSH => acc = acc.wrapping_shr(insn.k),
+                        BPF_NEG => acc = acc.wrapping_neg(),
                         BPF_MOD => {
                             if insn.k != 0 {
                                 acc %= insn.k;
@@ -348,6 +351,7 @@ pub fn default_allow_filter() -> SeccompFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     /// Helper: create an always-allow filter.
     fn allow_filter() -> SeccompFilter {
@@ -637,10 +641,10 @@ mod tests {
                     k: 16, // arg0 lower 32 bits
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET | 0x20, // BPF_A mode — return accumulator
                     jt: 0,
                     jf: 0,
-                    k: 0, // K ignored when BPF_A is used
+                    k: 0,
                 },
             ],
             false,
@@ -683,6 +687,609 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // Round-trip tests for SeccompAction
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_seccomp_action_allow_roundtrip() {
+        assert_eq!(SeccompAction::from_raw(0x7fff0000), SeccompAction::Allow);
+        assert_eq!(SeccompAction::Allow.to_raw(), 0x7fff0000);
+    }
+
+    #[test]
+    fn test_seccomp_action_kill_thread_roundtrip() {
+        assert_eq!(SeccompAction::from_raw(0x00000000), SeccompAction::KillThread);
+        assert_eq!(SeccompAction::KillThread.to_raw(), 0x00000000);
+    }
+
+    #[test]
+    fn test_seccomp_action_kill_process_roundtrip() {
+        assert_eq!(SeccompAction::from_raw(0x80000000), SeccompAction::KillProcess);
+        assert_eq!(SeccompAction::KillProcess.to_raw(), 0x80000000);
+    }
+
+    #[test]
+    fn test_seccomp_action_trap_roundtrip() {
+        assert_eq!(SeccompAction::from_raw(0x00030000), SeccompAction::Trap);
+        assert_eq!(SeccompAction::Trap.to_raw(), 0x00030000);
+    }
+
+    #[test]
+    fn test_seccomp_action_trace_roundtrip() {
+        assert_eq!(SeccompAction::from_raw(0x7ff00000), SeccompAction::Trace);
+        assert_eq!(SeccompAction::Trace.to_raw(), 0x7ff00000);
+    }
+
+    #[test]
+    fn test_seccomp_action_errno_roundtrip() {
+        let e1 = SeccompAction::Errno(1);
+        assert_eq!(e1.to_raw(), 0x00050001);
+        assert_eq!(SeccompAction::from_raw(0x00050001), SeccompAction::Errno(1));
+
+        let e42 = SeccompAction::Errno(42);
+        assert_eq!(e42.to_raw(), 0x0005002a);
+        assert_eq!(SeccompAction::from_raw(0x0005002a), SeccompAction::Errno(42));
+
+        let e0 = SeccompAction::Errno(0);
+        assert_eq!(e0.to_raw(), 0x00050000);
+        assert_eq!(SeccompAction::from_raw(0x00050000), SeccompAction::Errno(0));
+    }
+
+    #[test]
+    fn test_errno_action_filter() {
+        // Filter: return Errno(42)
+        let filter = SeccompFilter::new(
+            vec![BpfInstruction {
+                code: BPF_RET | 0x00,
+                jt: 0,
+                jf: 0,
+                k: SeccompAction::Errno(42).to_raw(),
+            }],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Errno(42));
+    }
+
+    #[test]
+    fn test_kill_process_action_filter() {
+        let filter = SeccompFilter::new(
+            vec![BpfInstruction {
+                code: BPF_RET | 0x00,
+                jt: 0,
+                jf: 0,
+                k: SeccompAction::KillProcess.to_raw(),
+            }],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::KillProcess);
+    }
+
+    // -----------------------------------------------------------------------
+    // Comprehensive BPF opcode tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_bpf_ja_unconditional_jump() {
+        // Jump past 1 instruction, then RET ALLOW
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JA,
+                    jt: 0,
+                    jf: 0,
+                    k: 1, // skip 1 instruction
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0,
+                    jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0,
+                    jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_jge_condition() {
+        // Load 50, jump if >= 50 → ALLOW (true), else KILL
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IMM,
+                    jt: 0,
+                    jf: 0,
+                    k: 50,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JGE | BPF_K,
+                    jt: 0,
+                    jf: 1,
+                    k: 50,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0,
+                    jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0,
+                    jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_jge_false() {
+        // Load 49, jump if >= 50 → false → KILL
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IMM,
+                    jt: 0,
+                    jf: 0,
+                    k: 49,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JGE | BPF_K,
+                    jt: 0,
+                    jf: 1,
+                    k: 50,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0,
+                    jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0,
+                    jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::KillThread);
+    }
+
+    #[test]
+    fn test_bpf_ldx_then_use_x() {
+        // LDX immediate 0x42, then copy X→A via TXA, compare
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IMM, // This is BPF_LD, not BPF_LDX
+                    jt: 0, jf: 0, k: 0,            // A = 0
+                },
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_ABS, jt: 0, jf: 0, k: 0, // A = data.nr
+                },
+                // Jump if nr == 0 → KILL, else → ALLOW
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 42, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_tax_txa_roundtrip() {
+        // LD IMM 0x42 → TAX (A→X) → TXA (X→A) → compare and return
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IMM,
+                    jt: 0, jf: 0,
+                    k: 0x42,
+                },
+                BpfInstruction {
+                    code: BPF_MISC | BPF_TAX,
+                    jt: 0, jf: 0,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_MISC | BPF_TXA,
+                    jt: 0, jf: 0,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 0x42,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_neg_alu() {
+        // Load 1 → NEG → should be 0xFFFFFFFF (two's complement of 1)
+        // Then jump if == 0xFFFFFFFF → ALLOW
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IMM,
+                    jt: 0, jf: 0,
+                    k: 1,
+                },
+                BpfInstruction {
+                    code: BPF_ALU | BPF_NEG,
+                    jt: 0, jf: 0,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 0xFFFFFFFFu32,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_mod_alu() {
+        // Load 10, MOD 3 → 1, compare with 1
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IMM,
+                    jt: 0, jf: 0,
+                    k: 10,
+                },
+                BpfInstruction {
+                    code: BPF_ALU | BPF_MOD | BPF_K,
+                    jt: 0, jf: 0,
+                    k: 3,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 1,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_div_by_zero() {
+        // Load 10, DIV 0 → should set acc to 0 (by spec)
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IMM,
+                    jt: 0, jf: 0,
+                    k: 10,
+                },
+                BpfInstruction {
+                    code: BPF_ALU | BPF_DIV | BPF_K,
+                    jt: 0, jf: 0,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_len_load() {
+        // BPF_LEN should return 64 (size of seccomp data)
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_LEN,
+                    jt: 0, jf: 0,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 64,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_ind_indirect_load() {
+        // LDX IMM 0 → X=0, then BPF_LD|BPF_W|BPF_IND should load from offset 0 (= data.nr)
+        // With X=0, IND offset k=0 loads data.nr (0 in test data)
+        // Actually we need to use LDX first. But BPF_LDX|BPF_W|BPF_IMM puts in X
+        let filter = SeccompFilter::new(
+            vec![
+                // Load syscall number (nr=255) into acc via ABS first, just to exercise the path
+                // Actually: do LDX with IMM to set X, then IND
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IMM,
+                    jt: 0, jf: 0,
+                    k: 0xFF, // A = 0xFF
+                },
+                BpfInstruction {
+                    code: BPF_MISC | BPF_TAX,
+                    jt: 0, jf: 0,
+                    k: 0, // X = A = 0xFF
+                },
+                // Now IND with k=0: loads from offset X+0 = 0xFF, which is beyond 60 → 0
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IND,
+                    jt: 0, jf: 0,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 0, // Should be 0 (out of bounds)
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 255, arch: 0xC000003E, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_half_word_load() {
+        // Load half-word (16-bit) from offset 0 (data.nr). nr=0xABCD1234 → 0x1234
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_H | BPF_ABS,
+                    jt: 0, jf: 0,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 0x1234,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0xABCD1234, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_byte_load() {
+        // Load byte (8-bit) from offset 0 (data.nr). nr=0xABCD1234 → 0x34
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_B | BPF_ABS,
+                    jt: 0, jf: 0,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 0x34,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0xABCD1234, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_offset_beyond_60_returns_zero() {
+        // Offset 64 is beyond our data → returns 0. Compare with 0.
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_ABS,
+                    jt: 0, jf: 0,
+                    k: 64,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 42, arch: 0xC000003E, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    #[test]
+    fn test_bpf_mod_by_zero() {
+        // MOD 0 should set acc to 0 (by spec)
+        let filter = SeccompFilter::new(
+            vec![
+                BpfInstruction {
+                    code: BPF_LD | BPF_W | BPF_IMM,
+                    jt: 0, jf: 0,
+                    k: 10,
+                },
+                BpfInstruction {
+                    code: BPF_ALU | BPF_MOD | BPF_K,
+                    jt: 0, jf: 0,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_JMP | BPF_JEQ | BPF_K,
+                    jt: 0, jf: 1,
+                    k: 0,
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::Allow.to_raw(),
+                },
+                BpfInstruction {
+                    code: BPF_RET | 0x00,
+                    jt: 0, jf: 0,
+                    k: SeccompAction::KillThread.to_raw(),
+                },
+            ],
+            false,
+        )
+        .unwrap();
+        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
+    }
+
+    // -----------------------------------------------------------------------
     // Property 23: Seccomp Filter Inheritance
     // -----------------------------------------------------------------------
 
@@ -711,8 +1318,6 @@ mod tests {
     }
 
     proptest::proptest! {
-        #![proptest_config = proptest::prelude::ProptestConfig::with_cases(256)]
-
         /// Property 23: Seccomp Filter Inheritance
         ///
         /// For any seccomp filter, a forked/clone'd child should:
@@ -722,8 +1327,9 @@ mod tests {
         fn property_23_seccomp_filter_inheritance(
             filter in arb_seccomp_filter(),
             syscall_nr in 0u32..=60,
-            test_data in proptest::collection::vec(any::<u64>(), 6),
+            test_data in proptest::collection::vec(proptest::prelude::any::<u64>(), 6),
         ) {
+
             // 1. Fork inheritance: child filter should produce same result as parent
             let child_filter = filter.inherit_on_fork();
 

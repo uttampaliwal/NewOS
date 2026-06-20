@@ -66,6 +66,9 @@ impl Capability {
     }
 
     pub const fn from_bit(bit: u64) -> Option<Self> {
+        if bit == 0 || !bit.is_power_of_two() {
+            return None;
+        }
         match bit.ilog2() {
             0 => Some(Capability::Chown),
             1 => Some(Capability::DacOverride),
@@ -346,10 +349,77 @@ mod tests {
     use super::*;
 
     #[test]
-    fn capability_bit_positions() {
-        assert_eq!(Capability::Chown.bit(), 1);
-        assert_eq!(Capability::Kill.bit(), 1 << 5);
-        assert_eq!(Capability::SysAdmin.bit(), 1 << 23);
+    fn capability_all_43_bit_positions() {
+        // Every variant maps to 1 << repr
+        let cases = [
+            (Capability::Chown, 0),
+            (Capability::DacOverride, 1),
+            (Capability::DacReadSearch, 2),
+            (Capability::Fowner, 3),
+            (Capability::Fsetid, 4),
+            (Capability::Kill, 5),
+            (Capability::Setgid, 6),
+            (Capability::Setuid, 7),
+            (Capability::Setpcap, 8),
+            (Capability::LinuxImmutable, 9),
+            (Capability::NetBindService, 10),
+            (Capability::NetBroadcast, 11),
+            (Capability::NetAdmin, 12),
+            (Capability::NetRaw, 13),
+            (Capability::NetLink, 14),
+            (Capability::NetTcpBlock, 15),
+            (Capability::IpcLock, 16),
+            (Capability::IpcOwner, 17),
+            (Capability::SysModule, 18),
+            (Capability::SysRawio, 19),
+            (Capability::SysChroot, 20),
+            (Capability::SysPtrace, 21),
+            (Capability::SysPacct, 22),
+            (Capability::SysAdmin, 23),
+            (Capability::SysBoot, 24),
+            (Capability::SysNice, 25),
+            (Capability::SysResource, 26),
+            (Capability::SysTime, 27),
+            (Capability::SysTtyConfig, 28),
+            (Capability::Mknod, 29),
+            (Capability::Lease, 30),
+            (Capability::AuditWrite, 31),
+            (Capability::AuditControl, 32),
+            (Capability::Setfcap, 33),
+            (Capability::MacOverride, 34),
+            (Capability::MacAdmin, 35),
+            (Capability::Syslog, 36),
+            (Capability::WakeAlarm, 37),
+            (Capability::BlockSuspend, 38),
+            (Capability::AuditRead, 39),
+            (Capability::Perfmon, 40),
+            (Capability::Bpf, 41),
+            (Capability::CheckpointRestore, 42),
+        ];
+        for (cap, expected_pos) in &cases {
+            let expected_bit = 1u64 << expected_pos;
+            assert_eq!(cap.bit(), expected_bit, "bit pos {} expected", expected_pos);
+            assert_eq!(
+                Capability::from_bit(expected_bit),
+                Some(*cap),
+                "from_bit round-trip for pos {}",
+                expected_pos
+            );
+        }
+        // from_bit for undefined bits
+        assert_eq!(Capability::from_bit(0), None);
+        assert_eq!(Capability::from_bit(1u64 << 43), None);
+        assert_eq!(Capability::from_bit(1u64 << 63), None);
+    }
+
+    #[test]
+    fn capability_set_and_clear() {
+        let mut caps = CapabilitySet::new();
+        assert!(!caps.has(Capability::Kill));
+        caps.set(Capability::Kill);
+        assert!(caps.has(Capability::Kill));
+        caps.clear(Capability::Kill);
+        assert!(!caps.has(Capability::Kill));
     }
 
     #[test]
@@ -427,6 +497,48 @@ mod tests {
         assert!(caps.has_permitted(Capability::SysAdmin));
         let basic = CapabilitySet::basic();
         assert!(basic.has_permitted(Capability::Kill));
+        // Empty set has nothing
+        let empty = CapabilitySet::new();
+        assert!(!empty.has_permitted(Capability::Chown));
+        assert!(!empty.has(Capability::Chown));
+        // Ambient set operations
+        assert_eq!(empty.ambient, 0);
+    }
+
+    #[test]
+    fn filecaps_effective_mask() {
+        let fc = FileCaps::new(0xFF, 0x00, true);
+        assert_eq!(fc.effective_mask(), 0xFF);
+        let fc2 = FileCaps::new(0xFF, 0xAA, false);
+        assert_eq!(fc2.effective_mask(), 0);
+    }
+
+    #[test]
+    fn security_context_delegates_caps() {
+        use crate::security::SecurityContext;
+        let ctx = SecurityContext::root();
+        assert!(ctx.has_capability(Capability::SysAdmin));
+        assert!(ctx.has_effective(Capability::Kill));
+        assert!(ctx.has_permitted(Capability::Chown));
+        let ctx2 = SecurityContext::new(1000, 1000, CapabilitySet::restricted());
+        assert!(ctx2.has_capability(Capability::DacReadSearch));
+        assert!(!ctx2.has_capability(Capability::Kill));
+        assert_eq!(ctx2.uid, 1000);
+        assert_eq!(ctx2.gid, 1000);
+        assert!(!ctx2.is_privileged);
+    }
+
+    #[test]
+    fn cap_set_full_contains_all_caps() {
+        let full = CapabilitySet::full();
+        assert!(full.has(Capability::Chown));
+        assert!(full.has(Capability::CheckpointRestore));
+        assert!(full.has(Capability::Perfmon));
+        assert_eq!(full.effective, u64::MAX);
+        assert_eq!(full.permitted, u64::MAX);
+        assert_eq!(full.inheritable, u64::MAX);
+        assert_eq!(full.bounding, u64::MAX);
+        assert_eq!(full.ambient, u64::MAX);
     }
 
     #[test]

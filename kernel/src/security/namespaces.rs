@@ -410,4 +410,106 @@ mod tests {
         // The child ns doesn't know about the root's PID 1
         assert!(child_ns.global_to_local(ProcessId(1)).is_none());
     }
+
+    #[test]
+    fn mount_namespace_new_and_fork() {
+        let ns = MountNamespace::new();
+        let forked = MountNamespace::fork();
+        // Both should exist without panicking
+        drop(ns);
+        drop(forked);
+    }
+
+    #[test]
+    fn net_namespace_new() {
+        let ns = NetNamespace::new();
+        drop(ns);
+    }
+
+    #[test]
+    fn user_namespace_reverse_mapping() {
+        let mut ns = UserNamespace::new();
+        ns.add_uid_map(0, 1000, 1);   // outside uid 0 → inside uid 1000
+        ns.add_uid_map(1000, 1001, 100); // outside 1000..1099 → inside 1001..1100
+        ns.add_gid_map(0, 500, 1);
+
+        // Forward mapping already tested; reverse via the same map_uid
+        assert_eq!(ns.map_uid(0), Some(1000));
+        assert_eq!(ns.map_uid(1050), Some(1051));
+        assert_eq!(ns.map_uid(2000), None);
+
+        // GID forward
+        assert_eq!(ns.map_gid(0), Some(500));
+        assert_eq!(ns.map_gid(1), None);
+    }
+
+    #[test]
+    fn user_namespace_empty_mappings() {
+        let ns = UserNamespace::new();
+        assert_eq!(ns.map_uid(0), None);
+        assert_eq!(ns.map_gid(0), None);
+    }
+
+    #[test]
+    fn nsproxy_effective_methods() {
+        let parent = NsProxy::new();
+        // Without any namespaces, effective methods should return root singletons
+        let _pid_ns = parent.effective_pid_ns();
+        let _mnt_ns = parent.effective_mnt_ns();
+        let _net_ns = parent.effective_net_ns();
+        let _user_ns = parent.effective_user_ns();
+
+        // With all namespaces, effective should return the child's namespace
+        let mut child = NsProxy::from_flags(CLONE_NEW_ALL, &parent);
+        // Allocate a PID so the namespace has entries
+        let local = child.pid_ns.as_mut().unwrap().alloc_pid(ProcessId(100));
+        assert_eq!(local, 1);
+        assert!(child.effective_pid_ns().global_to_local(ProcessId(100)).is_some());
+        assert!(child.effective_pid_ns().local_to_global(1).is_some());
+    }
+
+    #[test]
+    fn nsproxy_isolation() {
+        let parent = NsProxy::new();
+        // Create child with its own PID ns
+        let mut child = NsProxy::from_flags(CLONE_NEWPID, &parent);
+        // Access child's own pid_ns directly (mutable)
+        let local = child.pid_ns.as_mut().unwrap().alloc_pid(ProcessId(100));
+        assert_eq!(local, 1);
+        // Parent has no pid_ns → self.pid_ns is None, effective_pid_ns() returns root
+        // Create a fresh proxy to test isolation
+        let mut parent2 = NsProxy::new();
+        // Explicitly give parent2 its own pid_ns for the test
+        parent2.pid_ns = Some(PidNamespace::root());
+        let p_local = parent2.pid_ns.as_mut().unwrap().alloc_pid(ProcessId(200));
+        assert_eq!(p_local, 1);
+        // Child's PID 100 should not conflict with parent2's PID 200
+        assert!(parent2.pid_ns.as_ref().unwrap().global_to_local(ProcessId(100)).is_none());
+    }
+
+    #[test]
+    fn nsproxy_from_flags_individual() {
+        let parent = NsProxy::new();
+
+        // NEWNS only
+        let child = NsProxy::from_flags(CLONE_NEWNS, &parent);
+        assert!(child.mnt_ns.is_some());
+        assert!(child.pid_ns.is_none());
+        assert!(child.net_ns.is_none());
+        assert!(child.user_ns.is_none());
+
+        // NEWNET only
+        let child = NsProxy::from_flags(CLONE_NEWNET, &parent);
+        assert!(child.net_ns.is_some());
+        assert!(child.pid_ns.is_none());
+        assert!(child.mnt_ns.is_none());
+        assert!(child.user_ns.is_none());
+
+        // NEWUSER only
+        let child = NsProxy::from_flags(CLONE_NEWUSER, &parent);
+        assert!(child.user_ns.is_some());
+        assert!(child.pid_ns.is_none());
+        assert!(child.mnt_ns.is_none());
+        assert!(child.net_ns.is_none());
+    }
 }

@@ -332,6 +332,95 @@ mod tests {
     }
 
     #[test]
+    fn test_sha256_multi_block() {
+        // Input spanning 2 blocks (65 bytes)
+        let data = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"; // 65 A's
+        let h = sha256(data);
+        // Just verify it's deterministic and non-zero
+        assert_ne!(h, [0u8; 32]);
+        assert_eq!(sha256(data), sha256(data));
+
+        // Input exactly 55 bytes (fits in 1 block with padding)
+        let data55 = [0x41u8; 55];
+        let h55 = sha256(&data55);
+        assert_ne!(h55, [0u8; 32]);
+        assert_eq!(h55, sha256(&data55));
+
+        // Input exactly 56 bytes (padding extends to block 2)
+        let data56 = [0x41u8; 56];
+        let h56 = sha256(&data56);
+        assert_ne!(h56, [0u8; 32]);
+        assert_eq!(h56, sha256(&data56));
+
+        // Input exactly 64 bytes (fills block exactly, needs padding block)
+        let data64 = [0x41u8; 64];
+        let h64 = sha256(&data64);
+        assert_ne!(h64, [0u8; 32]);
+        assert_eq!(h64, sha256(&data64));
+
+        // Input exactly 128 bytes (2 full blocks + padding)
+        let data128 = [0x41u8; 128];
+        let h128 = sha256(&data128);
+        assert_ne!(h128, [0u8; 32]);
+        assert_eq!(h128, sha256(&data128));
+    }
+
+    #[test]
+    fn test_sha256_single_byte() {
+        let h = sha256(b"A");
+        assert_ne!(h, [0u8; 32]);
+        // Known: SHA256("A") = "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+        assert_eq!(h[0], 0x55);
+        assert_eq!(h[1], 0x9a);
+        assert_eq!(h[31], 0xfd);
+    }
+
+    #[test]
+    fn test_hmac_empty_key() {
+        let data = b"test data";
+        let h = hmac_sha256(b"", data);
+        assert_ne!(h, [0u8; 32]);
+        assert_eq!(h, hmac_sha256(b"", data)); // deterministic
+    }
+
+    #[test]
+    fn test_ima_measurement_struct() {
+        let m = ImaMeasurement {
+            pcr: 10,
+            hash: [0xAB; 32],
+            path: b"/bin/test".to_vec(),
+        };
+        assert_eq!(m.pcr, 10);
+        assert_eq!(m.hash[0], 0xAB);
+        assert_eq!(&m.path[..], b"/bin/test");
+    }
+
+    #[test]
+    fn test_evm_verify_different_args() {
+        // Stub always returns true regardless of args
+        assert!(evm_verify(0, 0, 0, &[0u8; 32]));
+        assert!(evm_verify(12345, 67890, 99999, &[0xFFu8; 32]));
+        assert!(evm_verify(u64::MAX, u64::MAX, u64::MAX, &[0x42u8; 32]));
+    }
+
+    #[test]
+    fn test_generate_random_u64_nonzero() {
+        let v = generate_random_u64();
+        assert_ne!(v, 0);
+        // Calling generate_random_u64 multiple times should work
+        let v2 = generate_random_u64();
+        assert_ne!(v2, 0);
+    }
+
+    #[test]
+    fn test_init_canary_sets_value() {
+        // Reset canary, then init
+        STACK_CANARY_VALUE.store(0, Ordering::SeqCst);
+        init_canary();
+        assert_ne!(canary_value(), 0);
+    }
+
+    #[test]
     fn test_sha256_deterministic() {
         let data = b"The quick brown fox jumps over the lazy dog";
         let h1 = sha256(data);
@@ -358,6 +447,9 @@ mod tests {
 
     #[test]
     fn test_measure_exec_adds_entry() {
+        let _guard = crate::test_serial::acquire();
+        // Reset log for clean state
+        *IMA_LOG.lock() = Vec::new();
         let len_before = get_measurement_log().len();
         measure_exec(b"fake-elf-binary", "/bin/test");
         let log = get_measurement_log();
@@ -367,6 +459,9 @@ mod tests {
 
     #[test]
     fn test_measure_exec_same_binary_same_hash() {
+        let _guard = crate::test_serial::acquire();
+        // Reset log for clean state
+        *IMA_LOG.lock() = Vec::new();
         measure_exec(b"test-binary", "/bin/a");
         measure_exec(b"test-binary", "/bin/b");
         let log = get_measurement_log();
@@ -394,6 +489,7 @@ mod tests {
 
     #[test]
     fn test_ima_log_ring_buffer() {
+        let _guard = crate::test_serial::acquire();
         // Fill the log past the max (reset it first for testing)
         *IMA_LOG.lock() = Vec::new();
         for i in 0..IMA_LOG_MAX + 100 {
