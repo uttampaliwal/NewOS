@@ -432,12 +432,12 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test `BPF_LD | BPF_W | BPF_ABS` loading syscall number from seccomp data
     - _Requirements: 24.1_
 
-- [ ] 33. Implement the LSM hook framework in `kernel/src/security/lsm.rs`
-  - [ ] 33.1 Create `kernel/src/security/lsm.rs` with the `LsmHook` trait (`file_open`, `process_create`, `ipc_send`, `net_connect`, `capability_check`) and an `LsmStack` that calls all registered hooks in order
+- [x] 33. Implement the LSM hook framework in `kernel/src/security/lsm.rs`
+  - [x] 33.1 Create `kernel/src/security/lsm.rs` with the `LsmHook` trait (`file_open`, `process_create`, `ipc_send`, `net_connect`, `capability_check`) and an `LsmStack` that calls all registered hooks in order
     - Implement a default `DacHook` (Discretionary Access Control) that enforces Unix permission bits and capability checks
     - Wire LSM hooks into: VFS `open` path, `fork`/`exec` paths, IPC send path, network connect path, and capability check path
     - _Requirements: 25.1, 25.2, 25.3, 25.4_
-  - [ ]* 33.2 Write unit tests for LSM hook enforcement
+  - [x]* 33.2 Write unit tests for LSM hook enforcement
     - Test that `file_open` hook returning `Err` causes the open to fail with `EACCES`
     - Test that all hooks in the stack are called in order
     - _Requirements: 25.1_
