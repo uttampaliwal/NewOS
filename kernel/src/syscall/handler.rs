@@ -654,6 +654,9 @@ fn handle_exec(args: SyscallArgs) -> SyscallResult {
         Err(_) => return SyscallResult::Error(8),
     };
 
+    // Record IMA measurement for the executed binary
+    crate::security::ima::measure_exec(&elf_data[..read_len], path);
+
     // Drop frame allocator guard to unlock it
     drop(frame_allocator_guard);
 

@@ -15,6 +15,8 @@ pub type TaskEntry = extern "sysv64" fn() -> !;
 pub type TaskEntry = extern "C" fn() -> !;
 
 const KERNEL_STACK_REGION_BASE: u64 = 0xFFFF_FE00_0000_0000;
+const KERNEL_STACK_PAGES: u64 = 32;
+pub const KERNEL_STACK_SIZE: u64 = KERNEL_STACK_PAGES * 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
@@ -157,6 +159,10 @@ impl Task {
                 stack_ptr = stack_ptr.sub(1);
                 stack_ptr.write(0);
             }
+
+            // Write stack canary at the bottom of the usable stack
+            let canary = crate::security::ima::canary_value();
+            (usable_stack_start.as_mut_ptr::<u64>()).write(canary);
         }
 
         let process = Process::kernel_process();
@@ -261,6 +267,10 @@ impl Task {
                 stack_ptr = stack_ptr.sub(1);
                 stack_ptr.write(0);
             }
+
+            // Write stack canary at the bottom of the usable stack
+            let canary = crate::security::ima::canary_value();
+            (usable_stack_start.as_mut_ptr::<u64>()).write(canary);
         }
 
         process.add_thread(id);
@@ -401,6 +411,10 @@ impl Task {
             stack_ptr.write(parent_frame.r14);
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(parent_frame.r15);
+
+            // Write stack canary at the bottom of the usable stack
+            let canary = crate::security::ima::canary_value();
+            (usable_stack_start.as_mut_ptr::<u64>()).write(canary);
         }
 
         process.add_thread(id);
@@ -506,6 +520,10 @@ impl Task {
                 stack_ptr = stack_ptr.sub(1);
                 stack_ptr.write(0);
             }
+
+            // Write stack canary at the bottom of the usable stack
+            let canary = crate::security::ima::canary_value();
+            (usable_stack_start.as_mut_ptr::<u64>()).write(canary);
         }
 
         process.add_thread(id);
@@ -521,6 +539,22 @@ impl Task {
     pub fn switch_to(&self) {
         #[cfg(target_arch = "x86_64")]
         {
+            // Check kernel stack canary before switching.
+            if self.kernel_stack_top > KERNEL_STACK_SIZE as usize {
+                let canary_addr = self.kernel_stack_top - KERNEL_STACK_SIZE as usize;
+                let expected = crate::security::ima::canary_value();
+                let actual = unsafe { core::ptr::read_unaligned(canary_addr as *const u64) };
+                if actual != expected {
+                    crate::serial::println!(
+                        "[PANIC] Kernel stack canary corrupted for task {}! expected=0x{:016x}, actual=0x{:016x}",
+                        self.id.0,
+                        expected,
+                        actual,
+                    );
+                    panic!("Kernel stack canary corruption detected");
+                }
+            }
+
             crate::gdt::set_interrupt_stack(x86_64::VirtAddr::new(self.kernel_stack_top as u64));
 
             let (current_pml4, _) = x86_64::registers::control::Cr3::read();
