@@ -1,0 +1,10 @@
+[package]
+name = "ipc-broker"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ipc-proto = { path = "../../shared/ipc-proto" }
+smol = "2"
+async-io = "2"

@@ -15,9 +15,13 @@ pub struct ServiceManifest {
 
 // Embedded TOML service manifests.
 pub const SERVICE_TOML: &[u8] = b"\
+[service.ipc-broker]
+path = \"ipc-broker\"
+after = []
+
 [service.shell]
 path = \"shell\"
-after = []
+after = [\"ipc-broker\"]
 
 [service.fault-tester]
 path = \"fault-tester\"
