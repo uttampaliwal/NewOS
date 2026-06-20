@@ -17,6 +17,7 @@ members = [
     "userland/service-manager",
     "userland/log-daemon",
     "userland/network-manager",
+    "userland/device-manager",
 ]
 default-members = [
     "shared/abi",
