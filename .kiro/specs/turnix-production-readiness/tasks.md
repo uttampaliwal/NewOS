@@ -500,14 +500,14 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 30.5**
     - Use `proptest` to generate dependency graphs with directed cycles; assert solver returns `SolverError::Cycle`
 
-- [ ] 38. Implement TUF-based repository client and package fetcher
-  - [ ] 38.1 Add `tough` (AWS TUF client) as a dependency to `userland/package-manager/Cargo.toml`
+- [x] 38. Implement TUF-based repository client and package fetcher
+  - [x] 38.1 Add `tough` (AWS TUF client) as a dependency to `userland/package-manager/Cargo.toml`
     - Implement `RepositoryClient` that fetches TUF metadata (root, snapshot, targets, timestamp) from a configured repository URL
     - Implement signature verification: abort before any file extraction if TUF signature verification fails
     - Implement `.tpkg` archive download with SHA-256 checksum verification
     - Implement `PackageFetcher::fetch(resolved: &ResolvedPackage) -> Result<PathBuf, FetchError>` that downloads and verifies the archive
     - _Requirements: 29.1, 29.2, 29.3, 29.4_
-  - [ ]* 38.2 Write unit tests for TUF signature verification
+  - [x]* 38.2 Write unit tests for TUF signature verification
     - Test that a package with an invalid SHA-256 checksum is rejected before extraction
     - Test that expired TUF metadata is rejected
     - _Requirements: 29.2, 29.3_

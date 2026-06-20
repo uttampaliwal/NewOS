@@ -8,6 +8,12 @@ license.workspace = true
 varisat = "0.2"
 semver = { version = "1", features = ["serde"] }
 tpkg-format = { path = "../../shared/tpkg-format" }
+tough = { version = "0.23", default-features = false, features = ["http"] }
+tokio = { version = "1", features = ["full"] }
+url = "2"
+sha2 = "0.10"
+hex = "0.4"
 
 [dev-dependencies]
 proptest = "1"
+tempfile = "3"
