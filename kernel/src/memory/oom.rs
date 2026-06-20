@@ -169,4 +169,61 @@ mod tests {
         let expected = rss_pages + priority * 100;
         assert_eq!(expected, rss_pages + priority * 100);
     }
+
+    #[test]
+    fn register_process_and_count() {
+        PROCESS_TABLE.lock().clear();
+        assert_eq!(process_count(), 0);
+        let proc = crate::process::Process::kernel_process();
+        register_process(&proc);
+        assert_eq!(process_count(), 1);
+        // PIDs 0 and 1 are excluded from victim selection
+        assert!(select_victim().is_none());
+    }
+
+    #[test]
+    fn unregister_decrements_count() {
+        PROCESS_TABLE.lock().clear();
+        let proc = crate::process::Process::kernel_process();
+        register_process(&proc);
+        assert_eq!(process_count(), 1);
+        unregister_process(proc.id());
+        assert_eq!(process_count(), 0);
+    }
+
+    #[test]
+    fn set_priority_affects_score() {
+        PROCESS_TABLE.lock().clear();
+        let proc = crate::process::Process::kernel_process();
+        register_process(&proc);
+        let pid = proc.id();
+        let score_before = oom_score(pid);
+        set_priority(pid, 10);
+        let score_after = oom_score(pid);
+        assert!(score_after >= score_before + 1000);
+        // Cleanup
+        unregister_process(pid);
+    }
+
+    #[test]
+    fn select_victim_skips_pid_zero() {
+        PROCESS_TABLE.lock().clear();
+        let proc = crate::process::Process::kernel_process();
+        assert_eq!(proc.id().0, 0);
+        register_process(&proc);
+        assert!(select_victim().is_none(), "PID 0 must never be selected as OOM victim");
+        unregister_process(proc.id());
+    }
+
+    #[test]
+    fn select_victim_empty_table() {
+        PROCESS_TABLE.lock().clear();
+        assert!(select_victim().is_none());
+    }
+
+    #[test]
+    fn oom_kill_empty_table() {
+        PROCESS_TABLE.lock().clear();
+        assert!(oom_kill().is_none());
+    }
 }

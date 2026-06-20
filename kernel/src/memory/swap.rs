@@ -680,6 +680,7 @@ pub fn restore_swapped_page(pte_bits: u64) -> Option<u64> {
 mod tests {
     use super::*;
     use alloc::vec::Vec;
+    use alloc::format;
 
     // ------------------------------------------------------------------
     // SwapSlotAllocator tests
@@ -863,5 +864,109 @@ mod tests {
         assert!(is_frame_locked(0x1000));
         unlock_frame(addr);
         assert!(!is_frame_locked(0x1000));
+    }
+
+    #[test]
+    fn slot_allocator_zero_capacity() {
+        let alloc = SwapSlotAllocator::with_capacity(0);
+        // with_capacity enforces minimum 64 slots
+        assert_eq!(alloc.capacity(), 64);
+        assert_eq!(alloc.available(), 64);
+    }
+
+    #[test]
+    fn slot_allocator_single_slot() {
+        let mut alloc = SwapSlotAllocator::with_capacity(1);
+        // with_capacity enforces minimum 64 slots
+        assert_eq!(alloc.capacity(), 64);
+        assert_eq!(alloc.available(), 64);
+        let slot = alloc.allocate().unwrap();
+        assert_eq!(slot.0, 0);
+        assert_eq!(alloc.available(), 63);
+        // Still can allocate more (capacity is 64)
+        assert!(alloc.allocate().is_some());
+    }
+
+    #[test]
+    fn slot_allocator_capacity_64() {
+        let mut alloc = SwapSlotAllocator::with_capacity(64);
+        for i in 0..64 {
+            assert!(alloc.allocate().is_some(), "failed at slot {}", i);
+        }
+        assert!(alloc.allocate().is_none());
+        assert_eq!(alloc.used(), 64);
+        assert_eq!(alloc.available(), 0);
+    }
+
+    #[test]
+    fn swapped_pte_slot_zero_round_trip() {
+        let slot = SwapSlot(0);
+        let encoded = SwappedOutPte::encode(slot, 0);
+        assert!(SwappedOutPte::is_swapped_out(encoded));
+        assert_eq!(SwappedOutPte::decode_slot(encoded).0, 0);
+        assert_eq!(SwappedOutPte::decode_device(encoded), 0);
+    }
+
+    #[test]
+    fn swapped_pte_max_device() {
+        let slot = SwapSlot(42);
+        let encoded = SwappedOutPte::encode(slot, 3);
+        assert_eq!(SwappedOutPte::decode_device(encoded), 3);
+    }
+
+    #[test]
+    fn swapped_pte_marker_bit_only_not_swapped() {
+        // Bit 1 set with bit 0 clear IS the swap marker in this implementation
+        assert!(SwappedOutPte::is_swapped_out(2));
+        // Fully non-present and non-swapped value should be not-swapped
+        assert!(!SwappedOutPte::is_swapped_out(0));
+        // Present page (bit 0 set) should not be swapped out
+        assert!(!SwappedOutPte::is_swapped_out(1));
+        assert!(!SwappedOutPte::is_swapped_out(3));
+    }
+
+    #[test]
+    fn locked_frame_unlock_non_locked() {
+        // Unlocking a non-locked frame should not panic
+        unlock_frame(0x9999);
+        unlock_frame(0x1000);
+        assert!(!is_frame_locked(0x9999));
+    }
+
+    #[test]
+    fn locked_frame_unlock_twice_idempotent() {
+        lock_frame(0x2000);
+        assert!(is_frame_locked(0x2000));
+        unlock_frame(0x2000);
+        assert!(!is_frame_locked(0x2000));
+        unlock_frame(0x2000);
+        assert!(!is_frame_locked(0x2000));
+    }
+
+    #[test]
+    fn slot_allocator_available_after_multiple_alloc_free() {
+        let mut alloc = SwapSlotAllocator::with_capacity(8);
+        let slots: Vec<SwapSlot> = (0..8).map(|_| alloc.allocate().unwrap()).collect();
+        assert_eq!(alloc.available(), 56);
+        alloc.free(slots[3]);
+        alloc.free(slots[5]);
+        assert_eq!(alloc.available(), 58);
+        assert!(alloc.allocate().is_some());
+        assert!(alloc.allocate().is_some());
+        assert_eq!(alloc.available(), 56);
+    }
+
+    #[test]
+    fn swap_error_debug_impl() {
+        let errs = [
+            SwapError::InvalidSlot,
+            SwapError::IoError,
+            SwapError::DeviceFull,
+            SwapError::DeviceNotPresent,
+        ];
+        for e in &errs {
+            let s = format!("{:?}", e);
+            assert!(!s.is_empty(), "SwapError variant must have non-empty Debug output");
+        }
     }
 }

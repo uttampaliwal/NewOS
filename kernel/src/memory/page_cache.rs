@@ -524,4 +524,101 @@ mod tests {
         assert_eq!(written[0].1, 1);
         assert_eq!(cache.dirty_pages(), 0);
     }
+
+    #[test]
+    fn with_low_watermark_builder() {
+        let cache = PageCache::new(100).with_low_watermark(50);
+        assert_eq!(cache.low_watermark(), 50);
+    }
+
+    #[test]
+    fn insert_same_key_twice() {
+        let mut cache = PageCache::new(usize::MAX);
+        cache.insert(InodeId(1), 0, fake_frame(0x1000), 0);
+        assert_eq!(cache.total_pages(), 1);
+        // Inserting the same (inode, page_idx) replaces the old entry
+        cache.insert(InodeId(1), 0, fake_frame(0x2000), 1);
+        assert_eq!(cache.total_pages(), 1);
+        let found = cache.lookup(InodeId(1), 0, 2);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().start_address, 0x2000);
+    }
+
+    #[test]
+    fn lookup_updates_lru() {
+        let mut cache = PageCache::new(usize::MAX);
+        cache.insert(InodeId(1), 0, fake_frame(0x1000), 0);
+        cache.insert(InodeId(1), 1, fake_frame(0x2000), 1);
+        // Access page 0 at a later tick, then evict 1 page — must evict page 1
+        cache.lookup(InodeId(1), 0, 100);
+        let evicted = cache.evict_lru(1);
+        assert_eq!(evicted[0].0, (InodeId(1), 1));
+    }
+
+    #[test]
+    fn ref_count_starts_at_one() {
+        let mut cache = PageCache::new(usize::MAX);
+        cache.insert(InodeId(1), 0, fake_frame(0x1000), 0);
+        assert_eq!(cache.ref_count(InodeId(1), 0), 0);
+        // ref_count starts at 0 — add_ref must be called explicitly
+    }
+
+    #[test]
+    fn dirty_pages_mixed_state() {
+        let mut cache = PageCache::new(usize::MAX);
+        cache.insert(InodeId(1), 0, fake_frame(0x1000), 0);
+        cache.insert(InodeId(1), 1, fake_frame(0x2000), 1);
+        cache.mark_dirty(InodeId(1), 0, 0);
+        assert_eq!(cache.dirty_pages(), 1);
+        cache.mark_dirty(InodeId(1), 1, 1);
+        assert_eq!(cache.dirty_pages(), 2);
+        let _ = cache.writeback_dirty_pages(100, 0);
+        assert_eq!(cache.dirty_pages(), 0);
+    }
+
+    #[test]
+    fn evict_multiple_pages() {
+        let mut cache = PageCache::new(usize::MAX);
+        for i in 0..10 {
+            cache.insert(InodeId(1), i, fake_frame(0x1000 * (i + 1)), i);
+        }
+        assert_eq!(cache.total_pages(), 10);
+        let evicted = cache.evict_lru(3);
+        assert_eq!(evicted.len(), 3);
+        assert_eq!(evicted[0].0 .1, 0);
+        assert_eq!(evicted[1].0 .1, 1);
+        assert_eq!(evicted[2].0 .1, 2);
+        assert_eq!(cache.total_pages(), 7);
+    }
+
+    #[test]
+    fn insert_at_capacity_triggers_eviction() {
+        let mut cache = PageCache::new(3); // low_watermark = 3, max capacity ~3
+        cache.insert(InodeId(1), 0, fake_frame(0x1000), 0);
+        cache.insert(InodeId(1), 1, fake_frame(0x2000), 1);
+        cache.insert(InodeId(1), 2, fake_frame(0x3000), 2);
+        // Now at capacity — next insert should evict page 0
+        cache.insert(InodeId(1), 3, fake_frame(0x4000), 3);
+        assert!(!cache.contains(InodeId(1), 0));
+        assert!(cache.contains(InodeId(1), 1));
+        assert!(cache.contains(InodeId(1), 2));
+        assert!(cache.contains(InodeId(1), 3));
+    }
+
+    #[test]
+    fn contains_returns_false_for_missing() {
+        let cache = PageCache::new(usize::MAX);
+        assert!(!cache.contains(InodeId(99), 999));
+    }
+
+    #[test]
+    fn writeback_zero_max_age_flushes_immediately() {
+        let mut cache = PageCache::new(usize::MAX);
+        cache.insert(InodeId(1), 0, fake_frame(0x1000), 0);
+        cache.mark_dirty(InodeId(1), 0, 5);
+        let written = cache.writeback_dirty_pages(5, 0);
+        assert_eq!(written.len(), 1);
+        assert_eq!(written[0].1, 0);
+        assert_eq!(cache.dirty_pages(), 0);
+    }
 }

@@ -432,4 +432,49 @@ mod tests {
             }
         }
     }
+
+#[test]
+fn check_wx_exhaustive() {
+        let cases = [
+            (VmaProt::empty(), false),
+            (VmaProt::READ, false),
+            (VmaProt::WRITE, false),
+            (VmaProt::EXECUTE, false),
+            (VmaProt::READ | VmaProt::WRITE, false),
+            (VmaProt::READ | VmaProt::EXECUTE, false),
+            (VmaProt::WRITE | VmaProt::EXECUTE, true),
+            (VmaProt::READ | VmaProt::WRITE | VmaProt::EXECUTE, true),
+        ];
+        for (prot, expected) in &cases {
+            assert_eq!(
+                check_wx(*prot),
+                *expected,
+                "check_wx({:?}) should be {}",
+                prot,
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn zero_fill_partial_page() {
+        let mut buf = [0xFFu8; 64];
+        let half = 32;
+        unsafe { core::ptr::write_bytes(buf.as_mut_ptr(), 0, half); }
+        for i in 0..half {
+            assert_eq!(buf[i], 0, "byte {} should be zeroed", i);
+        }
+        for i in half..buf.len() {
+            assert_eq!(buf[i], 0xFF, "byte {} should be unchanged", i);
+        }
+    }
+
+    #[test]
+    fn zero_fill_entire_page() {
+        let mut buf = [0xABu8; 4096];
+        unsafe { core::ptr::write_bytes(buf.as_mut_ptr(), 0, buf.len()); }
+        for (i, &byte) in buf.iter().enumerate() {
+            assert_eq!(byte, 0, "byte at offset {} should be zero after full-page zero-fill", i);
+        }
+    }
 }

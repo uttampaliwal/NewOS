@@ -207,4 +207,72 @@ mod tests {
             Some(0x100000)
         );
     }
+
+    #[test]
+    fn frame_allocator_empty_map() {
+        let descriptors: [BootMemoryDescriptor; 0] = [];
+        let boot_info = boot_info(&descriptors);
+        let mut allocator = FrameAllocator::new(&boot_info);
+        assert!(allocator.allocate_physical_frame().is_none());
+    }
+
+    #[test]
+    fn frame_allocator_exhausted() {
+        let descriptors = [
+            descriptor(MEMORY_TYPE_CONVENTIONAL, 0x100000, 3),
+        ];
+        let boot_info = boot_info(&descriptors);
+        let mut allocator = FrameAllocator::new(&boot_info);
+
+        for i in 0..3 {
+            let frame = allocator.allocate_physical_frame();
+            assert!(frame.is_some(), "allocation {} should succeed", i);
+        }
+        assert!(allocator.allocate_physical_frame().is_none());
+    }
+
+    #[test]
+    fn frame_allocator_deallocate_reuse() {
+        let descriptors = [
+            descriptor(MEMORY_TYPE_CONVENTIONAL, 0x100000, 1),
+        ];
+        let boot_info = boot_info(&descriptors);
+        let mut allocator = FrameAllocator::new(&boot_info);
+
+        let frame = allocator.allocate_physical_frame().unwrap();
+        assert_eq!(frame.start_address, 0x100000);
+
+        allocator.deallocate_physical_frame(frame);
+        let reused = allocator.allocate_physical_frame().unwrap();
+        assert_eq!(reused.start_address, 0x100000);
+    }
+
+    #[test]
+    fn frame_allocator_skips_non_conventional() {
+        use turnix_abi::boot::MEMORY_TYPE_LOADER_DATA;
+        let descriptors = [
+            // Boot services memory is still usable, so use a type that's skipped
+            descriptor(MEMORY_TYPE_LOADER_DATA, 0x100000, 10),
+        ];
+        let boot_info = boot_info(&descriptors);
+        let mut allocator = FrameAllocator::new(&boot_info);
+        assert!(allocator.allocate_physical_frame().is_none());
+    }
+
+    #[test]
+    fn frame_allocator_multiple_regions() {
+        let descriptors = [
+            descriptor(MEMORY_TYPE_CONVENTIONAL, 0x100000, 2),
+            descriptor(MEMORY_TYPE_CONVENTIONAL, 0x200000, 2),
+        ];
+        let boot_info = boot_info(&descriptors);
+        let mut allocator = FrameAllocator::new(&boot_info);
+
+        let f1 = allocator.allocate_physical_frame().unwrap();
+        assert_eq!(f1.start_address, 0x100000);
+        let f2 = allocator.allocate_physical_frame().unwrap();
+        assert_eq!(f2.start_address, 0x101000);
+        let f3 = allocator.allocate_physical_frame().unwrap();
+        assert_eq!(f3.start_address, 0x200000);
+    }
 }

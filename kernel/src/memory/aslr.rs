@@ -358,4 +358,34 @@ mod tests {
             assert_ne!(a, c);
         }
     }
+
+    #[test]
+    fn stack_base_above_minimum() {
+        let addr = randomise_stack_base().as_u64();
+        assert!(addr >= STACK_BASE_MIN, "stack base {:#x} must be >= {:#x}", addr, STACK_BASE_MIN);
+    }
+
+    #[test]
+    fn heap_base_above_minimum() {
+        let addr = randomise_heap_base().as_u64();
+        assert!(addr >= HEAP_BASE_MIN, "heap base {:#x} must be >= {:#x}", addr, HEAP_BASE_MIN);
+    }
+
+    #[test]
+    fn pie_base_minimum_aligned() {
+        assert_eq!(PIE_LOAD_BASE_MIN & 0xFFF, 0, "PIE_LOAD_BASE_MIN must be page-aligned");
+        assert_eq!(STACK_BASE_MIN & 0xFFF, 0, "STACK_BASE_MIN must be page-aligned");
+        assert_eq!(HEAP_BASE_MIN & 0xFFF, 0, "HEAP_BASE_MIN must be page-aligned");
+    }
+
+    #[test]
+    fn stack_and_heap_do_not_overlap_with_pie() {
+        let pie_max = PIE_LOAD_BASE_MIN + ASLR_RANGE_PAGES * 4096;
+        // 1 GiB margin between pie max and heap min
+        assert!(HEAP_BASE_MIN > pie_max, "HEAP_BASE_MIN must be above max PIE range");
+        let heap_max = HEAP_BASE_MIN + ASLR_RANGE_PAGES * 4096;
+        assert!(STACK_BASE_MIN > heap_max, "STACK_BASE_MIN must be above max heap range");
+        // KASLR kernel offset does not overlap with user ranges
+        assert!(KERNEL_BASE > 0xffff_0000_0000_0000, "KERNEL_BASE must be in kernel space");
+    }
 }

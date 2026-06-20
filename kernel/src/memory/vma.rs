@@ -554,4 +554,227 @@ mod tests {
         let rx = VmaProt::READ | VmaProt::EXECUTE;
         assert!(!rx.violates_wx());
     }
+
+    #[test]
+    fn vma_backing_file_backed() {
+        let vma = Vma {
+            start: VirtAddr::new(0x1000),
+            end: VirtAddr::new(0x2000),
+            prot: VmaProt::READ,
+            backing: VmaBacking::FileBacked {
+                inode: InodeId(42),
+                offset: 4096,
+            },
+            flags: VmaFlags::MAP_SHARED,
+        };
+        assert_eq!(vma.size(), 0x1000);
+        match &vma.backing {
+            VmaBacking::FileBacked { inode, offset } => {
+                assert_eq!(inode.0, 42);
+                assert_eq!(*offset, 4096);
+            }
+            _ => panic!("expected FileBacked"),
+        }
+    }
+
+    #[test]
+    fn vma_backing_device_mapped() {
+        let dev = crate::drivers::framework::DeviceKey::new(0, 0, 0, 0x1234, 0x5678);
+        let vma = Vma {
+            start: VirtAddr::new(0x2000),
+            end: VirtAddr::new(0x3000),
+            prot: VmaProt::READ | VmaProt::WRITE,
+            backing: VmaBacking::DeviceMapped { device: dev },
+            flags: VmaFlags::MAP_SHARED,
+        };
+        assert!(vma.contains(VirtAddr::new(0x2000)));
+        assert!(vma.contains(VirtAddr::new(0x2FFF)));
+        assert!(!vma.contains(VirtAddr::new(0x3000)));
+    }
+
+    #[test]
+    fn vma_flags_mapping_semantics() {
+        let shared = VmaFlags::MAP_SHARED;
+        let priv_ = VmaFlags::MAP_PRIVATE;
+        let fixed = VmaFlags::MAP_FIXED;
+        assert!(shared.contains(VmaFlags::MAP_SHARED));
+        assert!(!shared.contains(VmaFlags::MAP_PRIVATE));
+        assert!(priv_.contains(VmaFlags::MAP_PRIVATE));
+        assert!(!priv_.contains(VmaFlags::MAP_SHARED));
+        assert!(fixed.contains(VmaFlags::MAP_FIXED));
+        let combined = VmaFlags::MAP_PRIVATE | VmaFlags::MAP_FIXED;
+        assert!(combined.contains(VmaFlags::MAP_PRIVATE));
+        assert!(combined.contains(VmaFlags::MAP_FIXED));
+    }
+
+    #[test]
+    fn vma_zero_size() {
+        let vma = Vma {
+            start: VirtAddr::new(0x1000),
+            end: VirtAddr::new(0x1000),
+            prot: VmaProt::READ,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        assert_eq!(vma.size(), 0);
+        assert!(!vma.contains(VirtAddr::new(0x1000)));
+    }
+
+    #[test]
+    fn vmaset_empty_checks() {
+        let set = VmaSet::new();
+        assert!(set.is_empty());
+        assert_eq!(set.len(), 0);
+        let set2 = VmaSet::default();
+        assert!(set2.is_empty());
+    }
+
+    #[test]
+    fn vmaset_insert_multiple_non_overlapping() {
+        let mut set = VmaSet::new();
+        let v1 = Vma {
+            start: VirtAddr::new(0x1000),
+            end: VirtAddr::new(0x2000),
+            prot: VmaProt::READ,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        let v2 = Vma {
+            start: VirtAddr::new(0x3000),
+            end: VirtAddr::new(0x4000),
+            prot: VmaProt::WRITE,
+            backing: VmaBacking::FileBacked {
+                inode: InodeId(1),
+                offset: 0,
+            },
+            flags: VmaFlags::MAP_SHARED,
+        };
+        assert!(set.insert(v1).is_ok());
+        assert!(set.insert(v2).is_ok());
+        assert_eq!(set.len(), 2);
+        assert!(!set.is_empty());
+    }
+
+    #[test]
+    fn vmaset_iter_contains_all() {
+        let mut set = VmaSet::new();
+        let starts = [0x1000u64, 0x3000, 0x5000];
+        for &s in &starts {
+            let vma = Vma {
+                start: VirtAddr::new(s),
+                end: VirtAddr::new(s + 0x1000),
+                prot: VmaProt::READ,
+                backing: VmaBacking::Anonymous,
+                flags: VmaFlags::MAP_PRIVATE,
+            };
+            set.insert(vma).unwrap();
+        }
+        let iterated: Vec<u64> = set.iter().map(|v| v.start.as_u64()).collect();
+        assert_eq!(iterated, starts);
+    }
+
+    #[test]
+    fn vmaset_remove_middle_maintains_order() {
+        let mut set = VmaSet::new();
+        let v1 = Vma {
+            start: VirtAddr::new(0x1000),
+            end: VirtAddr::new(0x2000),
+            prot: VmaProt::READ,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        let v2 = Vma {
+            start: VirtAddr::new(0x2000),
+            end: VirtAddr::new(0x3000),
+            prot: VmaProt::WRITE,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        let v3 = Vma {
+            start: VirtAddr::new(0x3000),
+            end: VirtAddr::new(0x4000),
+            prot: VmaProt::EXECUTE,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        set.insert(v1).unwrap();
+        set.insert(v2).unwrap();
+        set.insert(v3).unwrap();
+        assert_eq!(set.len(), 3);
+        let removed = set.remove(VirtAddr::new(0x2000));
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().end, VirtAddr::new(0x3000));
+        assert_eq!(set.len(), 2);
+        // Remaining: 0x1000-0x2000 and 0x3000-0x4000 (gap at [0x2000, 0x3000))
+        assert!(set.find(VirtAddr::new(0x1000)).is_some());
+        assert!(set.find(VirtAddr::new(0x1500)).is_some());
+        assert!(set.find(VirtAddr::new(0x1FFF)).is_some());
+        assert!(set.find(VirtAddr::new(0x2000)).is_none());
+        assert!(set.find(VirtAddr::new(0x2FFF)).is_none());
+        assert!(set.find(VirtAddr::new(0x3000)).is_some());
+        assert!(set.find(VirtAddr::new(0x3500)).is_some());
+    }
+
+    #[test]
+    fn vmaset_insert_same_start_rejected() {
+        let mut set = VmaSet::new();
+        let v1 = Vma {
+            start: VirtAddr::new(0x1000),
+            end: VirtAddr::new(0x2000),
+            prot: VmaProt::READ,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        assert!(set.insert(v1).is_ok());
+        let v2 = Vma {
+            start: VirtAddr::new(0x1000),
+            end: VirtAddr::new(0x1800),
+            prot: VmaProt::READ | VmaProt::WRITE,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        assert!(set.insert(v2).is_err(), "same-start insertion must be rejected as conflict");
+    }
+
+    #[test]
+    fn vmaset_find_outside_range() {
+        let mut set = VmaSet::new();
+        let vma = Vma {
+            start: VirtAddr::new(0x1000),
+            end: VirtAddr::new(0x2000),
+            prot: VmaProt::READ,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        set.insert(vma).unwrap();
+        assert!(set.find(VirtAddr::new(0x0)).is_none());
+        assert!(set.find(VirtAddr::new(0xFFF)).is_none());
+        assert!(set.find(VirtAddr::new(0x2000)).is_none());
+        assert!(set.find(VirtAddr::new(0x10000)).is_none());
+    }
+
+    #[test]
+    fn vmaset_insert_replaces_exact() {
+        let mut set = VmaSet::new();
+        let v1 = Vma {
+            start: VirtAddr::new(0x1000),
+            end: VirtAddr::new(0x2000),
+            prot: VmaProt::READ,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        assert!(set.insert(v1).is_ok());
+        // Attempting to insert at the same start address is rejected as a
+        // conflict because `range(vma.start..)` finds the existing entry at
+        // the same key, and `*succ_start < vma.end` is true (equal/exact).
+        let v2 = Vma {
+            start: VirtAddr::new(0x1000),
+            end: VirtAddr::new(0x2000),
+            prot: VmaProt::READ | VmaProt::WRITE,
+            backing: VmaBacking::Anonymous,
+            flags: VmaFlags::MAP_PRIVATE,
+        };
+        let result = set.insert(v2);
+        assert!(result.is_err(), "same-start insertion must be rejected as conflict");
+    }
 }

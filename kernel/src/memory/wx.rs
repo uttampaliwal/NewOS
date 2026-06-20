@@ -258,4 +258,62 @@ mod tests {
         assert!(!was, "W+NX is not a violation");
         assert!(f.contains(PageTableFlags::WRITABLE));
     }
+
+    #[test]
+    fn enforce_wx_huge_page_flag_untouched() {
+        let mut f = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::HUGE_PAGE;
+        let was = enforce_wx_on_flags(&mut f);
+        assert!(was, "W+X with HUGE_PAGE must be detected");
+        assert!(!f.contains(PageTableFlags::WRITABLE), "WRITABLE must be stripped");
+        assert!(f.contains(PageTableFlags::HUGE_PAGE), "HUGE_PAGE must be preserved");
+    }
+
+    #[test]
+    fn enforce_wx_global_flag_untouched() {
+        let mut f = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::GLOBAL;
+        let was = enforce_wx_on_flags(&mut f);
+        assert!(was, "W+X with GLOBAL must be detected");
+        assert!(!f.contains(PageTableFlags::WRITABLE));
+        assert!(f.contains(PageTableFlags::GLOBAL), "GLOBAL must be preserved");
+    }
+
+    #[test]
+    fn enforce_wx_all_flags_zero() {
+        let mut f = PageTableFlags::empty();
+        let was = enforce_wx_on_flags(&mut f);
+        assert!(!was, "empty flags are never a violation");
+        assert_eq!(f, PageTableFlags::empty());
+    }
+
+    #[test]
+    fn enforce_wx_access_bits_preserved() {
+        let mut f = PageTableFlags::PRESENT
+            | PageTableFlags::WRITABLE
+            | PageTableFlags::USER_ACCESSIBLE
+            | PageTableFlags::ACCESSED
+            | PageTableFlags::DIRTY;
+        let was = enforce_wx_on_flags(&mut f);
+        assert!(was);
+        assert!(!f.contains(PageTableFlags::WRITABLE));
+        assert!(f.contains(PageTableFlags::USER_ACCESSIBLE));
+        assert!(f.contains(PageTableFlags::ACCESSED));
+        assert!(f.contains(PageTableFlags::DIRTY));
+    }
+
+    #[test]
+    fn enforce_wx_no_exec_flag_allows_writable() {
+        let mut f = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE;
+        let was = enforce_wx_on_flags(&mut f);
+        assert!(!was, "W+NX is not a violation");
+        assert!(f.contains(PageTableFlags::WRITABLE));
+        assert!(f.contains(PageTableFlags::NO_EXECUTE));
+    }
+
+    #[test]
+    fn enforce_wx_read_only_no_change() {
+        let mut f = PageTableFlags::PRESENT | PageTableFlags::NO_EXECUTE;
+        let was = enforce_wx_on_flags(&mut f);
+        assert!(!was);
+        assert!(f.contains(PageTableFlags::PRESENT));
+    }
 }
