@@ -442,12 +442,12 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that all hooks in the stack are called in order
     - _Requirements: 25.1_
 
-- [ ] 34. Implement IMA/EVM and stack canaries in `kernel/src/security/ima.rs`
-  - [ ] 34.1 Create `kernel/src/security/ima.rs` with IMA measurement: on each `exec`, compute SHA-256 of the ELF binary and append to the IMA measurement log (stored in a kernel ring buffer)
+- [x] 34. Implement IMA/EVM and stack canaries in `kernel/src/security/ima.rs`
+  - [x] 34.1 Create `kernel/src/security/ima.rs` with IMA measurement: on each `exec`, compute SHA-256 of the ELF binary and append to the IMA measurement log (stored in a kernel ring buffer)
     - Implement EVM: store HMAC of file metadata (inode, size, mtime) as an extended attribute; verify on open
     - Implement stack canaries: in `kernel/src/gdt.rs` (or arch layer), place a random 64-bit canary value at the base of each kernel stack; check on task switch and panic if corrupted
     - _Requirements: 26.1, 26.2, 26.3, 26.4, 27.1, 27.2_
-  - [ ]* 34.2 Write unit tests for IMA measurement log
+  - [x]* 34.2 Write unit tests for IMA measurement log
     - Test that executing the same binary twice produces the same SHA-256 measurement
     - Test that the measurement log grows by one entry per exec
     - _Requirements: 26.1_
