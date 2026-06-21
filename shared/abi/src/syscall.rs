@@ -64,6 +64,8 @@ pub enum Syscall {
     DrmPageFlip = 49,
     SetUid = 50,
     SetGid = 51,
+    Chdir = 52,
+    Dmesg = 53,
 }
 
 impl Syscall {
@@ -120,6 +122,8 @@ impl Syscall {
             49 => Some(Self::DrmPageFlip),
             50 => Some(Self::SetUid),
             51 => Some(Self::SetGid),
+            52 => Some(Self::Chdir),
+            53 => Some(Self::Dmesg),
             _ => None,
         }
     }

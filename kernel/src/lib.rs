@@ -73,6 +73,7 @@ pub mod net;
 pub mod process;
 #[cfg(feature = "arch-x86_64")]
 pub mod security;
+pub mod log_ring;
 pub mod serial;
 #[cfg(feature = "arch-x86_64")]
 pub mod smp;

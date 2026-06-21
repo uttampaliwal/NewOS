@@ -4,8 +4,11 @@
 //! the ext4 API surface but does NOT persist data to disk. A real block-device
 //! backend (NVMe/AHCI) is needed for persistence.
 
+pub mod disk;
+
 extern crate alloc;
 
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
@@ -109,6 +112,22 @@ impl FsBackend for Ext4Backend {
         // For now, sync is a no-op since ext4 delegates to tmpfs (in-memory only).
         self.inner.sync()
     }
+
+    fn xattr_get(&self, inode: InodeId, name: &str) -> Result<Option<Vec<u8>>, FsError> {
+        self.inner.xattr_get(inode, name)
+    }
+
+    fn xattr_set(&self, inode: InodeId, name: &str, value: &[u8]) -> Result<(), FsError> {
+        self.inner.xattr_set(inode, name, value)
+    }
+
+    fn xattr_remove(&self, inode: InodeId, name: &str) -> Result<(), FsError> {
+        self.inner.xattr_remove(inode, name)
+    }
+
+    fn xattr_list(&self, inode: InodeId) -> Result<Vec<String>, FsError> {
+        self.inner.xattr_list(inode)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +139,9 @@ mod tests {
     use super::*;
     use crate::fs::tmpfs::TmpfsBackend;
     use crate::fs::vfs::{FsBackend, MountFlags, Vfs};
+    use alloc::string::String;
     use alloc::sync::Arc;
+    use alloc::vec;
 
     #[test]
     fn root_inode_is_one() {
@@ -173,5 +194,28 @@ mod tests {
         let (entry, rel) = vfs.resolve("/mnt").expect("resolve /mnt");
         assert_eq!(entry.mount_point, "/mnt");
         assert_eq!(rel, "/");
+    }
+
+    #[test]
+    fn ext4_xattr_roundtrip() {
+        let ext4 = Ext4Backend::new();
+        let file_id = {
+            let mut inner = ext4.inner.inner.lock();
+            inner.create_file(InodeId(1), "xattr.txt", 0o644).unwrap()
+        };
+
+        ext4.xattr_set(file_id, "user.test", b"hello")
+            .expect("xattr_set");
+        let val = ext4.xattr_get(file_id, "user.test").expect("xattr_get");
+        assert_eq!(val, Some(Vec::from(b"hello")));
+
+        let attrs = ext4.xattr_list(file_id).expect("xattr_list");
+        assert_eq!(attrs, vec![String::from("user.test")]);
+
+        ext4.xattr_remove(file_id, "user.test")
+            .expect("xattr_remove");
+        assert!(ext4.xattr_get(file_id, "user.test")
+            .unwrap()
+            .is_none());
     }
 }

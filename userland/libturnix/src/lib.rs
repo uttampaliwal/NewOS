@@ -197,6 +197,15 @@ pub fn unlink(path: &str) -> bool {
     (res as i64) >= 0
 }
 
+pub fn dmesg(buf: &mut [u8]) -> Result<usize, i64> {
+    let res = syscall2(
+        Syscall::Dmesg as u64,
+        buf.as_mut_ptr() as u64,
+        buf.len() as u64,
+    );
+    if (res as i64) < 0 { Err(res as i64) } else { Ok(res as usize) }
+}
+
 fn syscall0(num: u64) -> u64 {
     let res: u64;
     unsafe {

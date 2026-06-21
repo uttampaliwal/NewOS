@@ -86,6 +86,8 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::GbmMap => handle_gbm_map(args),
         Syscall::GbmDestroy => handle_gbm_destroy(args),
         Syscall::DrmPageFlip => handle_drm_page_flip(args),
+        Syscall::Chdir => handle_chdir(args),
+        Syscall::Dmesg => handle_dmesg(args),
     }
 }
 
@@ -1618,6 +1620,40 @@ fn handle_drm_page_flip(args: SyscallArgs) -> SyscallResult {
         Ok(()) => SyscallResult::Success(0),
         Err(_) => SyscallResult::Error(5),
     }
+}
+
+fn handle_chdir(_args: SyscallArgs) -> SyscallResult {
+    todo!("chdir syscall")
+}
+
+fn handle_dmesg(args: SyscallArgs) -> SyscallResult {
+    let buf_ptr = args.arg0 as *mut u8;
+    let buf_size = args.arg1 as usize;
+
+    if buf_ptr.is_null() {
+        return SyscallResult::Error(14); // EFAULT
+    }
+
+    let mut written = 0;
+    let mut output = alloc::vec::Vec::new();
+
+    while let Some(entry) = crate::log_ring::kernel_log_read() {
+        let msg = entry.message();
+        let line = alloc::format!("[{}] {}\n", entry.level, msg);
+        if written + line.len() > buf_size {
+            break;
+        }
+        output.extend_from_slice(line.as_bytes());
+        written += line.len();
+    }
+
+    if written > 0 {
+        unsafe {
+            core::ptr::copy_nonoverlapping(output.as_ptr(), buf_ptr, written);
+        }
+    }
+
+    SyscallResult::Success(written as u64)
 }
 
 pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallResult {

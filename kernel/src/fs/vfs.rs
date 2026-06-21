@@ -339,6 +339,27 @@ pub trait FsBackend: Send + Sync {
 
     /// Flush all pending writes to durable storage.
     fn sync(&self) -> Result<(), FsError>;
+
+    /// Get an extended attribute value by name.
+    /// Returns `None` if the attribute does not exist.
+    fn xattr_get(&self, _inode: InodeId, _name: &str) -> Result<Option<Vec<u8>>, FsError> {
+        Ok(None)
+    }
+
+    /// Set an extended attribute value. Creates the attribute if it doesn't exist.
+    fn xattr_set(&self, _inode: InodeId, _name: &str, _value: &[u8]) -> Result<(), FsError> {
+        Err(FsError::NotSupported)
+    }
+
+    /// Remove an extended attribute.
+    fn xattr_remove(&self, _inode: InodeId, _name: &str) -> Result<(), FsError> {
+        Err(FsError::NotSupported)
+    }
+
+    /// List all extended attribute names.
+    fn xattr_list(&self, _inode: InodeId) -> Result<Vec<String>, FsError> {
+        Ok(Vec::new())
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -39,6 +39,8 @@ struct TmpfsInode {
     pub data: Vec<u8>,
     /// For `FileType::Directory` — child name → child InodeId.
     pub children: BTreeMap<String, InodeId>,
+    /// Extended attributes (name → value).
+    pub xattrs: BTreeMap<String, Vec<u8>>,
 }
 
 impl TmpfsInode {
@@ -54,6 +56,7 @@ impl TmpfsInode {
             file_type: FileType::Directory,
             data: Vec::new(),
             children: BTreeMap::new(),
+            xattrs: BTreeMap::new(),
         }
     }
 
@@ -70,6 +73,7 @@ impl TmpfsInode {
             file_type: FileType::Regular,
             data: Vec::new(),
             children: BTreeMap::new(),
+            xattrs: BTreeMap::new(),
         }
     }
 
@@ -324,6 +328,33 @@ impl FsBackend for TmpfsBackend {
         Ok(())
     }
 
+    fn xattr_get(&self, inode: InodeId, name: &str) -> Result<Option<Vec<u8>>, FsError> {
+        let inner = self.inner.lock();
+        let node = inner.inodes.get(&inode).ok_or(FsError::NotFound)?;
+        Ok(node.xattrs.get(name).cloned())
+    }
+
+    fn xattr_set(&self, inode: InodeId, name: &str, value: &[u8]) -> Result<(), FsError> {
+        let mut inner = self.inner.lock();
+        let node = inner.inodes.get_mut(&inode).ok_or(FsError::NotFound)?;
+        node.xattrs
+            .insert(String::from(name), value.to_vec());
+        Ok(())
+    }
+
+    fn xattr_remove(&self, inode: InodeId, name: &str) -> Result<(), FsError> {
+        let mut inner = self.inner.lock();
+        let node = inner.inodes.get_mut(&inode).ok_or(FsError::NotFound)?;
+        node.xattrs.remove(name);
+        Ok(())
+    }
+
+    fn xattr_list(&self, inode: InodeId) -> Result<Vec<String>, FsError> {
+        let inner = self.inner.lock();
+        let node = inner.inodes.get(&inode).ok_or(FsError::NotFound)?;
+        Ok(node.xattrs.keys().cloned().collect())
+    }
+
     fn sync(&self) -> Result<(), FsError> {
         Ok(())
     }
@@ -338,6 +369,7 @@ mod tests {
     use super::*;
     use crate::fs::vfs::{MountFlags, Vfs};
     use alloc::sync::Arc;
+    use alloc::vec;
 
     fn make_tmpfs() -> TmpfsBackend {
         TmpfsBackend::new()
@@ -556,5 +588,80 @@ mod tests {
         // File is NOT accessible under root.
         let result = vfs.open_with_creds("/only_in_tmp.txt", OpenFlags::RDONLY, 0, 0);
         assert!(result.is_err(), "file should not be in root backend");
+    }
+
+    // -----------------------------------------------------------------------
+    // Extended attribute (xattr) tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_xattr_set_and_get() {
+        let fs = make_tmpfs();
+        let child = insert_file(&fs, InodeId(1), "test.txt");
+
+        fs.xattr_set(child, "security.capability", b"cap_data")
+            .unwrap();
+
+        let val = fs.xattr_get(child, "security.capability").unwrap();
+        assert_eq!(val, Some(Vec::from(b"cap_data")));
+
+        let missing = fs.xattr_get(child, "security.missing").unwrap();
+        assert_eq!(missing, None);
+    }
+
+    #[test]
+    fn test_xattr_remove() {
+        let fs = make_tmpfs();
+        let child = insert_file(&fs, InodeId(1), "test.txt");
+
+        fs.xattr_set(child, "user.color", b"blue").unwrap();
+        assert!(fs.xattr_get(child, "user.color").unwrap().is_some());
+
+        fs.xattr_remove(child, "user.color").unwrap();
+        assert!(fs.xattr_get(child, "user.color").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_xattr_list() {
+        let fs = make_tmpfs();
+        let child = insert_file(&fs, InodeId(1), "test.txt");
+
+        fs.xattr_set(child, "user.a", b"1").unwrap();
+        fs.xattr_set(child, "user.b", b"2").unwrap();
+
+        let mut attrs = fs.xattr_list(child).unwrap();
+        attrs.sort();
+        assert_eq!(
+            attrs,
+            vec![
+                String::from("user.a"),
+                String::from("user.b"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_xattr_overwrite() {
+        let fs = make_tmpfs();
+        let child = insert_file(&fs, InodeId(1), "test.txt");
+
+        fs.xattr_set(child, "user.key", b"value1").unwrap();
+        fs.xattr_set(child, "user.key", b"value2").unwrap();
+
+        let val = fs.xattr_get(child, "user.key").unwrap();
+        assert_eq!(val, Some(Vec::from(b"value2")));
+    }
+
+    #[test]
+    fn test_xattr_on_nonexistent_inode() {
+        let fs = make_tmpfs();
+        let bogus = InodeId(9999);
+        assert_eq!(fs.xattr_get(bogus, "user.a"), Err(FsError::NotFound));
+        assert_eq!(
+            fs.xattr_set(bogus, "user.a", b"1"),
+            Err(FsError::NotFound)
+        );
+        assert_eq!(fs.xattr_remove(bogus, "user.a"), Err(FsError::NotFound));
+        assert_eq!(fs.xattr_list(bogus), Err(FsError::NotFound));
     }
 }
