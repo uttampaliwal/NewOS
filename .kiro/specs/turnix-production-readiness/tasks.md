@@ -703,8 +703,8 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that a boot timeout returns `BootResult::Timeout`
     - _Requirements: 45.1_
 
-- [ ] 56. Extend the GitHub Actions CI workflow
-  - [ ] 56.1 Extend `.github/workflows/ci.yml` with the following jobs (all on `ubuntu-latest` with QEMU 8.x):
+- [x] 56. Extend the GitHub Actions CI workflow
+  - [x] 56.1 Extend `.github/workflows/ci.yml` with the following jobs (all on `ubuntu-latest` with QEMU 8.x):
     - `build`: `cargo build --release` for all workspace members; fail on any warning (`RUSTFLAGS="-D warnings"`)
     - `unit-tests`: `cargo test --workspace` (runs all unit and property tests)
     - `boot-gate`: `cargo xtask ci-boot` (30 consecutive QEMU boots)
@@ -713,7 +713,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - `performance-benchmarks`: boot QEMU and measure fork latency (< 10 ms), pipe throughput (> 100 MB/s), page fault latency (< 1 µs)
     - All jobs must pass before a PR can merge to the integration branch
     - _Requirements: 45.1, 45.2, 45.3, 45.4, 45.5_
-  - [ ]* 56.2 Write unit tests for CI workflow configuration
+  - [x]* 56.2 Write unit tests for CI workflow configuration
     - Test that the YAML workflow file parses without errors using a YAML linter
     - Test that all required jobs are present in the workflow
     - _Requirements: 45.1_

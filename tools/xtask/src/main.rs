@@ -6,6 +6,9 @@ use std::process::{Command as ProcessCommand, ExitStatus};
 
 mod ci;
 
+#[cfg(test)]
+mod ci_workflow_test;
+
 enum Command {
     Status,
     Doctor,
