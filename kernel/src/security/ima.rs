@@ -233,7 +233,7 @@ pub fn evm_verify(
 const EVM_HMAC_KEY: &[u8; 32] = b"turnix-evm-hmac-key-2024-v1!1234";
 
 /// Compute an EVM HMAC-SHA256 over file metadata (inode, size, mtime).
-fn evm_compute_hmac(inode: u64, size: u64, mtime: u64) -> [u8; 32] {
+pub fn evm_compute_hmac(inode: u64, size: u64, mtime: u64) -> [u8; 32] {
     let mut data = alloc::vec::Vec::new();
     data.extend_from_slice(&inode.to_le_bytes());
     data.extend_from_slice(&size.to_le_bytes());

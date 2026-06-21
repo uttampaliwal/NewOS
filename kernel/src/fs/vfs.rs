@@ -158,6 +158,13 @@ impl OpenFlags {
     }
 }
 
+impl core::ops::BitOr for OpenFlags {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        OpenFlags(self.0 | rhs.0)
+    }
+}
+
 /// Flags for [`Vfs::mount`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MountFlags(pub u32);
@@ -194,6 +201,22 @@ pub struct InodeStat {
     pub size: u64,
     /// High-level file type (redundant with `mode` bits, kept for convenience).
     pub file_type: FileType,
+}
+
+impl Default for InodeStat {
+    fn default() -> Self {
+        Self {
+            mode: 0,
+            uid: 0,
+            gid: 0,
+            nlink: 0,
+            atime: 0,
+            mtime: 0,
+            ctime: 0,
+            size: 0,
+            file_type: FileType::Regular,
+        }
+    }
 }
 
 /// Legacy flat stat — preserved for syscall-handler backward compatibility.
@@ -359,6 +382,12 @@ pub trait FsBackend: Send + Sync {
     /// List all extended attribute names.
     fn xattr_list(&self, _inode: InodeId) -> Result<Vec<String>, FsError> {
         Ok(Vec::new())
+    }
+
+    /// Create a new regular file named `name` inside `parent` with the given `mode`.
+    /// Returns the `InodeId` of the newly created file.
+    fn create(&self, _parent: InodeId, _name: &str, _mode: u32) -> Result<InodeId, FsError> {
+        Err(FsError::NotSupported)
     }
 }
 
@@ -674,7 +703,40 @@ impl Vfs {
         let (mount_entry, rel_path) = self.resolve(path)?;
         let backend = mount_entry.backend.clone();
         let root = backend.root_inode();
-        let inode = Self::walk_path(backend.as_ref(), root, rel_path)?;
+
+        // Handle file creation when CREAT flag is set and file doesn't exist.
+        let inode = match Self::walk_path(backend.as_ref(), root, rel_path) {
+            Ok(inode) => inode,
+            Err(FsError::NotFound) if flags.is_creat() => {
+                // Split path into parent and file name for creation.
+                let (parent_rel, file_name) = split_parent_name(rel_path);
+                let parent_inode = Self::walk_path(backend.as_ref(), root, parent_rel)?;
+
+                // Check write permission on parent directory.
+                let parent_stat = backend.stat(parent_inode)?;
+                if !check_permission(&parent_stat, uid, gid, 0x2) {
+                    return Err(FsError::PermissionDenied);
+                }
+
+                // Create the file with mode 0o644 by default.
+                let new_mode = 0o644;
+                let new_inode = backend.create(parent_inode, file_name, new_mode)?;
+
+                // Compute and store EVM HMAC for the new file.
+                if let Ok(attrs) = backend.stat(new_inode) {
+                    let evm_hmac = crate::security::ima::evm_compute_hmac(
+                        new_inode.0,
+                        attrs.size,
+                        attrs.mtime,
+                    );
+                    let _ = backend.xattr_set(new_inode, "security.evm", &evm_hmac);
+                }
+
+                new_inode
+            }
+            Err(e) => return Err(e),
+        };
+
         let stat = backend.stat(inode)?;
 
         // Determine required permission bits.
@@ -701,6 +763,23 @@ impl Vfs {
         }
 
         backend.open(inode, flags)?;
+
+        // EVM verification: check HMAC if the file has an EVM xattr.
+        if let Ok(Some(evm_hmac)) = backend.xattr_get(inode, "security.evm")
+            && evm_hmac.len() == 32
+        {
+            let mut hmac_bytes = [0u8; 32];
+            hmac_bytes.copy_from_slice(&evm_hmac);
+            let attrs = backend.stat(inode).unwrap_or_default();
+            if !crate::security::ima::evm_verify(
+                inode.0,
+                attrs.size,
+                attrs.mtime,
+                &hmac_bytes,
+            ) {
+                return Err(FsError::PermissionDenied);
+            }
+        }
 
         let kind = match stat.file_type {
             FileType::Directory => FdKind::Directory,
@@ -975,6 +1054,18 @@ impl Vfs {
                 if let Some(fd) = self.open_files.get(&fd_idx) {
                     fd.set_offset(real_offset + n as u64);
                 }
+
+                // After a successful write, update the EVM HMAC if present.
+                if let Ok(Some(_)) = backend.xattr_get(inode, "security.evm") {
+                    let attrs = backend.stat(inode).unwrap_or_default();
+                    let new_hmac = crate::security::ima::evm_compute_hmac(
+                        inode.0,
+                        attrs.size,
+                        attrs.mtime,
+                    );
+                    let _ = backend.xattr_set(inode, "security.evm", &new_hmac);
+                }
+
                 Some(n)
             }
         }
@@ -993,6 +1084,15 @@ impl Vfs {
     // -----------------------------------------------------------------------
     // Stat / readdir / mkdir / unlink
     // -----------------------------------------------------------------------
+
+    /// Get an extended attribute for `path`.
+    pub fn xattr_get(&self, path: &str, name: &str) -> Result<Option<Vec<u8>>, FsError> {
+        let (entry, rel_path) = self.resolve(path)?;
+        let backend = &entry.backend;
+        let root = backend.root_inode();
+        let inode = Self::walk_path(backend.as_ref(), root, rel_path)?;
+        backend.xattr_get(inode, name)
+    }
 
     /// Return stat for `path`, or `None` if not found.
     pub fn stat_path(&self, path: &str) -> Option<FileStat> {
@@ -1427,6 +1527,9 @@ impl FsBackend for NullBackend {
     fn sync(&self) -> Result<(), FsError> {
         Ok(())
     }
+    fn create(&self, _parent: InodeId, _name: &str, _mode: u32) -> Result<InodeId, FsError> {
+        Err(FsError::NotSupported)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1627,6 +1730,17 @@ mod tests {
 
         fn sync(&self) -> Result<(), FsError> {
             Ok(())
+        }
+
+        fn create(&self, _parent: InodeId, name: &str, _mode: u32) -> Result<InodeId, FsError> {
+            let mut inner = self.inner.lock();
+            if inner.files.contains_key(name) {
+                return Err(FsError::AlreadyExists);
+            }
+            let id = InodeId(inner.next_inode);
+            inner.next_inode += 1;
+            inner.files.insert(name.to_string(), (id, Vec::new()));
+            Ok(id)
         }
     }
 
@@ -1887,6 +2001,126 @@ mod tests {
         assert_eq!(p, "/foo");
         assert_eq!(n, "bar");
     }
+
+    // -----------------------------------------------------------------------
+    // EVM integration tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_evm_hmac_stored_on_file_create() {
+        let mut vfs = Vfs::new();
+        let tmpfs = Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        vfs.mount("/", tmpfs.clone(), MountFlags::default())
+            .unwrap();
+
+        // Create file via CREAT flag
+        let _fd = vfs
+            .open_with_creds(
+                "/evm_test.txt",
+                OpenFlags::CREAT | OpenFlags::RDWR,
+                0,
+                0,
+            )
+            .unwrap();
+
+        let evm = vfs.xattr_get("/evm_test.txt", "security.evm").unwrap();
+        assert!(
+            evm.is_some(),
+            "EVM HMAC should be stored after file creation"
+        );
+        assert_eq!(evm.unwrap().len(), 32);
+    }
+
+    #[test]
+    fn test_evm_verification_passes_for_valid_hmac() {
+        let mut vfs = Vfs::new();
+        let tmpfs = Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        vfs.mount("/", tmpfs.clone(), MountFlags::default())
+            .unwrap();
+
+        // Create file manually with valid EVM xattr
+        let root = tmpfs.root_inode();
+        let inode = {
+            let mut inner = tmpfs.inner.lock();
+            inner.create_file(root, "evm_valid.txt", 0o644).unwrap()
+        };
+        let stat = tmpfs.stat(inode).unwrap();
+        let evm_hmac = crate::security::ima::evm_compute_hmac(
+            inode.0, stat.size, stat.mtime,
+        );
+        tmpfs.xattr_set(inode, "security.evm", &evm_hmac).unwrap();
+
+        // Open should succeed (EVM verification passes)
+        let fd = vfs.open_with_creds("/evm_valid.txt", OpenFlags::RDONLY, 0, 0);
+        assert!(fd.is_ok(), "Open should pass EVM verification");
+    }
+
+    #[test]
+    fn test_evm_verification_fails_for_tampered_hmac() {
+        let mut vfs = Vfs::new();
+        let tmpfs = Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        vfs.mount("/", tmpfs.clone(), MountFlags::default())
+            .unwrap();
+
+        // Create file with a VALID HMAC
+        let root = tmpfs.root_inode();
+        let inode = {
+            let mut inner = tmpfs.inner.lock();
+            inner.create_file(root, "evm_tamper.txt", 0o644).unwrap()
+        };
+        let stat = tmpfs.stat(inode).unwrap();
+        let evm_hmac = crate::security::ima::evm_compute_hmac(
+            inode.0, stat.size, stat.mtime,
+        );
+        tmpfs.xattr_set(inode, "security.evm", &evm_hmac).unwrap();
+
+        // Tamper with the EVM HMAC
+        let tampered_hmac = [0xFFu8; 32];
+        let _ = tmpfs.xattr_set(inode, "security.evm", &tampered_hmac);
+
+        // Open should fail (EVM verification fails)
+        let fd = vfs.open_with_creds("/evm_tamper.txt", OpenFlags::RDONLY, 0, 0);
+        assert!(fd.is_err(), "Open should fail with tampered EVM HMAC");
+    }
+
+    #[test]
+    fn test_evm_hmac_updated_on_write() {
+        let mut vfs = Vfs::new();
+        let tmpfs = Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+        vfs.mount("/", tmpfs.clone(), MountFlags::default())
+            .unwrap();
+
+        // Create file manually with valid EVM xattr
+        let root = tmpfs.root_inode();
+        let inode = {
+            let mut inner = tmpfs.inner.lock();
+            inner.create_file(root, "evm_write.txt", 0o644).unwrap()
+        };
+        let stat = tmpfs.stat(inode).unwrap();
+        let evm_hmac = crate::security::ima::evm_compute_hmac(
+            inode.0, stat.size, stat.mtime,
+        );
+        tmpfs.xattr_set(inode, "security.evm", &evm_hmac).unwrap();
+
+        let fd = vfs.open_with_creds("/evm_write.txt", OpenFlags::RDWR, 0, 0).unwrap();
+
+        let initial_hmac = vfs
+            .xattr_get("/evm_write.txt", "security.evm")
+            .unwrap()
+            .unwrap();
+
+        vfs.write_fd(fd, b"hello world").unwrap();
+
+        let updated_hmac = vfs
+            .xattr_get("/evm_write.txt", "security.evm")
+            .unwrap()
+            .unwrap();
+
+        assert_ne!(initial_hmac, updated_hmac, "EVM HMAC should update after write");
+
+        let fd2 = vfs.open_with_creds("/evm_write.txt", OpenFlags::RDONLY, 0, 0);
+        assert!(fd2.is_ok(), "Re-open after write should pass EVM verification");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2017,11 +2251,11 @@ mod prop_tests {
         fn sync(&self) -> Result<(), FsError> {
             Ok(())
         }
-    }
 
-    // -----------------------------------------------------------------------
-    // Generators
-    // -----------------------------------------------------------------------
+        fn create(&self, _parent: InodeId, _name: &str, _mode: u32) -> Result<InodeId, FsError> {
+            Err(FsError::NotSupported)
+        }
+    }
 
     /// Generate a mount point path (one of a fixed set of meaningful paths).
     fn arb_mount_point() -> impl Strategy<Value = String> {

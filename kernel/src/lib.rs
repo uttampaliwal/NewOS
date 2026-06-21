@@ -43,6 +43,7 @@ pub mod test_serial {
     }
 }
 
+pub mod block;
 pub mod arch;
 
 // Re-export arch-specific modules at their original paths so

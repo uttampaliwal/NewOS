@@ -358,6 +358,28 @@ impl FsBackend for TmpfsBackend {
     fn sync(&self) -> Result<(), FsError> {
         Ok(())
     }
+
+    fn create(&self, parent: InodeId, name: &str, mode: u32) -> Result<InodeId, FsError> {
+        let mut inner = self.inner.lock();
+        {
+            let parent_node = inner.inodes.get(&parent).ok_or(FsError::NotFound)?;
+            if parent_node.file_type != FileType::Directory {
+                return Err(FsError::NotADirectory);
+            }
+            if parent_node.children.contains_key(name) {
+                return Err(FsError::AlreadyExists);
+            }
+        }
+        let new_mode = if mode == 0 { 0o644 } else { mode };
+        let new_id = inner.alloc_inode();
+        inner
+            .inodes
+            .insert(new_id, TmpfsInode::new_file(new_mode));
+        if let Some(parent_node) = inner.inodes.get_mut(&parent) {
+            parent_node.children.insert(String::from(name), new_id);
+        }
+        Ok(new_id)
+    }
 }
 
 // ---------------------------------------------------------------------------

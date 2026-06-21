@@ -4,6 +4,7 @@
 //! the ext4 API surface but does NOT persist data to disk. A real block-device
 //! backend (NVMe/AHCI) is needed for persistence.
 
+pub mod device;
 pub mod disk;
 
 extern crate alloc;
@@ -127,6 +128,10 @@ impl FsBackend for Ext4Backend {
 
     fn xattr_list(&self, inode: InodeId) -> Result<Vec<String>, FsError> {
         self.inner.xattr_list(inode)
+    }
+
+    fn create(&self, parent: InodeId, name: &str, mode: u32) -> Result<InodeId, FsError> {
+        self.inner.create(parent, name, mode)
     }
 }
 

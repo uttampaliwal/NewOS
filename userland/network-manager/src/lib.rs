@@ -3,6 +3,9 @@ use std::net::Ipv4Addr;
 use serde::{Deserialize, Serialize};
 use smoltcp::wire::{DhcpPacket, DhcpRepr, Ipv4Address, DnsPacket};
 
+pub mod dhcp;
+pub mod netconfig;
+
 // ---------------------------------------------------------------------------
 // Error type
 // ---------------------------------------------------------------------------
