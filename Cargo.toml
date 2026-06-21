@@ -18,6 +18,7 @@ members = [
     "userland/log-daemon",
     "userland/network-manager",
     "userland/device-manager",
+    "userland/compositor",
 ]
 default-members = [
     "shared/abi",
@@ -27,6 +28,7 @@ default-members = [
     "userland/init",
     "userland/shell",
     "userland/fault-tester",
+    "userland/compositor",
     "tools/xtask",
 ]
 resolver = "2"

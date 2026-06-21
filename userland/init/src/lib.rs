@@ -27,9 +27,13 @@ after = [\"ipc-broker\"]
 path = \"log-daemon\"
 after = [\"ipc-broker\"]
 
+[service.compositor]
+path = \"compositor\"
+after = [\"service-manager\"]
+
 [service.shell]
 path = \"shell\"
-after = [\"service-manager\", \"log-daemon\"]
+after = [\"compositor\", \"log-daemon\"]
 
 [service.fault-tester]
 path = \"fault-tester\"

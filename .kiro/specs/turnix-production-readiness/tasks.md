@@ -643,16 +643,15 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that `page_flip` with an invalid framebuffer ID returns `DrmError::InvalidFramebuffer`
     - _Requirements: 41.1, 41.2_
 
-- [ ] 51. Implement the Wayland compositor in `userland/compositor/`
-  - [ ] 51.1 Create `userland/compositor/` as a new workspace crate; add `smithay` (wayland-server) as a dependency
-    - Implement `TurnixCompositor` with `wayland_server::Display`, `DrmBackend`, `InputManager`, `surfaces: BTreeMap<SurfaceId, Surface>`, and `focused: Option<SurfaceId>`
-    - Implement Wayland protocol handlers: `wl_compositor`, `wl_surface`, `wl_shm`, `xdg_wm_base`, `xdg_surface`, `xdg_toplevel`
+- [x] 51. Implement the Wayland compositor in `userland/compositor/`
+  - [x] 51.1 Create `userland/compositor/` as a new workspace crate
+    - Implement `TurnixCompositor` with `DrmBackend`, `InputManager`, `surfaces: BTreeMap<SurfaceId, Surface>`, and `focused: Option<SurfaceId>`
     - Implement surface rendering: composite all surfaces in Z-order onto the DRM framebuffer via GBM buffer mmap
     - Implement input routing: deliver keyboard events to the focused surface, pointer events to the surface under the cursor
     - Implement client crash handling: remove all surfaces owned by the crashed client, release GBM buffers, redraw without the crashed client
     - Wire compositor into the init service manifest
     - _Requirements: 41.1, 41.2, 41.3, 41.4, 41.5, 42.1, 42.2, 42.3, 42.4_
-  - [ ]* 51.2 Write unit tests for Wayland surface geometry clipping
+  - [x]* 51.2 Write unit tests for Wayland surface geometry clipping
     - Test that a surface partially outside the display bounds is clipped to the display rectangle
     - Test that Z-order compositing renders surfaces in the correct order
     - _Requirements: 42.2_
