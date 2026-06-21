@@ -66,6 +66,8 @@ pub enum Syscall {
     SetGid = 51,
     Chdir = 52,
     Dmesg = 53,
+    XattrGet = 54,
+    XattrSet = 55,
 }
 
 impl Syscall {
@@ -124,6 +126,8 @@ impl Syscall {
             51 => Some(Self::SetGid),
             52 => Some(Self::Chdir),
             53 => Some(Self::Dmesg),
+            54 => Some(Self::XattrGet),
+            55 => Some(Self::XattrSet),
             _ => None,
         }
     }

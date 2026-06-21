@@ -451,6 +451,7 @@ impl Process {
         envp: &[&[u8]],
         frame_allocator: &mut crate::memory::FrameAllocator<'_>,
         physical_memory_offset: VirtAddr,
+        file_caps: Option<crate::security::capabilities::FileCaps>,
     ) -> Result<(), elf::ParseError> {
         let header = elf::parse_header(elf_data)?;
         let aslr_base = aslr::randomise_load_base(&header);
@@ -712,10 +713,19 @@ impl Process {
             current_inner.pending_signals = SignalSet::empty();
             current_inner.state = ProcessState::Running;
             // Apply POSIX exec_transform on capabilities.
-            // TODO: when VFS xattr is available, read FileCaps from the executable
-            // inode and use exec_transform_with_filecaps instead.
-            let new_caps = current_inner.sec_ctx.caps.exec_transform();
-            current_inner.sec_ctx.caps = new_caps;
+            let (new_permitted, new_effective) = if let Some(ref fc) = file_caps {
+                let bounding = current_inner.sec_ctx.caps.bounding;
+                fc.exec_transform(
+                    current_inner.sec_ctx.caps.permitted,
+                    current_inner.sec_ctx.caps.inheritable,
+                    bounding,
+                )
+            } else {
+                let new = current_inner.sec_ctx.caps.exec_transform();
+                (new.permitted, new.effective)
+            };
+            current_inner.sec_ctx.caps.permitted = new_permitted;
+            current_inner.sec_ctx.caps.effective = new_effective;
         }
 
         paging::destroy_user_mappings(old_pml4_frame, frame_allocator, physical_memory_offset);

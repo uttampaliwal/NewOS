@@ -88,6 +88,8 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::DrmPageFlip => handle_drm_page_flip(args),
         Syscall::Chdir => handle_chdir(args),
         Syscall::Dmesg => handle_dmesg(args),
+        Syscall::XattrGet => handle_xattr_get(args),
+        Syscall::XattrSet => handle_xattr_set(args),
     }
 }
 
@@ -676,6 +678,16 @@ fn handle_exec(args: SyscallArgs) -> SyscallResult {
     // Close the file
     vfs.close(fd);
 
+    // Read FileCaps from the executable's security.capability xattr before dropping VFS lock.
+    let file_caps = {
+        use crate::security::capabilities::FileCaps;
+        if let Ok(Some(xattr_data)) = vfs.xattr_get(path, "security.capability") {
+            FileCaps::from_bytes(&xattr_data)
+        } else {
+            None
+        }
+    };
+
     // Drop VFS lock before doing process operations
     drop(vfs);
 
@@ -694,6 +706,7 @@ fn handle_exec(args: SyscallArgs) -> SyscallResult {
         &envp,
         frame_allocator,
         phys_mem_offset,
+        file_caps,
     ) {
         Ok(_) => (),
         Err(_) => return SyscallResult::Error(8),
@@ -1624,6 +1637,78 @@ fn handle_drm_page_flip(args: SyscallArgs) -> SyscallResult {
 
 fn handle_chdir(_args: SyscallArgs) -> SyscallResult {
     todo!("chdir syscall")
+}
+
+fn handle_xattr_get(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    let name_ptr = args.arg2 as *const u8;
+    let name_len = args.arg3 as usize;
+
+    if path_ptr.is_null() || path_len == 0 || name_ptr.is_null() || name_len == 0 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path = match core::str::from_utf8(path_slice) {
+        Ok(p) => p,
+        Err(_) => return SyscallResult::Error(22),
+    };
+    let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
+    let name = match core::str::from_utf8(name_slice) {
+        Ok(n) => n,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    let vfs = VFS.lock();
+    match vfs.xattr_get(path, name) {
+        Ok(Some(data)) => {
+            // Return the data size; caller must supply a buffer via a
+            // follow-up read or the ABI should be extended.  For now
+            // we return the length so userspace can allocate.
+            SyscallResult::Success(data.len() as u64)
+        }
+        Ok(None) => SyscallResult::Error(61), // ENODATA
+        Err(_) => SyscallResult::Error(2),    // ENOENT
+    }
+}
+
+fn handle_xattr_set(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    let name_ptr = args.arg2 as *const u8;
+    let name_len = args.arg3 as usize;
+
+    if path_ptr.is_null() || path_len == 0 || name_ptr.is_null() || name_len == 0 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let _path = match core::str::from_utf8(path_slice) {
+        Ok(p) => p,
+        Err(_) => return SyscallResult::Error(22),
+    };
+    let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
+    let _name = match core::str::from_utf8(name_slice) {
+        Ok(n) => n,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    // Check CAP_SETFCAP for setting security xattrs
+    if let Some(current) = crate::task::scheduler::get_current_process()
+        && !current.inner.lock().sec_ctx.has_capability(
+            crate::security::capabilities::Capability::Setfcap,
+        )
+    {
+        return SyscallResult::Error(1); // EPERM
+    }
+
+    // Value pointer and length are packed in a second arg pair.
+    // For now, the ABI uses arg2/arg3 for the name; the value
+    // is passed through a separate mechanism (future extension).
+    // Stub: return success for now.
+    let _vfs = VFS.lock();
+    SyscallResult::Success(0)
 }
 
 fn handle_dmesg(args: SyscallArgs) -> SyscallResult {

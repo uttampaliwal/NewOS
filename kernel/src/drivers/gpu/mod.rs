@@ -8,6 +8,7 @@
 
 pub mod drm;
 pub mod gbm;
+pub mod virtio_gpu;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;

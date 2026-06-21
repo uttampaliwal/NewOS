@@ -286,18 +286,18 @@ impl CapabilitySet {
     /// POSIX exec transform with file capabilities.
     ///
     /// When the executable has file capabilities:
-    /// - permitted := (file.effective ? file.permitted : file.inheritable & bounding)
-    /// - effective := file.effective
+    /// - permitted := (P(inheritable) & F(inheritable)) | (F(permitted) & bounding)
+    /// - effective := F(effective) ? P'(permitted) : 0
     /// - inheritable unchanged
     /// - ambient := 0 (ambient caps are cleared when file caps are present)
     pub fn exec_transform_with_filecaps(&self, file_caps: &FileCaps) -> Self {
-        let new_permitted = if file_caps.effective {
-            file_caps.permitted
-        } else {
-            file_caps.inheritable & self.bounding
-        };
+        let (new_permitted, new_effective) = file_caps.exec_transform(
+            self.permitted,
+            self.inheritable,
+            self.bounding,
+        );
         Self {
-            effective: file_caps.effective_mask(),
+            effective: new_effective,
             permitted: new_permitted,
             inheritable: self.inheritable,
             bounding: self.bounding,
@@ -316,31 +316,71 @@ impl fmt::Display for CapabilitySet {
     }
 }
 
-/// File capabilities stored as extended attributes on executables.
+/// File-based capability set stored in the security.capability xattr.
+///
+/// When an executable has this xattr, its capabilities are applied
+/// during exec via capability transformation rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FileCaps {
+    /// Permitted capability set for the file.
     pub permitted: u64,
+    /// Effective capability set (applied after exec).
+    pub effective: u64,
+    /// Inheritable capability set (preserved from parent).
     pub inheritable: u64,
-    /// If true, permitted bits are added to permitted set on exec;
-    /// if false, inherited bits are filtered through bounding set.
-    pub effective: bool,
 }
 
 impl FileCaps {
-    pub const fn new(permitted: u64, inheritable: u64, effective: bool) -> Self {
+    pub const fn new(permitted: u64, effective: u64, inheritable: u64) -> Self {
         Self {
             permitted,
-            inheritable,
             effective,
+            inheritable,
         }
     }
 
-    pub fn effective_mask(&self) -> u64 {
-        if self.effective {
-            self.permitted
-        } else {
-            0
+    /// Parse FileCaps from raw bytes (security.capability xattr value).
+    /// Format: 3 x u64 in little-endian = 24 bytes.
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        if data.len() < 24 {
+            return None;
         }
+        let permitted = u64::from_le_bytes(data[0..8].try_into().ok()?);
+        let effective = u64::from_le_bytes(data[8..16].try_into().ok()?);
+        let inheritable = u64::from_le_bytes(data[16..24].try_into().ok()?);
+        Some(Self { permitted, effective, inheritable })
+    }
+
+    /// Serialize FileCaps to bytes.
+    pub fn to_bytes(&self) -> [u8; 24] {
+        let mut buf = [0u8; 24];
+        buf[0..8].copy_from_slice(&self.permitted.to_le_bytes());
+        buf[8..16].copy_from_slice(&self.effective.to_le_bytes());
+        buf[16..24].copy_from_slice(&self.inheritable.to_le_bytes());
+        buf
+    }
+
+    /// Apply file caps transformation to a process capability set.
+    ///
+    /// Per POSIX:
+    /// - P'(permitted) = (P(inheritable) & F(inheritable)) | (F(permitted) & P(bounding))
+    /// - P'(effective) = F(effective) ? P'(permitted) : empty
+    pub fn exec_transform(
+        &self,
+        proc_permitted: u64,
+        proc_inheritable: u64,
+        bounding: u64,
+    ) -> (u64, u64) {
+        let _ = proc_permitted; // reserved for future securebits logic
+        let new_permitted = (proc_inheritable & self.inheritable) | (self.permitted & bounding);
+        let new_effective = if self.effective != 0 { new_permitted } else { 0 };
+        (new_permitted, new_effective)
+    }
+
+    /// Check if this FileCaps grants a specific capability.
+    pub fn has_cap(&self, cap: Capability) -> bool {
+        let bit = cap.bit();
+        (self.permitted & bit) != 0
     }
 }
 
@@ -468,7 +508,7 @@ mod tests {
     #[test]
     fn exec_transform_with_filecaps_effective() {
         let process_caps = CapabilitySet::full();
-        let file_caps = FileCaps::new(0xFF, 0x00, true);
+        let file_caps = FileCaps::new(0xFF, 0xFF, 0x00);
         let after = process_caps.exec_transform_with_filecaps(&file_caps);
         assert_eq!(after.effective, 0xFF);
         assert_eq!(after.permitted, 0xFF);
@@ -484,10 +524,11 @@ mod tests {
             bounding: 0x0F,
             ambient: 0,
         };
-        let file_caps = FileCaps::new(0x00, 0xFF, false);
+        let file_caps = FileCaps::new(0x00, 0x00, 0xFF);
         let after = process_caps.exec_transform_with_filecaps(&file_caps);
         assert_eq!(after.effective, 0);
-        assert_eq!(after.permitted, 0x0F); // inheritable & bounding
+        // POSIX: (proc_inh & fc.inh) | (fc.perm & bnd) = (0xFF & 0xFF) | (0x00 & 0x0F) = 0xFF
+        assert_eq!(after.permitted, 0xFF);
         assert_eq!(after.ambient, 0);
     }
 
@@ -506,11 +547,13 @@ mod tests {
     }
 
     #[test]
-    fn filecaps_effective_mask() {
-        let fc = FileCaps::new(0xFF, 0x00, true);
-        assert_eq!(fc.effective_mask(), 0xFF);
-        let fc2 = FileCaps::new(0xFF, 0xAA, false);
-        assert_eq!(fc2.effective_mask(), 0);
+    fn filecaps_has_cap() {
+        let fc = FileCaps::new(0xFF, 0xFF, 0x00);
+        assert!(fc.has_cap(Capability::Chown));
+        assert!(fc.has_cap(Capability::Setuid));
+        assert!(!fc.has_cap(Capability::SysAdmin));
+        let fc2 = FileCaps::new(0x00, 0x00, 0xFF);
+        assert!(!fc2.has_cap(Capability::Chown));
     }
 
     #[test]
@@ -613,7 +656,7 @@ mod tests {
         check_drop_irreversibility(Capability::NetAdmin, all_others);
     }
 
-    /// Test that file capabilities override inheritable on exec when effective flag is set.
+    /// Test that file capabilities follow POSIX formula on exec.
     #[test]
     fn filecaps_override_inheritable() {
         let process = CapabilitySet {
@@ -623,10 +666,67 @@ mod tests {
             bounding: u64::MAX,
             ambient: 0,
         };
-        let filecaps = FileCaps::new(0xF0, 0x0F, true);
+        let filecaps = FileCaps::new(0xF0, 0xF0, 0x0F);
         let after = process.exec_transform_with_filecaps(&filecaps);
-        // permitted = file.permitted (because effective), not inheritable & bounding
-        assert_eq!(after.permitted, 0xF0);
-        assert_eq!(after.effective, 0xF0);
+        // POSIX: (proc_inh & fc.inh) | (fc.perm & bnd) = (0xFF & 0x0F) | (0xF0 & MAX) = 0xFF
+        assert_eq!(after.permitted, 0xFF);
+        assert_eq!(after.effective, 0xFF);
+    }
+
+    // --- FileCaps xattr tests ---
+
+    #[test]
+    fn test_file_caps_from_bytes() {
+        let mut data = [0u8; 24];
+        data[0..8].copy_from_slice(&0xFFu64.to_le_bytes());
+        data[8..16].copy_from_slice(&0x0Fu64.to_le_bytes());
+        data[16..24].copy_from_slice(&0x03u64.to_le_bytes());
+
+        let fc = FileCaps::from_bytes(&data).unwrap();
+        assert_eq!(fc.permitted, 0xFF);
+        assert_eq!(fc.effective, 0x0F);
+        assert_eq!(fc.inheritable, 0x03);
+    }
+
+    #[test]
+    fn test_file_caps_to_bytes_roundtrip() {
+        let fc = FileCaps { permitted: 0xABCDE, effective: 0x123, inheritable: 0x456 };
+        let bytes = fc.to_bytes();
+        let parsed = FileCaps::from_bytes(&bytes).unwrap();
+        assert_eq!(parsed.permitted, fc.permitted);
+        assert_eq!(parsed.effective, fc.effective);
+        assert_eq!(parsed.inheritable, fc.inheritable);
+    }
+
+    #[test]
+    fn test_file_caps_exec_transform() {
+        let fc = FileCaps {
+            permitted: 0x0F,
+            effective: 0x01,
+            inheritable: 0x03,
+        };
+        let (perm, eff) = fc.exec_transform(0x07, 0x01, 0xFF);
+        // perm = (proc_inh & fc.inh) | (fc.perm & bounding) = (0x01 & 0x03) | (0x0F & 0xFF) = 0x01 | 0x0F = 0x0F
+        assert_eq!(perm, 0x0F);
+        // eff = fc.effective != 0 ? perm : 0 = 0x0F
+        assert_eq!(eff, 0x0F);
+    }
+
+    #[test]
+    fn test_file_caps_exec_transform_no_effective() {
+        let fc = FileCaps {
+            permitted: 0x0F,
+            effective: 0,
+            inheritable: 0x03,
+        };
+        let (perm, eff) = fc.exec_transform(0x07, 0x01, 0xFF);
+        assert_eq!(perm, 0x0F);
+        assert_eq!(eff, 0);
+    }
+
+    #[test]
+    fn test_file_caps_short_data() {
+        assert!(FileCaps::from_bytes(&[0u8; 16]).is_none());
+        assert!(FileCaps::from_bytes(&[]).is_none());
     }
 }

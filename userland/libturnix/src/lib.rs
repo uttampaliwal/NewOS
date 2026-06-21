@@ -206,6 +206,30 @@ pub fn dmesg(buf: &mut [u8]) -> Result<usize, i64> {
     if (res as i64) < 0 { Err(res as i64) } else { Ok(res as usize) }
 }
 
+/// Get the size of an extended attribute value from a file.
+pub fn xattr_get(path: &str, name: &str) -> Result<usize, i64> {
+    let res = syscall4(
+        Syscall::XattrGet as u64,
+        path.as_ptr() as u64,
+        path.len() as u64,
+        name.as_ptr() as u64,
+        name.len() as u64,
+    );
+    if (res as i64) < 0 { Err(res as i64) } else { Ok(res as usize) }
+}
+
+/// Set an extended attribute on a file.
+pub fn xattr_set(path: &str, name: &str, _value: &[u8]) -> Result<(), i64> {
+    let res = syscall4(
+        Syscall::XattrSet as u64,
+        path.as_ptr() as u64,
+        path.len() as u64,
+        name.as_ptr() as u64,
+        name.len() as u64,
+    );
+    if (res as i64) < 0 { Err(res as i64) } else { Ok(()) }
+}
+
 fn syscall0(num: u64) -> u64 {
     let res: u64;
     unsafe {

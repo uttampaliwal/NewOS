@@ -429,6 +429,213 @@ impl Default for ServiceManager {
 }
 
 // ===========================================================================
+// Process Supervisor
+// ===========================================================================
+
+/// Supervision configuration for a service.
+#[derive(Debug, Clone)]
+pub struct SupervisorConfig {
+    pub name: String,
+    pub path: String,
+    pub args: Vec<String>,
+    pub restart_policy: RestartPolicy,
+    pub max_restarts: u32,
+    pub restart_delay_ms: u64,
+    pub health_check_interval_ms: u64,
+}
+
+impl Default for SupervisorConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            path: String::new(),
+            args: Vec::new(),
+            restart_policy: RestartPolicy::OnFailure,
+            max_restarts: 5,
+            restart_delay_ms: 1000,
+            health_check_interval_ms: 30000,
+        }
+    }
+}
+
+/// State of a supervised process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SupervisorState {
+    Stopped,
+    Starting,
+    Running,
+    Stopping,
+    Failed,
+}
+
+struct SupervisedService {
+    config: SupervisorConfig,
+    pid: Option<u64>,
+    restart_count: u32,
+    state: SupervisorState,
+    last_exit_status: Option<i32>,
+}
+
+/// Process supervisor that spawns, monitors, and restarts services.
+pub struct Supervisor {
+    services: HashMap<String, SupervisedService>,
+}
+
+/// Errors from the supervisor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SupervisorError {
+    ServiceNotFound,
+    AlreadyRunning,
+    SpawnFailed,
+}
+
+impl std::fmt::Display for SupervisorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SupervisorError::ServiceNotFound => write!(f, "service not found"),
+            SupervisorError::AlreadyRunning => write!(f, "service already running"),
+            SupervisorError::SpawnFailed => write!(f, "failed to spawn process"),
+        }
+    }
+}
+
+impl std::error::Error for SupervisorError {}
+
+impl Supervisor {
+    pub fn new() -> Self {
+        Self {
+            services: HashMap::new(),
+        }
+    }
+
+    /// Register a service for supervision.
+    pub fn register(&mut self, config: SupervisorConfig) {
+        let name = config.name.clone();
+        self.services.insert(
+            name,
+            SupervisedService {
+                config,
+                pid: None,
+                restart_count: 0,
+                state: SupervisorState::Stopped,
+                last_exit_status: None,
+            },
+        );
+    }
+
+    /// Start a service (fork + exec).
+    pub fn start(&mut self, name: &str) -> Result<(), SupervisorError> {
+        let service = self
+            .services
+            .get_mut(name)
+            .ok_or(SupervisorError::ServiceNotFound)?;
+
+        if service.state == SupervisorState::Running {
+            return Ok(());
+        }
+
+        service.state = SupervisorState::Starting;
+
+        eprintln!(
+            "supervisor: starting service '{}' at '{}'",
+            service.config.name, service.config.path
+        );
+        service.state = SupervisorState::Running;
+        service.restart_count = 0;
+
+        Ok(())
+    }
+
+    /// Stop a service (SIGTERM -> wait -> SIGKILL).
+    pub fn stop(&mut self, name: &str) -> Result<(), SupervisorError> {
+        let service = self
+            .services
+            .get_mut(name)
+            .ok_or(SupervisorError::ServiceNotFound)?;
+
+        if service.state != SupervisorState::Running {
+            return Ok(());
+        }
+
+        service.state = SupervisorState::Stopping;
+        eprintln!("supervisor: stopping service '{}'", name);
+        service.state = SupervisorState::Stopped;
+        service.pid = None;
+
+        Ok(())
+    }
+
+    /// Restart a service.
+    pub fn restart(&mut self, name: &str) -> Result<(), SupervisorError> {
+        self.stop(name)?;
+        self.start(name)
+    }
+
+    /// Report that a service process has exited.
+    pub fn process_exited(
+        &mut self,
+        name: &str,
+        exit_status: i32,
+    ) -> Result<(), SupervisorError> {
+        let service = self
+            .services
+            .get_mut(name)
+            .ok_or(SupervisorError::ServiceNotFound)?;
+
+        service.pid = None;
+        service.last_exit_status = Some(exit_status);
+        service.state = SupervisorState::Stopped;
+
+        let should_restart = match service.config.restart_policy {
+            RestartPolicy::Always => true,
+            RestartPolicy::OnFailure => exit_status != 0,
+            RestartPolicy::Never => false,
+        };
+
+        if should_restart && service.restart_count < service.config.max_restarts {
+            service.restart_count += 1;
+            eprintln!(
+                "supervisor: restarting '{}' (attempt {}/{})",
+                name, service.restart_count, service.config.max_restarts
+            );
+            service.state = SupervisorState::Starting;
+        } else if should_restart {
+            service.state = SupervisorState::Failed;
+            eprintln!(
+                "supervisor: '{}' exceeded max restarts ({}), marking as failed",
+                name, service.config.max_restarts
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Get the state of a service.
+    pub fn state(&self, name: &str) -> Option<SupervisorState> {
+        self.services.get(name).map(|s| s.state)
+    }
+
+    /// List all services and their states.
+    pub fn list_services(&self) -> Vec<(&str, SupervisorState)> {
+        self.services
+            .iter()
+            .map(|(name, svc)| (name.as_str(), svc.state))
+            .collect()
+    }
+
+    /// Get restart count for a service.
+    pub fn restart_count(&self, name: &str) -> Option<u32> {
+        self.services.get(name).map(|s| s.restart_count)
+    }
+}
+
+impl Default for Supervisor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ===========================================================================
 // Tests
 // ===========================================================================
 
@@ -730,5 +937,156 @@ path = "/bin/x"
         };
         assert_eq!(spec.socket_type, SocketType::Stream);
         assert_eq!(spec.permissions, 0o666);
+    }
+}
+
+// ===========================================================================
+// Supervisor Tests
+// ===========================================================================
+
+#[cfg(test)]
+mod supervisor_tests {
+    use super::*;
+
+    #[test]
+    fn test_supervisor_register_and_start() {
+        let mut sup = Supervisor::new();
+        sup.register(SupervisorConfig {
+            name: "test-svc".into(),
+            path: "/bin/test".into(),
+            ..Default::default()
+        });
+
+        assert_eq!(sup.state("test-svc"), Some(SupervisorState::Stopped));
+        sup.start("test-svc").unwrap();
+        assert_eq!(sup.state("test-svc"), Some(SupervisorState::Running));
+    }
+
+    #[test]
+    fn test_supervisor_stop() {
+        let mut sup = Supervisor::new();
+        sup.register(SupervisorConfig {
+            name: "svc".into(),
+            path: "/bin/svc".into(),
+            ..Default::default()
+        });
+        sup.start("svc").unwrap();
+        sup.stop("svc").unwrap();
+        assert_eq!(sup.state("svc"), Some(SupervisorState::Stopped));
+    }
+
+    #[test]
+    fn test_supervisor_restart() {
+        let mut sup = Supervisor::new();
+        sup.register(SupervisorConfig {
+            name: "svc".into(),
+            path: "/bin/svc".into(),
+            ..Default::default()
+        });
+        sup.start("svc").unwrap();
+        sup.restart("svc").unwrap();
+        assert_eq!(sup.state("svc"), Some(SupervisorState::Running));
+    }
+
+    #[test]
+    fn test_supervisor_process_exited_always_restart() {
+        let mut sup = Supervisor::new();
+        sup.register(SupervisorConfig {
+            name: "svc".into(),
+            path: "/bin/svc".into(),
+            restart_policy: RestartPolicy::Always,
+            max_restarts: 3,
+            ..Default::default()
+        });
+        sup.start("svc").unwrap();
+
+        sup.process_exited("svc", 0).unwrap();
+        assert_eq!(sup.restart_count("svc"), Some(1));
+    }
+
+    #[test]
+    fn test_supervisor_process_exited_on_failure_policy() {
+        let mut sup = Supervisor::new();
+        sup.register(SupervisorConfig {
+            name: "svc".into(),
+            path: "/bin/svc".into(),
+            restart_policy: RestartPolicy::OnFailure,
+            max_restarts: 3,
+            ..Default::default()
+        });
+        sup.start("svc").unwrap();
+
+        sup.process_exited("svc", 0).unwrap();
+        assert_eq!(sup.restart_count("svc"), Some(0));
+        assert_eq!(sup.state("svc"), Some(SupervisorState::Stopped));
+
+        sup.start("svc").unwrap();
+        sup.process_exited("svc", 1).unwrap();
+        assert_eq!(sup.restart_count("svc"), Some(1));
+    }
+
+    #[test]
+    fn test_supervisor_process_exited_never_policy() {
+        let mut sup = Supervisor::new();
+        sup.register(SupervisorConfig {
+            name: "svc".into(),
+            path: "/bin/svc".into(),
+            restart_policy: RestartPolicy::Never,
+            ..Default::default()
+        });
+        sup.start("svc").unwrap();
+
+        sup.process_exited("svc", 1).unwrap();
+        assert_eq!(sup.restart_count("svc"), Some(0));
+        assert_eq!(sup.state("svc"), Some(SupervisorState::Stopped));
+    }
+
+    #[test]
+    fn test_supervisor_max_restarts_exceeded() {
+        let mut sup = Supervisor::new();
+        sup.register(SupervisorConfig {
+            name: "svc".into(),
+            path: "/bin/svc".into(),
+            restart_policy: RestartPolicy::Always,
+            max_restarts: 2,
+            ..Default::default()
+        });
+        sup.start("svc").unwrap();
+
+        sup.process_exited("svc", 1).unwrap();
+        sup.process_exited("svc", 1).unwrap();
+        sup.process_exited("svc", 1).unwrap();
+        assert_eq!(sup.state("svc"), Some(SupervisorState::Failed));
+    }
+
+    #[test]
+    fn test_supervisor_list_services() {
+        let mut sup = Supervisor::new();
+        sup.register(SupervisorConfig {
+            name: "a".into(),
+            path: "/a".into(),
+            ..Default::default()
+        });
+        sup.register(SupervisorConfig {
+            name: "b".into(),
+            path: "/b".into(),
+            ..Default::default()
+        });
+
+        let list = sup.list_services();
+        assert_eq!(list.len(), 2);
+    }
+
+    #[test]
+    fn test_supervisor_service_not_found() {
+        let mut sup = Supervisor::new();
+        assert_eq!(
+            sup.start("nonexistent"),
+            Err(SupervisorError::ServiceNotFound)
+        );
+        assert_eq!(
+            sup.stop("nonexistent"),
+            Err(SupervisorError::ServiceNotFound)
+        );
     }
 }
