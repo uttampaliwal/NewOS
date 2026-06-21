@@ -1674,7 +1674,7 @@ mod tests {
 
     #[test]
     fn test_next_cid_wraparound() {
-        let mut ctrl = make_ctrl_for_queue_tests();
+        let ctrl = make_ctrl_for_queue_tests();
         ctrl.next_cid.store(u16::MAX, Ordering::Relaxed);
         // Allocate next CID
         let cid = ctrl.next_cid.fetch_add(1, Ordering::Relaxed);

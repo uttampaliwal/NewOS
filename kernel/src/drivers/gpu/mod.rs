@@ -712,23 +712,17 @@ mod tests {
 
     #[test]
     fn test_drm_manager_no_driver_page_flip() {
-        let mut mgr = DrmManager::new();
+        let mgr = DrmManager::new();
         // No driver registered
         assert!(mgr.driver().is_none());
         // set_mode should fail gracefully
-        let mode = DisplayMode::new(1024, 768);
+        let _mode = DisplayMode::new(1024, 768);
         // Without a driver, set_mode won't be called — manager returns error
         assert!(mgr.driver().is_none());
     }
 
     #[test]
     fn test_connector_disconnected() {
-        let mut mock = MockDrmDevice {
-            fb_addr: 0xFD00_0000,
-            fb_size: 1920 * 1080 * 4,
-        };
-        // Override enumerate to return disconnected connector
-        let _ = mock; // not used; we check DrmManager with custom mock
         let mut mgr = DrmManager::new();
         let m = Box::new(MockDrmDevice {
             fb_addr: 0xFD00_0000,
@@ -742,7 +736,7 @@ mod tests {
 
     #[test]
     fn test_compositor_pid_change() {
-        let mut mgr = DrmManager::new();
+        let mgr = DrmManager::new();
         mgr.set_compositor_pid(100);
         assert!(mgr.is_compositor(100));
         assert!(!mgr.is_compositor(99));

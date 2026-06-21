@@ -245,6 +245,7 @@ mod tests {
             self.calls.lock().push(name);
         }
 
+        #[allow(dead_code)]
         fn calls(&self) -> Vec<&'static str> {
             self.calls.lock().clone()
         }
@@ -295,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_lsm_stack_calls_all_hooks_in_order() {
-        let rec = CallRecorder::new();
+        let _rec = CallRecorder::new();
         let mut stack = LsmStack::new();
         stack.register(Box::new(DacHook::new()));
         stack.register(Box::new(DenyFileHook));

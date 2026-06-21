@@ -372,8 +372,6 @@ mod tests {
     use crate::snapshot::SnapshotManager;
     use semver::Version;
     use sha2::Digest;
-    use std::collections::BTreeMap;
-    use std::io::Write;
     use tpkg_format::TpkgManifest;
 
     fn test_pipeline(tmp: &Path) -> InstallPipeline {

@@ -346,9 +346,16 @@ mod tests {
     }
 
     fn arb_install_spec() -> impl Strategy<Value = InstallSpec> {
-        proptest::collection::vec(arb_data_file(), 0..=8).prop_map(|files| InstallSpec {
-            files,
-            scripts: None,
+        proptest::collection::vec(arb_data_file(), 0..=8).prop_map(|files| {
+            let mut seen = std::collections::HashSet::new();
+            let unique: Vec<_> = files
+                .into_iter()
+                .filter(|f| seen.insert(f.path.clone()))
+                .collect();
+            InstallSpec {
+                files: unique,
+                scripts: None,
+            }
         })
     }
 

@@ -601,7 +601,7 @@ mod tests {
 
     #[test]
     fn registry_replace_all_bars() {
-        let mut reg = DeviceRegistry::new();
+        let _reg = DeviceRegistry::new();
         let info = DeviceInfo {
             vendor_id: 0x1234,
             device_id: 0x5678,
