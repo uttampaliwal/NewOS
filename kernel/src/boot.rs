@@ -443,6 +443,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     x86_64::instructions::interrupts::enable();
     let _ = writeln!(writer, "[STG: INTR_ENABLED]");
     let _ = writeln!(writer, "[STG: SCHED_START]");
+    let _ = writeln!(writer, "[BOOT OK]");
 
     crate::task::scheduler::start_scheduling();
 }

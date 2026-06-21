@@ -692,13 +692,13 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
 
 ## Phase 8 — CI/CD Validation
 
-- [ ] 55. Set up the QEMU-based CI test harness
-  - [ ] 55.1 Create `tools/ci-runner/` as a new workspace crate (or extend `tools/xtask/`) with a QEMU boot harness
+- [x] 55. Set up the QEMU-based CI test harness
+  - [x] 55.1 Create `tools/ci-runner/` as a new workspace crate (or extend `tools/xtask/`) with a QEMU boot harness
     - Implement `boot_qemu(timeout_secs: u64) -> BootResult` that launches QEMU with the Turnix disk image, captures serial output, and waits for a `[BOOT OK]` sentinel or timeout
     - Implement `run_test_suite(suite: &str) -> TestResults` that boots QEMU, injects test commands via the serial port, and parses pass/fail output
     - Add `cargo xtask ci-boot` command that runs 30 consecutive QEMU boots and asserts all succeed (30-boot gate)
     - _Requirements: 45.1, 45.2_
-  - [ ]* 55.2 Write unit tests for QEMU boot harness
+  - [x]* 55.2 Write unit tests for QEMU boot harness
     - Test that `boot_qemu` correctly parses the `[BOOT OK]` sentinel from serial output
     - Test that a boot timeout returns `BootResult::Timeout`
     - _Requirements: 45.1_

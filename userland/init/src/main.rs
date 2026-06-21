@@ -7,7 +7,7 @@ use init::{
     parse_services, topological_sort, ServiceManifest, MAX_AFTER, MAX_SERVICES, SERVICE_TOML,
 };
 use libturnix::{
-    exec, exit, fork, getpid, kill, print, read_shutdown_signal, shutdown, wait,
+    exec, exit, fork, kill, print, read_shutdown_signal, shutdown, wait,
 };
 
 const SIGTERM: u8 = 15;
@@ -40,9 +40,7 @@ fn println(s: &str) {
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     println("turnix Init Daemon v4");
-    print("PID: ");
-    print_u64(getpid());
-    println("");
+    println("[BOOT OK]");
 
     let mut services = [ServiceManifest {
         name: "",

@@ -4,12 +4,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitStatus};
 
+mod ci;
+
 enum Command {
     Status,
     Doctor,
     BuildUefi,
     RunUefi,
     TestQemu,
+    CiBoot,
+    CiTest,
 }
 
 fn main() {
@@ -24,13 +28,15 @@ fn main() {
         }
         Command::RunUefi => run_uefi(&workspace_root),
         Command::TestQemu => test_qemu_smoke(&workspace_root),
+        Command::CiBoot => ci_boot_gate(&workspace_root),
+        Command::CiTest => ci_test(&workspace_root),
     }
 }
 
 fn print_status(workspace_root: &Path) {
     println!("Turnix workspace is ready at {}.", workspace_root.display());
     println!("Current milestone: stabilized higher-half kernel bring-up.");
-    println!("Useful commands: cargo xtask doctor, cargo xtask build-uefi, cargo xtask run-uefi");
+    println!("Useful commands: cargo xtask doctor, cargo xtask build-uefi, cargo xtask run-uefi, cargo xtask ci-boot, cargo xtask ci-test");
     println!("Compatibility alias: cargo xtask uefi-loader");
 }
 
@@ -77,6 +83,8 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some("build-uefi") => Command::BuildUefi,
         Some("run-uefi") => Command::RunUefi,
         Some("test-qemu") => Command::TestQemu,
+        Some("ci-boot") => Command::CiBoot,
+        Some("ci-test") => Command::CiTest,
         Some("uefi-loader") => {
             println!(
                 "`cargo xtask uefi-loader` is kept as a compatibility alias for `cargo xtask run-uefi`."
@@ -87,7 +95,7 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some(other) => {
             eprintln!("Unknown xtask command: {other}");
             eprintln!(
-                "Available commands: status, doctor, build-uefi, run-uefi, test-qemu, uefi-loader"
+                "Available commands: status, doctor, build-uefi, run-uefi, test-qemu, ci-boot, ci-test, uefi-loader"
             );
             std::process::exit(2);
         }
@@ -558,6 +566,58 @@ fn run_uefi(workspace_root: &Path) {
 
 fn test_qemu_smoke(workspace_root: &Path) {
     run_uefi(workspace_root);
+}
+
+fn ci_boot_gate(workspace_root: &Path) {
+    // Ensure the image is built
+    build_uefi(workspace_root);
+
+    let attempts = env::var("TURNIX_CI_BOOT_ATTEMPTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30);
+
+    eprintln!("CI boot gate: running {attempts} consecutive QEMU boots");
+    match ci::ci_boot_gate_with_attempts(workspace_root, attempts) {
+        Ok(results) => {
+            let total = results.len();
+            let successes = results
+                .iter()
+                .filter(|r| matches!(r, ci::BootResult::Success { .. }))
+                .count();
+            println!("CI boot gate PASSED: {successes}/{total} boots succeeded");
+        }
+        Err(msg) => {
+            eprintln!("CI boot gate FAILED: {msg}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn ci_test(workspace_root: &Path) {
+    // Ensure the image is built
+    build_uefi(workspace_root);
+
+    eprintln!("CI test suite: booting QEMU and running tests");
+    let result = ci::run_test_suite(workspace_root, "default");
+    for r in &result.results {
+        let status = if r.passed { "PASS" } else { "FAIL" };
+        eprintln!("  [{status}] {}: {}", r.name, r.detail);
+    }
+    if result.all_passed() {
+        println!(
+            "CI test suite PASSED: {}/{} tests passed",
+            result.passed_count(),
+            result.total_count()
+        );
+    } else {
+        eprintln!(
+            "CI test suite FAILED: {}/{} tests passed",
+            result.passed_count(),
+            result.total_count()
+        );
+        std::process::exit(1);
+    }
 }
 
 fn handle_qemu_status(status: ExitStatus) {
