@@ -471,6 +471,13 @@ fn handle_open(args: SyscallArgs) -> SyscallResult {
 
 fn handle_close(args: SyscallArgs) -> SyscallResult {
     let fd = args.arg0 as usize;
+
+    // Try network socket table first
+    if crate::net::socket::sys_close(fd).is_ok() {
+        return SyscallResult::Success(0);
+    }
+
+    // Fall back to VFS
     let mut vfs = VFS.lock();
     vfs.close(fd);
     SyscallResult::Success(0)
@@ -1064,50 +1071,89 @@ fn handle_pipe(args: SyscallArgs) -> SyscallResult {
 
 /// `socket(domain: i32, type: i32, protocol: i32) -> fd`
 fn handle_socket(args: SyscallArgs) -> SyscallResult {
-    let _domain = args.arg0 as i32;
+    let domain = args.arg0 as i32;
     let sock_type = args.arg1 as i32;
     let _protocol = args.arg2 as i32;
 
-    // Only AF_UNIX + SOCK_STREAM is supported for now.
-    if sock_type != 1 {
-        // SOCK_STREAM = 1
-        return SyscallResult::Error(97); // EAFNOSUPPORT / EPROTONOSUPPORT
+    match domain {
+        1 => {
+            // AF_UNIX — use existing VFS Unix socket
+            if sock_type != 1 {
+                return SyscallResult::Error(97); // EPROTONOSUPPORT
+            }
+            let mut vfs = VFS.lock();
+            let fd = vfs.create_socket_fd();
+            SyscallResult::Success(fd as u64)
+        }
+        2 | 10 => {
+            // AF_INET or AF_INET6 — use smoltcp
+            match crate::net::socket::sys_socket(domain, sock_type) {
+                Ok(fd) => SyscallResult::Success(fd as u64),
+                Err(e) => SyscallResult::Error(e),
+            }
+        }
+        _ => SyscallResult::Error(97), // EAFNOSUPPORT
     }
-
-    let mut vfs = VFS.lock();
-    let fd = vfs.create_socket_fd();
-    SyscallResult::Success(fd as u64)
 }
 
-/// `bind(sockfd: i32, path: *const u8, pathlen: usize) -> 0`
+/// `bind(sockfd: i32, addr: *const u8, addrlen: usize) -> 0`
 fn handle_bind(args: SyscallArgs) -> SyscallResult {
     let fd = args.arg0 as usize;
-    let path_ptr = args.arg1 as *const u8;
-    let path_len = args.arg2 as usize;
+    let addr_ptr = args.arg1 as *const u8;
+    let addr_len = args.arg2 as usize;
 
-    if path_ptr.is_null() || path_len == 0 {
+    if addr_ptr.is_null() || addr_len < 2 {
         return SyscallResult::Error(14); // EFAULT
     }
-    let path_slice = unsafe {
-        core::slice::from_raw_parts(path_ptr, path_len)
-    };
-    let path = match core::str::from_utf8(path_slice) {
-        Ok(s) => s,
-        Err(_) => return SyscallResult::Error(14),
-    };
 
-    let sock = {
-        let vfs = VFS.lock();
-        vfs.get_unix_socket(fd)
-    };
-    let sock = match sock {
-        Some(s) => s,
-        None => return SyscallResult::Error(9), // EBADF
-    };
+    // Read the sa_family (first 2 bytes)
+    let family = unsafe { core::ptr::read_unaligned(addr_ptr as *const u16) };
 
-    match UnixSocketState::bind(&sock, path) {
-        Ok(_) => SyscallResult::Success(0),
-        Err(_) => SyscallResult::Error(48), // EADDRINUSE
+    match family {
+        1 => {
+            // AF_UNIX — sockaddr_un with sun_path as path
+            if addr_len < 3 { return SyscallResult::Error(14); }
+            let path_slice = unsafe {
+                core::slice::from_raw_parts(addr_ptr.add(2), addr_len - 2)
+            };
+            // Trim trailing nulls
+            let path_len = path_slice.iter().position(|&b| b == 0).unwrap_or(path_slice.len());
+            let path = core::str::from_utf8(&path_slice[..path_len]).unwrap_or("");
+            if path.is_empty() { return SyscallResult::Error(14); }
+
+            let sock = {
+                let vfs = VFS.lock();
+                vfs.get_unix_socket(fd)
+            };
+            let sock = match sock {
+                Some(s) => s,
+                None => return SyscallResult::Error(9), // EBADF
+            };
+
+            match UnixSocketState::bind(&sock, path) {
+                Ok(_) => SyscallResult::Success(0),
+                Err(_) => SyscallResult::Error(48), // EADDRINUSE
+            }
+        }
+        2 | 10 => {
+            // AF_INET or AF_INET6 — parse sockaddr_in
+            if addr_len < 8 { return SyscallResult::Error(14); }
+
+            // sockaddr_in layout: family(2) + port(2) + addr(4) + zero(8)
+            let raw_port = unsafe { core::ptr::read_unaligned(addr_ptr.add(2) as *const u16) };
+            let raw_addr = unsafe { core::ptr::read_unaligned(addr_ptr.add(4) as *const u32) };
+
+            let port = u16::from_be(raw_port);
+            let ip = smoltcp::wire::IpAddress::Ipv4(
+                smoltcp::wire::Ipv4Address::from_bytes(&raw_addr.to_be_bytes())
+            );
+
+            match crate::net::socket::sys_bind(fd, ip, port) {
+                Ok(()) => SyscallResult::Success(0),
+                Err(e) => SyscallResult::Error(e),
+            }
+        }
+        _ => SyscallResult::Error(97), // EAFNOSUPPORT
     }
 }
 
@@ -1116,6 +1162,12 @@ fn handle_listen(args: SyscallArgs) -> SyscallResult {
     let fd = args.arg0 as usize;
     let backlog = args.arg1 as usize;
 
+    // Try AF_INET first
+    if let Ok(()) = crate::net::socket::sys_listen(fd, backlog) {
+        return SyscallResult::Success(0);
+    }
+
+    // Fall back to AF_UNIX
     let sock = {
         let vfs = VFS.lock();
         vfs.get_unix_socket(fd)
@@ -1135,6 +1187,12 @@ fn handle_listen(args: SyscallArgs) -> SyscallResult {
 fn handle_accept(args: SyscallArgs) -> SyscallResult {
     let fd = args.arg0 as usize;
 
+    // Try AF_INET first
+    if let Ok(new_fd) = crate::net::socket::sys_accept(fd) {
+        return SyscallResult::Success(new_fd as u64);
+    }
+
+    // Fall back to AF_UNIX
     let sock = {
         let vfs = VFS.lock();
         vfs.get_unix_socket(fd)
@@ -1154,41 +1212,67 @@ fn handle_accept(args: SyscallArgs) -> SyscallResult {
     }
 }
 
-/// `connect(sockfd: i32, path: *const u8, pathlen: usize) -> 0`
+/// `connect(sockfd: i32, addr: *const u8, addrlen: usize) -> 0`
 fn handle_connect(args: SyscallArgs) -> SyscallResult {
     let fd = args.arg0 as usize;
-    let path_ptr = args.arg1 as *const u8;
-    let path_len = args.arg2 as usize;
+    let addr_ptr = args.arg1 as *const u8;
+    let addr_len = args.arg2 as usize;
 
-    if path_ptr.is_null() || path_len == 0 {
+    if addr_ptr.is_null() || addr_len < 2 {
         return SyscallResult::Error(14); // EFAULT
     }
-    let path_slice = unsafe {
-        core::slice::from_raw_parts(path_ptr, path_len)
-    };
-    let path = match core::str::from_utf8(path_slice) {
-        Ok(s) => s,
-        Err(_) => return SyscallResult::Error(14),
-    };
 
-    let sock = {
-        let vfs = VFS.lock();
-        vfs.get_unix_socket(fd)
-    };
-    let sock = match sock {
-        Some(s) => s,
-        None => return SyscallResult::Error(9), // EBADF
-    };
+    let family = unsafe { core::ptr::read_unaligned(addr_ptr as *const u16) };
 
-    // LSM net_connect hook
-    let ctx = crate::security::current_context();
-    if crate::security::lsm::check_net_connect(path, ctx.uid, ctx.gid).is_err() {
-        return SyscallResult::Error(1); // EPERM
-    }
+    match family {
+        1 => {
+            // AF_UNIX — sockaddr_un path
+            if addr_len < 3 { return SyscallResult::Error(14); }
+            let path_slice = unsafe {
+                core::slice::from_raw_parts(addr_ptr.add(2), addr_len - 2)
+            };
+            let path_len = path_slice.iter().position(|&b| b == 0).unwrap_or(path_slice.len());
+            let path = core::str::from_utf8(&path_slice[..path_len]).unwrap_or("");
+            if path.is_empty() { return SyscallResult::Error(14); }
 
-    match UnixSocketState::connect(&sock, path) {
-        Ok(_) => SyscallResult::Success(0),
-        Err(_) => SyscallResult::Error(2), // ENOENT
+            let sock = {
+                let vfs = VFS.lock();
+                vfs.get_unix_socket(fd)
+            };
+            let sock = match sock {
+                Some(s) => s,
+                None => return SyscallResult::Error(9), // EBADF
+            };
+
+            // LSM net_connect hook
+            let ctx = crate::security::current_context();
+            if crate::security::lsm::check_net_connect(path, ctx.uid, ctx.gid).is_err() {
+                return SyscallResult::Error(1); // EPERM
+            }
+
+            match UnixSocketState::connect(&sock, path) {
+                Ok(_) => SyscallResult::Success(0),
+                Err(_) => SyscallResult::Error(2), // ENOENT
+            }
+        }
+        2 | 10 => {
+            // AF_INET or AF_INET6
+            if addr_len < 8 { return SyscallResult::Error(14); }
+
+            let raw_port = unsafe { core::ptr::read_unaligned(addr_ptr.add(2) as *const u16) };
+            let raw_addr = unsafe { core::ptr::read_unaligned(addr_ptr.add(4) as *const u32) };
+
+            let port = u16::from_be(raw_port);
+            let ip = smoltcp::wire::IpAddress::Ipv4(
+                smoltcp::wire::Ipv4Address::from_bytes(&raw_addr.to_be_bytes())
+            );
+
+            match crate::net::socket::sys_connect(fd, ip, port) {
+                Ok(()) => SyscallResult::Success(0),
+                Err(e) => SyscallResult::Error(e),
+            }
+        }
+        _ => SyscallResult::Error(97), // EAFNOSUPPORT
     }
 }
 

@@ -207,6 +207,9 @@ pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
     let cs = unsafe { core::ptr::read_volatile((stack_ptr + 128) as *const u64) as u16 };
     if cs & 0x3 == 0x3 {
         // Came from user mode — preemption allowed.
+        // Network polling is safe here because user code cannot hold kernel locks.
+        #[cfg(feature = "arch-x86_64")]
+        crate::net::smoltcp_iface::poll_stack();
         crate::task::scheduler::timer_tick(stack_ptr)
     } else {
         // Came from kernel mode — do not preempt kernel tasks.

@@ -19,6 +19,9 @@ pub fn init() {
     let mac = crate::drivers::virtio_net::get_mac_address()
         .unwrap_or([0x02, 0x00, 0xAD, 0xDE, 0x00, 0x01]);
 
+    #[cfg(feature = "arch-x86_64")]
+    crate::net::smoltcp_iface::init();
+
     let mut state = NET_STATE.lock();
     state.mac_address = mac;
     state.initialized = true;
@@ -37,7 +40,8 @@ pub fn init() {
 
 pub fn poll() {
     if NET_STATE.lock().initialized {
-        // Network polling will be wired up when the stack is active.
+        #[cfg(feature = "arch-x86_64")]
+        crate::net::smoltcp_iface::poll_stack();
     }
 }
 

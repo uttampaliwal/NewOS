@@ -18,7 +18,6 @@ extern crate std;
 #[cfg(test)]
 pub mod test_serial {
     use core::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Mutex;
 
     static LOCKED: AtomicBool = AtomicBool::new(false);
     static DISABLED_SERIAL: AtomicBool = AtomicBool::new(false);
@@ -68,6 +67,8 @@ pub mod input;
 pub mod ipc;
 #[cfg(feature = "arch-x86_64")]
 pub mod memory;
+#[cfg(feature = "arch-x86_64")]
+pub mod net;
 #[cfg(feature = "arch-x86_64")]
 pub mod process;
 #[cfg(feature = "arch-x86_64")]
