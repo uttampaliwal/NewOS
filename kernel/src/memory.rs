@@ -74,7 +74,7 @@ impl<'a> FrameAllocator<'a> {
         }
 
         // Out of memory — invoke OOM killer and retry once
-        if crate::memory::oom::oom_kill().is_some() {
+        if crate::memory::oom::oom_kill_with_retry().is_some() {
             // Retry the allocation after reclaim
             for descriptor in self.boot_info.memory_map.iter() {
                 let is_usable = matches!(

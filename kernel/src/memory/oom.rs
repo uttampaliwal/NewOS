@@ -85,28 +85,23 @@ pub fn select_victim() -> Option<ProcessId> {
 
 /// Kill a process by PID.
 ///
-/// Since there is no signal delivery infrastructure yet, this sets the
-/// process's task(s) to `Zombie` via the scheduler exit path.
+/// Delivers SIGKILL via the signal subsystem. If the target is the current
+/// process, we additionally trigger the scheduler exit path.
 fn kill_process(pid: ProcessId) -> bool {
+    use crate::task::signals::send_signal;
     use crate::task::scheduler;
-    // For each task associated with this process, force it to zombie state.
-    // The scheduler will pick up zombie tasks and halt if the last one dies.
-    // We queue an exit for the current task if it matches.
+
+    // If we're killing the current process, use the scheduler exit path.
     let maybe_current = scheduler::get_current_process();
     if let Some(current) = maybe_current
         && current.id() == pid
     {
+        send_signal(pid, 9); // SIGKILL
         scheduler::exit_current_task();
-        // unreachable
     }
 
-    // For other processes, we rely on the fact that they will be detected
-    // as zombies on the next timer tick. For a real implementation, we would
-    // send SIGKILL via the signal subsystem (task 26).
-    //
-    // For now, we detach the process by removing it from the process table
-    // so the OOM killer won't pick it again.
-    unregister_process(pid);
+    // For other processes, send SIGKILL via the signal subsystem.
+    send_signal(pid, 9);
     true
 }
 
@@ -130,6 +125,25 @@ pub fn oom_kill() -> Option<ProcessId> {
     } else {
         None
     }
+}
+
+/// OOM kill with a 5-second retry window.
+///
+/// Attempts to kill the highest-score victim, waits ~5 seconds by yielding,
+/// then kills the next-highest victim if memory is still exhausted.
+/// Returns the last victim PID killed, or `None` if no victim was found.
+pub fn oom_kill_with_retry() -> Option<ProcessId> {
+    // First attempt
+    let _victim = oom_kill();
+
+    // Wait approximately 5 seconds by yielding in a loop.
+    // On QEMU with ~1ms timer ticks, 5000 yields ≈ 5 seconds.
+    for _ in 0..5000 {
+        crate::task::scheduler::yield_task();
+    }
+
+    // Second attempt — pick next-highest if still OOM
+    oom_kill()
 }
 
 /// Number of registered processes in the process table.

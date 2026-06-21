@@ -11,7 +11,8 @@ pub mod gbm;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicU64, Ordering};
+use alloc::collections::BTreeMap;
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use spin::Mutex;
 
 use crate::drivers::framework::{DeviceDriver, DeviceInfo};
@@ -211,6 +212,9 @@ pub struct DrmManager {
     resolution_changed: bool,
     /// Monotonically increasing page flip sequence counter.
     flip_seq: u64,
+    /// Pending flip completion waiters. Maps CRTC ID to a flag that is set to true
+    /// when the flip completes.
+    flip_complete: BTreeMap<u32, alloc::sync::Arc<AtomicBool>>,
 }
 
 impl Default for DrmManager {
@@ -227,6 +231,7 @@ impl DrmManager {
             compositor_pid: AtomicU64::new(0),
             resolution_changed: false,
             flip_seq: 0,
+            flip_complete: BTreeMap::new(),
         }
     }
 
@@ -271,12 +276,38 @@ impl DrmManager {
             .ok_or(DrmError::NotSupported)?
             .page_flip(crtc_id, fb_id)?;
         self.flip_seq += 1;
+        if let Some(flag) = self.flip_complete.get(&crtc_id) {
+            flag.store(true, Ordering::Release);
+        }
         Ok(())
     }
 
     /// Get the current page flip completion sequence number.
     pub fn page_flip_seq(&self) -> u64 {
         self.flip_seq
+    }
+
+    /// Wait for a flip to complete on the given CRTC.
+    /// Returns true if the flip completed, false on timeout.
+    pub fn wait_for_flip(&self, crtc_id: u32) -> bool {
+        if let Some(flag) = self.flip_complete.get(&crtc_id) {
+            // Spin-wait with yield for the flip to complete
+            for _ in 0..10000 {
+                if flag.load(Ordering::Acquire) {
+                    flag.store(false, Ordering::Release);
+                    return true;
+                }
+                crate::task::scheduler::yield_task();
+            }
+            false
+        } else {
+            false
+        }
+    }
+
+    /// Register a CRTC for flip notifications.
+    pub fn register_flip_notification(&mut self, crtc_id: u32) {
+        self.flip_complete.insert(crtc_id, alloc::sync::Arc::new(AtomicBool::new(false)));
     }
 
     /// Get the physical framebuffer address for mapping.

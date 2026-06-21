@@ -60,9 +60,11 @@ pub fn init() {
     crate::serial::println!("[SEC] Initializing security subsystem...");
 
     *CURRENT_CONTEXT.lock() = Some(SecurityContext::root());
+    crate::serial::println!("[SEC] capabilities initialized");
 
     crate::security::lsm::init();
     crate::security::ima::init();
+    crate::security::seccomp::init();
 
     crate::serial::println!("[SEC] Security subsystem initialized");
 }

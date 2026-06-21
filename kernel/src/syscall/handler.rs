@@ -1027,6 +1027,15 @@ fn handle_mount(args: SyscallArgs) -> SyscallResult {
     let fs_type = args.arg2;
     // arg3: flags (reserved / future use — ignored for now)
 
+    // Check CAP_SYS_ADMIN
+    if let Some(current) = crate::task::scheduler::get_current_process()
+        && !current.inner.lock().sec_ctx.has_capability(
+            crate::security::capabilities::Capability::SysAdmin
+        )
+    {
+        return SyscallResult::Error(1); // EPERM
+    }
+
     if path_ptr.is_null() || path_len == 0 {
         return SyscallResult::Error(22); // EINVAL
     }
@@ -1173,6 +1182,15 @@ fn handle_bind(args: SyscallArgs) -> SyscallResult {
         }
         2 | 10 => {
             // AF_INET or AF_INET6 — parse sockaddr_in
+            // Check CAP_NET_ADMIN for network bind
+            if let Some(current) = crate::task::scheduler::get_current_process()
+                && !current.inner.lock().sec_ctx.has_capability(
+                    crate::security::capabilities::Capability::NetAdmin
+                )
+            {
+                return SyscallResult::Error(1); // EPERM
+            }
+
             if addr_len < 8 { return SyscallResult::Error(14); }
 
             // sockaddr_in layout: family(2) + port(2) + addr(4) + zero(8)
@@ -1417,6 +1435,16 @@ fn handle_kill(args: SyscallArgs) -> SyscallResult {
     } else {
         crate::process::ProcessId(pid as usize)
     };
+
+    // Check CAP_KILL for cross-user signals
+    if target_pid != crate::task::scheduler::get_current_process_id().unwrap_or_default()
+        && let Some(current) = crate::task::scheduler::get_current_process()
+        && !current.inner.lock().sec_ctx.has_capability(
+            crate::security::capabilities::Capability::Kill
+        )
+    {
+        return SyscallResult::Error(1); // EPERM
+    }
 
     if crate::task::signals::send_signal(target_pid, sig) {
         SyscallResult::Success(0)

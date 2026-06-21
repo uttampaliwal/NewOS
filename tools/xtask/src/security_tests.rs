@@ -205,6 +205,16 @@ pub fn lsm_initialized(log: &str) -> bool {
     log.contains("[LSM] Initialised with DAC hook")
 }
 
+/// Check if seccomp subsystem initialized
+pub fn seccomp_initialized(log: &str) -> bool {
+    log.contains("[SECCOMP] seccomp initialized")
+}
+
+/// Check if POSIX capabilities subsystem initialized
+pub fn capabilities_initialized(log: &str) -> bool {
+    log.contains("[SEC] capabilities initialized")
+}
+
 /// Check if boot succeeded
 #[cfg(test)]
 fn boot_succeeded(log: &str) -> bool {
@@ -303,10 +313,37 @@ pub fn run_security_test_suite(workspace_root: &Path) -> SecuritySuiteResult {
         },
     });
 
+    // Test 7: Seccomp subsystem initialized
+    let sec_seccomp = seccomp_initialized(&output);
+    results.push(SecurityTestResult {
+        name: "seccomp_init".to_string(),
+        passed: sec_seccomp,
+        detail: if sec_seccomp {
+            "[SECCOMP] seccomp initialized".to_string()
+        } else {
+            "[SECCOMP] initialization marker not found".to_string()
+        },
+    });
+
+    // Test 8: POSIX capabilities initialized
+    let sec_caps = capabilities_initialized(&output);
+    results.push(SecurityTestResult {
+        name: "capabilities_init".to_string(),
+        passed: sec_caps,
+        detail: if sec_caps {
+            "[SEC] capabilities initialized".to_string()
+        } else {
+            "[SEC] capabilities initialization marker not found".to_string()
+        },
+    });
+
     SecuritySuiteResult { results }
 }
 
 // ── Run ASLR diversity test (multiple boots) ──────────────────────────────
+
+/// Number of distinct addresses required by the ASLR diversity spec.
+const ASLR_DIVERSITY_THRESHOLD: usize = 5;
 
 #[allow(dead_code)]
 pub fn run_aslr_diversity_test(workspace_root: &Path, boots: usize) -> SecuritySuiteResult {
@@ -337,14 +374,36 @@ pub fn run_aslr_diversity_test(workspace_root: &Path, boots: usize) -> SecurityS
         });
     }
 
-    // Check uniqueness
+    // Check uniqueness: require ASLR_DIVERSITY_THRESHOLD distinct addresses,
+    // but fall back gracefully when fewer boots were requested.
     let unique_count: usize = all_addrs.iter().collect::<std::collections::HashSet<_>>().len();
+    let passed = if boots <= 1 {
+        // Single boot cannot demonstrate diversity.
+        true
+    } else if boots < ASLR_DIVERSITY_THRESHOLD {
+        // Not enough boots to reach the full threshold — all addresses
+        // must be unique to pass, but document the limitation.
+        unique_count == boots
+    } else {
+        unique_count >= ASLR_DIVERSITY_THRESHOLD
+    };
+
+    let detail = if boots < ASLR_DIVERSITY_THRESHOLD {
+        format!(
+            "{unique_count} unique addresses out of {boots} boots \
+             (spec requires {ASLR_DIVERSITY_THRESHOLD}; limited by boot count)"
+        )
+    } else {
+        format!(
+            "{unique_count} unique addresses out of {boots} boots \
+             (threshold: {ASLR_DIVERSITY_THRESHOLD})"
+        )
+    };
+
     results.push(SecurityTestResult {
         name: "aslr_diversity".to_string(),
-        passed: unique_count > 1 || boots <= 1,
-        detail: format!(
-            "{unique_count} unique addresses out of {boots} boots"
-        ),
+        passed,
+        detail,
     });
 
     SecuritySuiteResult { results }
@@ -442,5 +501,29 @@ mod tests {
     fn boot_succeeded_not_found() {
         let log = "[STG: SCHED_START]";
         assert!(!boot_succeeded(log));
+    }
+
+    #[test]
+    fn seccomp_initialized_found() {
+        let log = "[SECCOMP] seccomp initialized";
+        assert!(seccomp_initialized(log));
+    }
+
+    #[test]
+    fn seccomp_initialized_not_found() {
+        let log = "[SEC] Security subsystem initialized";
+        assert!(!seccomp_initialized(log));
+    }
+
+    #[test]
+    fn capabilities_initialized_found() {
+        let log = "[SEC] capabilities initialized";
+        assert!(capabilities_initialized(log));
+    }
+
+    #[test]
+    fn capabilities_initialized_not_found() {
+        let log = "[SEC] Security subsystem initialized";
+        assert!(!capabilities_initialized(log));
     }
 }

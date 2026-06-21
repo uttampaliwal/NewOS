@@ -27,6 +27,10 @@ after = [\"ipc-broker\"]
 path = \"log-daemon\"
 after = [\"ipc-broker\"]
 
+[service.network-manager]
+path = \"network-manager\"
+after = [\"ipc-broker\", \"log-daemon\"]
+
 [service.compositor]
 path = \"compositor\"
 after = [\"service-manager\"]

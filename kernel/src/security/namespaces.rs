@@ -138,6 +138,10 @@ impl PidNamespace {
 #[derive(Debug, Clone)]
 pub struct MountNamespace {
     pub id: NsId,
+    /// Mount points visible within this namespace.
+    /// Each entry is (mount_point, fs_type). The VFS layer checks this list
+    /// to determine which mounts are visible in this namespace.
+    mount_points: Vec<(alloc::string::String, alloc::string::String)>,
 }
 
 impl Default for MountNamespace {
@@ -148,14 +152,43 @@ impl Default for MountNamespace {
 
 impl MountNamespace {
     pub fn new() -> Self {
-        Self { id: NsId::new() }
+        Self {
+            id: NsId::new(),
+            mount_points: Vec::new(),
+        }
     }
 
-    /// Create a child mount namespace by cloning the parent's mount table.
-    /// In a real implementation this would deep-copy mount entries.
-    /// Currently the VFS is global, so this is a placeholder for per-ns mount tables.
-    pub fn fork() -> Self {
-        Self::new()
+    /// Create a child mount namespace by copying the parent's mount table.
+    pub fn fork(&self) -> Self {
+        Self {
+            id: NsId::new(),
+            mount_points: self.mount_points.clone(),
+        }
+    }
+
+    /// Add a mount point to this namespace.
+    pub fn add_mount(&mut self, mount_point: &str, fs_type: &str) {
+        self.mount_points.push((
+            alloc::string::String::from(mount_point),
+            alloc::string::String::from(fs_type),
+        ));
+    }
+
+    /// Remove a mount point from this namespace.
+    pub fn remove_mount(&mut self, mount_point: &str) -> bool {
+        let before = self.mount_points.len();
+        self.mount_points.retain(|(mp, _)| mp != mount_point);
+        self.mount_points.len() < before
+    }
+
+    /// Check if a mount point exists in this namespace.
+    pub fn has_mount(&self, mount_point: &str) -> bool {
+        self.mount_points.iter().any(|(mp, _)| mp == mount_point)
+    }
+
+    /// List all mount points in this namespace.
+    pub fn mount_points(&self) -> &[(alloc::string::String, alloc::string::String)] {
+        &self.mount_points
     }
 }
 
@@ -164,9 +197,12 @@ impl MountNamespace {
 // ---------------------------------------------------------------------------
 
 /// A network namespace provides an isolated network stack.
+/// Each namespace has its own set of interfaces, routing tables, and socket tables.
 #[derive(Debug, Clone)]
 pub struct NetNamespace {
     pub id: NsId,
+    /// Unique interface index for this namespace's network stack.
+    pub iface_index: usize,
 }
 
 impl Default for NetNamespace {
@@ -177,7 +213,11 @@ impl Default for NetNamespace {
 
 impl NetNamespace {
     pub fn new() -> Self {
-        Self { id: NsId::new() }
+        static NEXT_IFACE: AtomicUsize = AtomicUsize::new(0);
+        Self {
+            id: NsId::new(),
+            iface_index: NEXT_IFACE.fetch_add(1, Ordering::Relaxed),
+        }
     }
 }
 
@@ -284,7 +324,7 @@ impl NsProxy {
                 parent.pid_ns.clone()
             },
             mnt_ns: if flags & CLONE_NEWNS != 0 {
-                Some(MountNamespace::fork())
+                Some(parent.mnt_ns.as_ref().map_or_else(MountNamespace::new, |ns| ns.fork()))
             } else {
                 parent.mnt_ns.clone()
             },
@@ -443,11 +483,21 @@ mod tests {
 
     #[test]
     fn mount_namespace_new_and_fork() {
-        let ns = MountNamespace::new();
-        let forked = MountNamespace::fork();
-        // Both should exist without panicking
-        drop(ns);
-        drop(forked);
+        let mut ns = MountNamespace::new();
+        ns.add_mount("/tmp", "tmpfs");
+        ns.add_mount("/mnt", "ext4");
+        assert!(ns.has_mount("/tmp"));
+        assert!(ns.has_mount("/mnt"));
+        assert!(!ns.has_mount("/dev"));
+
+        let forked = ns.fork();
+        assert!(forked.has_mount("/tmp"));
+        assert!(forked.has_mount("/mnt"));
+
+        // Removing from parent doesn't affect child
+        ns.remove_mount("/tmp");
+        assert!(!ns.has_mount("/tmp"));
+        assert!(forked.has_mount("/tmp"));
     }
 
     #[test]

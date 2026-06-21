@@ -263,7 +263,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Add the `ext4` crate to `kernel/Cargo.toml`; create `kernel/src/fs/ext4.rs` implementing `FsBackend` for read-write ext4 (using the `ext4` crate's block device abstraction backed by the NVMe driver)
     - Mount tmpfs at `/` and ext4 at `/mnt` during kernel init; wire `mount` and `umount` syscalls in `kernel/src/syscall/handler.rs`
     - _Requirements: 21.4, 21.5_
-  - [ ]* 20.2 Write unit tests for VFS mount/umount lifecycle
+  - [x]* 20.2 Write unit tests for VFS mount/umount lifecycle
     - Test that `umount` with open file descriptors returns an error
     - Test that path resolution correctly delegates to the mounted backend
     - _Requirements: 21.2, 21.3_

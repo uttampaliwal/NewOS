@@ -4,7 +4,7 @@ extern crate alloc;
 use alloc::string::String;
 
 /// Desktop entry (.desktop file) parser for the application launcher.
-pub const APPLICATIONS_DIR: &str = "/usr/share/applications";
+pub const APPLICATIONS_DIR: &str = "/usr/share/turnix/applications";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DesktopEntry {

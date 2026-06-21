@@ -345,6 +345,19 @@ pub fn default_allow_filter() -> SeccompFilter {
 }
 
 // ---------------------------------------------------------------------------
+// Initialization
+// ---------------------------------------------------------------------------
+
+/// Initialise the seccomp subsystem.
+///
+/// Called once during `security::init()`.  No runtime state is required;
+/// the BPF interpreter is stateless and filters are installed per-process
+/// via `prctl(PR_SET_SECCOMP)`.
+pub fn init() {
+    crate::serial::println!("[SECCOMP] seccomp initialized");
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

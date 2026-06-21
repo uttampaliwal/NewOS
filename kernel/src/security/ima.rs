@@ -211,17 +211,34 @@ pub fn get_measurement_log() -> Vec<ImaMeasurement> {
 
 /// Verify an EVM HMAC for the given file metadata.
 ///
-/// In a full implementation this would read an extended attribute, recompute
-/// the HMAC over (inode, size, mtime), and compare.  For now we always
-/// return `true` (pass) because VFS xattr support is not yet available.
+/// Recomputes HMAC-SHA256 over (inode, size, mtime) using the system key
+/// and compares against the stored HMAC.
 pub fn evm_verify(
-    _inode: u64,
-    _size: u64,
-    _mtime: u64,
-    _stored_hmac: &[u8; 32],
+    inode: u64,
+    size: u64,
+    mtime: u64,
+    stored_hmac: &[u8; 32],
 ) -> bool {
-    // TODO: real verification once VFS extended attributes are implemented.
-    true
+    let computed = evm_compute_hmac(inode, size, mtime);
+    // Constant-time comparison to prevent timing attacks
+    let mut diff = 0u8;
+    for i in 0..32 {
+        diff |= computed[i] ^ stored_hmac[i];
+    }
+    diff == 0
+}
+
+/// System EVM HMAC key (32 bytes). In production this would be derived from
+/// a TPM-stored secret; here we use a fixed key for boot-time integrity.
+const EVM_HMAC_KEY: &[u8; 32] = b"turnix-evm-hmac-key-2024-v1!1234";
+
+/// Compute an EVM HMAC-SHA256 over file metadata (inode, size, mtime).
+fn evm_compute_hmac(inode: u64, size: u64, mtime: u64) -> [u8; 32] {
+    let mut data = alloc::vec::Vec::new();
+    data.extend_from_slice(&inode.to_le_bytes());
+    data.extend_from_slice(&size.to_le_bytes());
+    data.extend_from_slice(&mtime.to_le_bytes());
+    hmac_sha256(EVM_HMAC_KEY, &data)
 }
 
 // ---------------------------------------------------------------------------
@@ -397,10 +414,11 @@ mod tests {
 
     #[test]
     fn test_evm_verify_different_args() {
-        // Stub always returns true regardless of args
-        assert!(evm_verify(0, 0, 0, &[0u8; 32]));
-        assert!(evm_verify(12345, 67890, 99999, &[0xFFu8; 32]));
-        assert!(evm_verify(u64::MAX, u64::MAX, u64::MAX, &[0x42u8; 32]));
+        let inode = 42u64;
+        let size = 1024u64;
+        let mtime = 1700000000u64;
+        let hmac = evm_compute_hmac(inode, size, mtime);
+        assert!(evm_verify(inode, size, mtime, &hmac));
     }
 
     #[test]
@@ -482,9 +500,22 @@ mod tests {
     }
 
     #[test]
-    fn test_evm_verify_stub() {
-        // EVM stub always returns true
-        assert!(evm_verify(0, 0, 0, &[0u8; 32]));
+    fn test_evm_verify_correct_metadata() {
+        let inode = 42u64;
+        let size = 1024u64;
+        let mtime = 1700000000u64;
+        let hmac = evm_compute_hmac(inode, size, mtime);
+        assert!(evm_verify(inode, size, mtime, &hmac));
+    }
+
+    #[test]
+    fn test_evm_verify_tampered_metadata() {
+        let inode = 42u64;
+        let size = 1024u64;
+        let mtime = 1700000000u64;
+        let hmac = evm_compute_hmac(inode, size, mtime);
+        // Tamper with size
+        assert!(!evm_verify(inode, 2048, mtime, &hmac));
     }
 
     #[test]
