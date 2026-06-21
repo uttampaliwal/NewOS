@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc eeb142e4e4c17cf2d215d9ff03cf835c41deb5339f66a217a0fe4f09ef07e092 # shrinks to manifest = TpkgManifest { package: PackageManifest { name: PackageName("a"), version: "0.0.0", description: None, license: None, authors: [], dependencies: [] }, install: Some(InstallSpec { files: [DataFile { path: "etc/_", mode: None, user: None, group: None }, DataFile { path: "etc/_", mode: None, user: None, group: None }], scripts: None }), build: None, scripts: None }

@@ -48,6 +48,12 @@ pub const CLONE_NEW_ALL: u64 = CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWPID | CLON
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NsId(usize);
 
+impl Default for NsId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NsId {
     pub fn new() -> Self {
         static NEXT_NS_ID: AtomicUsize = AtomicUsize::new(0);
@@ -134,6 +140,12 @@ pub struct MountNamespace {
     pub id: NsId,
 }
 
+impl Default for MountNamespace {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MountNamespace {
     pub fn new() -> Self {
         Self { id: NsId::new() }
@@ -157,6 +169,12 @@ pub struct NetNamespace {
     pub id: NsId,
 }
 
+impl Default for NetNamespace {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NetNamespace {
     pub fn new() -> Self {
         Self { id: NsId::new() }
@@ -175,6 +193,12 @@ pub struct UserNamespace {
     pub uid_map: Vec<(u32, u32, u32)>,
     /// GID mappings
     pub gid_map: Vec<(u32, u32, u32)>,
+}
+
+impl Default for UserNamespace {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl UserNamespace {
@@ -232,6 +256,12 @@ pub struct NsProxy {
     pub mnt_ns: Option<MountNamespace>,
     pub net_ns: Option<NetNamespace>,
     pub user_ns: Option<UserNamespace>,
+}
+
+impl Default for NsProxy {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NsProxy {

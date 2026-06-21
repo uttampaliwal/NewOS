@@ -243,10 +243,7 @@ fn start_service(
             std::thread::sleep(Duration::from_secs(timeout));
 
             let is_alive = tracked.get_mut(name).and_then(|t| {
-                t.child.as_mut().and_then(|c| match c.try_wait() {
-                    Ok(Some(_)) => Some(false),
-                    _ => Some(true),
-                })
+                t.child.as_mut().map(|c| !matches!(c.try_wait(), Ok(Some(_))))
             }).unwrap_or(false);
 
             if is_alive {
@@ -314,87 +311,84 @@ fn handle_ipc_message(
     broker: &mut UnixStream,
     msg: IpcMessage,
 ) {
-    match msg {
-        IpcMessage::MethodCall { id, method, args, .. } => {
-            let response = match method.as_str() {
-                "Start" => {
-                    let svc_name = args.first().and_then(|v| v.as_str()).unwrap_or("");
-                    if svc_name.is_empty() {
-                        IpcMessage::MethodReturn {
-                            id,
-                            result: Err(IpcError::new(ERROR_INVALID_ARGS, "missing service name")),
-                        }
-                    } else if !tracked.contains_key(svc_name) {
-                        IpcMessage::MethodReturn {
-                            id,
-                            result: Err(IpcError::new(ERROR_SERVICE_NOT_FOUND, format!("service {svc_name} not found"))),
-                        }
-                    } else {
-                        start_service(manager, tracked, svc_name);
-                        IpcMessage::MethodReturn {
-                            id,
-                            result: Ok(ipc_value_string("started")),
-                        }
-                    }
-                }
-                "Stop" => {
-                    let svc_name = args.first().and_then(|v| v.as_str()).unwrap_or("");
-                    if let Some(tracker) = tracked.get_mut(svc_name) {
-                        if let Some(mut child) = tracker.child.take() {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
-                        IpcMessage::MethodReturn {
-                            id,
-                            result: Ok(ipc_value_string("stopped")),
-                        }
-                    } else {
-                        IpcMessage::MethodReturn {
-                            id,
-                            result: Err(IpcError::new(ERROR_SERVICE_NOT_FOUND, format!("service {svc_name} not found"))),
-                        }
-                    }
-                }
-                "Status" => {
-                    let svc_name = args.first().and_then(|v| v.as_str()).unwrap_or("");
-                    match manager.state(svc_name) {
-                        Some(state) => IpcMessage::MethodReturn {
-                            id,
-                            result: Ok(serialize_state(state)),
-                        },
-                        None => IpcMessage::MethodReturn {
-                            id,
-                            result: Err(IpcError::new(ERROR_SERVICE_NOT_FOUND, format!("service {svc_name} not found"))),
-                        },
-                    }
-                }
-                "List" => {
-                    let services: Vec<IpcValue> = manager
-                        .service_names()
-                        .into_iter()
-                        .map(|nm| {
-                            let state = manager.state(&nm);
-                            let state_val = state.map(serialize_state).unwrap_or(ipc_value_string("unknown"));
-                            IpcValue::Map(vec![
-                                ("name".into(), ipc_value_string(&nm)),
-                                ("state".into(), state_val),
-                            ])
-                        })
-                        .collect();
+    if let IpcMessage::MethodCall { id, method, args, .. } = msg {
+        let response = match method.as_str() {
+            "Start" => {
+                let svc_name = args.first().and_then(|v| v.as_str()).unwrap_or("");
+                if svc_name.is_empty() {
                     IpcMessage::MethodReturn {
                         id,
-                        result: Ok(IpcValue::Array(services)),
+                        result: Err(IpcError::new(ERROR_INVALID_ARGS, "missing service name")),
                     }
-                }
-                _ => {
+                } else if !tracked.contains_key(svc_name) {
                     IpcMessage::MethodReturn {
                         id,
-                        result: Err(IpcError::new(ERROR_INTERNAL, format!("unknown method {method}"))),
+                        result: Err(IpcError::new(ERROR_SERVICE_NOT_FOUND, format!("service {svc_name} not found"))),
+                    }
+                } else {
+                    start_service(manager, tracked, svc_name);
+                    IpcMessage::MethodReturn {
+                        id,
+                        result: Ok(ipc_value_string("started")),
                     }
                 }
-            };
-            send_msg(broker, &response);
-        }
-        _ => {}
+            }
+            "Stop" => {
+                let svc_name = args.first().and_then(|v| v.as_str()).unwrap_or("");
+                if let Some(tracker) = tracked.get_mut(svc_name) {
+                    if let Some(mut child) = tracker.child.take() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                    IpcMessage::MethodReturn {
+                        id,
+                        result: Ok(ipc_value_string("stopped")),
+                    }
+                } else {
+                    IpcMessage::MethodReturn {
+                        id,
+                        result: Err(IpcError::new(ERROR_SERVICE_NOT_FOUND, format!("service {svc_name} not found"))),
+                    }
+                }
+            }
+            "Status" => {
+                let svc_name = args.first().and_then(|v| v.as_str()).unwrap_or("");
+                match manager.state(svc_name) {
+                    Some(state) => IpcMessage::MethodReturn {
+                        id,
+                        result: Ok(serialize_state(state)),
+                    },
+                    None => IpcMessage::MethodReturn {
+                        id,
+                        result: Err(IpcError::new(ERROR_SERVICE_NOT_FOUND, format!("service {svc_name} not found"))),
+                    },
+                }
+            }
+            "List" => {
+                let services: Vec<IpcValue> = manager
+                    .service_names()
+                    .into_iter()
+                    .map(|nm| {
+                        let state = manager.state(&nm);
+                        let state_val = state.map(serialize_state).unwrap_or(ipc_value_string("unknown"));
+                        IpcValue::Map(vec![
+                            ("name".into(), ipc_value_string(&nm)),
+                            ("state".into(), state_val),
+                        ])
+                    })
+                    .collect();
+                IpcMessage::MethodReturn {
+                    id,
+                    result: Ok(IpcValue::Array(services)),
+                }
+            }
+            _ => {
+                IpcMessage::MethodReturn {
+                    id,
+                    result: Err(IpcError::new(ERROR_INTERNAL, format!("unknown method {method}"))),
+                }
+            }
+        };
+        send_msg(broker, &response);
     }
 }

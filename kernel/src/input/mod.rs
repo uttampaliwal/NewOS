@@ -342,7 +342,6 @@ pub fn hid_usage_to_ascii(usage: u8) -> Option<char> {
 ///
 /// Small, precise movements are unaffected; large, fast movements get an
 /// increasingly strong boost.
-
 const ACCEL_THRESHOLD: i32 = 4;   // pixels; below this: no boost
 const ACCEL_BOOST_DIV: i32 = 32;  // denominator for the quadratic term
 

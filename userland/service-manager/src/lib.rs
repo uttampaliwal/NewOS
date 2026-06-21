@@ -38,9 +38,10 @@ impl std::error::Error for ServiceManagerError {}
 // Data types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum RestartPolicy {
     #[serde(rename = "never")]
+    #[default]
     Never,
     #[serde(rename = "on-failure")]
     OnFailure,
@@ -48,24 +49,13 @@ pub enum RestartPolicy {
     Always,
 }
 
-impl Default for RestartPolicy {
-    fn default() -> Self {
-        RestartPolicy::Never
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SocketType {
     #[serde(rename = "stream")]
+    #[default]
     Stream,
     #[serde(rename = "datagram")]
     Datagram,
-}
-
-impl Default for SocketType {
-    fn default() -> Self {
-        SocketType::Stream
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,7 +147,7 @@ pub fn resolve_order(
     for name in units.keys() {
         in_degree.entry(name.as_str()).or_insert(0);
     }
-    for (_, deps) in &adj {
+    for deps in adj.values() {
         for dep in deps {
             if units.contains_key(*dep) {
                 *in_degree.entry(dep).or_insert(0) += 0;
@@ -202,13 +192,11 @@ pub fn resolve_order(
                 .iter()
                 .chain(unit.requires.iter())
                 .any(|d| d == name);
-            if depends {
-                if let Some(count) = unmet.get_mut(other.as_str()) {
+            if depends && let Some(count) = unmet.get_mut(other.as_str()) {
                     *count = count.saturating_sub(1);
                     if *count == 0 {
                         queue.push_back(other.as_str());
                     }
-                }
             }
         }
     }
@@ -221,7 +209,7 @@ pub fn resolve_order(
             .filter(|n| !sorted.iter().any(|s| s == n))
             .collect();
         not_sorted.sort();
-        let cycle_path = find_cycle(&units, &not_sorted);
+        let cycle_path = find_cycle(units, &not_sorted);
         return Err(ServiceManagerError::CycleDetected(cycle_path));
     }
 
@@ -258,10 +246,8 @@ fn find_cycle(
                     let cycle: Vec<String> = path[idx..].iter().map(|s| s.to_string()).collect();
                     return Some(cycle);
                 }
-                if unvisited.contains(dep.as_str()) {
-                    if let Some(cycle) = visit(dep.as_str(), units, unvisited, in_stack, path) {
+                if unvisited.contains(dep.as_str()) && let Some(cycle) = visit(dep.as_str(), units, unvisited, in_stack, path) {
                         return Some(cycle);
-                    }
                 }
             }
         }

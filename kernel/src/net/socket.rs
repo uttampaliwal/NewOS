@@ -81,6 +81,12 @@ pub struct SocketTable {
     next_fd: usize,
 }
 
+impl Default for SocketTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SocketTable {
     pub fn new() -> Self {
         Self {

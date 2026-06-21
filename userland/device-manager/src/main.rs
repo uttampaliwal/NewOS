@@ -16,6 +16,12 @@ pub struct KernelHotplugSource {
     file: Option<std::fs::File>,
 }
 
+impl Default for KernelHotplugSource {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KernelHotplugSource {
     pub fn new() -> Self {
         let file = std::fs::File::open("/dev/hotplug").ok();
@@ -210,7 +216,7 @@ fn handle_ipc(
     msg: IpcMessage,
 ) {
     let resp = match msg {
-        IpcMessage::MethodCall { id, method, args: _, .. } => {
+        IpcMessage::MethodCall { id, method, .. } => {
             let result = match method.as_str() {
                 "ListDevices" => {
                     let infos = dm.list_device_infos();

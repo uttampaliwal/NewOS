@@ -271,6 +271,40 @@ fn build_fault_tester(workspace_root: &Path) -> PathBuf {
     built_bin
 }
 
+fn build_benchmarks(workspace_root: &Path) -> PathBuf {
+    run_or_die_with_env(
+        "cargo",
+        [
+            "+nightly",
+            "build",
+            "-p",
+            "benchmarks",
+            "--features",
+            "host_bin",
+            "--target",
+            "x86_64-unknown-none",
+            "--release",
+        ],
+        workspace_root,
+        &[("RUSTFLAGS", "-C link-arg=-Tuserland/init/linker.ld")],
+    );
+
+    let built_bin = workspace_root
+        .join("target")
+        .join("x86_64-unknown-none")
+        .join("release")
+        .join("benchmarks");
+
+    if !built_bin.exists() {
+        eprintln!(
+            "Expected userland benchmarks binary was not produced: {}",
+            built_bin.display()
+        );
+        std::process::exit(1);
+    }
+    built_bin
+}
+
 fn build_compositor(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
@@ -438,6 +472,10 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     let desktop_shell_data =
         fs::read(&desktop_shell_bin).expect("failed to read desktop-shell binary");
 
+    let benchmarks_bin = build_benchmarks(workspace_root);
+    let benchmarks_data =
+        fs::read(&benchmarks_bin).expect("failed to read benchmarks binary");
+
     let mut ramdisk = Vec::new();
 
     // Helper to add a "file" to our simple ramdisk
@@ -461,6 +499,7 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     add_file("compositor", &compositor_data);
     add_file("display-manager", &display_manager_data);
     add_file("desktop-shell", &desktop_shell_data);
+    add_file("benchmarks", &benchmarks_data);
 
     // Create and add a minimal PSF2 font for the terminal
     let font_data = create_minimal_psf2_font();
@@ -475,6 +514,127 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     );
 
     staged_image
+}
+
+/// Rebuild the initramfs without certain binaries (e.g., "fault-tester" for benchmarks).
+pub fn rebuild_initramfs_excluding(workspace_root: &Path, exclude: &[&str]) {
+    let staged_dir = workspace_root.join("out").join("esp").join("turnix");
+    fs::create_dir_all(&staged_dir).expect("creating kernel staging directory should succeed");
+
+    let init_bin = build_userland(workspace_root);
+    let init_data = fs::read(&init_bin).expect("failed to read init binary");
+
+    let shell_bin = build_shell(workspace_root);
+    let shell_data = fs::read(&shell_bin).expect("failed to read shell binary");
+
+    let fault_tester_bin = build_fault_tester(workspace_root);
+    let fault_tester_data =
+        fs::read(&fault_tester_bin).expect("failed to read fault-tester binary");
+
+    let compositor_bin = build_compositor(workspace_root);
+    let compositor_data =
+        fs::read(&compositor_bin).expect("failed to read compositor binary");
+
+    let display_manager_bin = build_display_manager(workspace_root);
+    let display_manager_data =
+        fs::read(&display_manager_bin).expect("failed to read display-manager binary");
+
+    let desktop_shell_bin = build_desktop_shell(workspace_root);
+    let desktop_shell_data =
+        fs::read(&desktop_shell_bin).expect("failed to read desktop-shell binary");
+
+    let benchmarks_bin = build_benchmarks(workspace_root);
+    let benchmarks_data =
+        fs::read(&benchmarks_bin).expect("failed to read benchmarks binary");
+
+    let mut ramdisk = Vec::new();
+
+    let mut add_file = |name: &str, data: &[u8]| {
+        let mut header = [0u8; 64];
+        let name_bytes = name.as_bytes();
+        let name_len = name_bytes.len().min(63);
+        header[..name_len].copy_from_slice(&name_bytes[..name_len]);
+        ramdisk.extend_from_slice(&header);
+        ramdisk.extend_from_slice(&(data.len() as u64).to_le_bytes());
+        ramdisk.extend_from_slice(data);
+    };
+
+    add_file(
+        "initramfs.txt",
+        b"Hello from Initramfs!\nThis is a kernel experiment.\n",
+    );
+    add_file("init", &init_data);
+    if !exclude.contains(&"shell") {
+        add_file("shell", &shell_data);
+    }
+    if !exclude.contains(&"fault-tester") {
+        add_file("fault-tester", &fault_tester_data);
+    }
+    if !exclude.contains(&"compositor") {
+        add_file("compositor", &compositor_data);
+    }
+    if !exclude.contains(&"display-manager") {
+        add_file("display-manager", &display_manager_data);
+    }
+    if !exclude.contains(&"desktop-shell") {
+        add_file("desktop-shell", &desktop_shell_data);
+    }
+    if !exclude.contains(&"benchmarks") {
+        add_file("benchmarks", &benchmarks_data);
+    }
+
+    let font_data = create_minimal_psf2_font();
+    add_file("font.psf", &font_data);
+
+    let initramfs_path = staged_dir.join("initramfs.img");
+    fs::write(&initramfs_path, &ramdisk).expect("creating initramfs should succeed");
+    println!(
+        "Initramfs rebuilt at {} ({} bytes, excluding {:?})",
+        initramfs_path.display(),
+        ramdisk.len(),
+        exclude
+    );
+}
+
+/// Rebuild initramfs for benchmarks: pack benchmarks binary as `init`
+/// so the kernel runs it directly as the first user process.
+pub fn rebuild_initramfs_bench(workspace_root: &Path) {
+    let staged_dir = workspace_root.join("out").join("esp").join("turnix");
+    fs::create_dir_all(&staged_dir).expect("creating kernel staging directory should succeed");
+
+    let benchmarks_bin = build_benchmarks(workspace_root);
+    let benchmarks_data =
+        fs::read(&benchmarks_bin).expect("failed to read benchmarks binary");
+
+    let mut ramdisk = Vec::new();
+
+    let mut add_file = |name: &str, data: &[u8]| {
+        let mut header = [0u8; 64];
+        let name_bytes = name.as_bytes();
+        let name_len = name_bytes.len().min(63);
+        header[..name_len].copy_from_slice(&name_bytes[..name_len]);
+        ramdisk.extend_from_slice(&header);
+        ramdisk.extend_from_slice(&(data.len() as u64).to_le_bytes());
+        ramdisk.extend_from_slice(data);
+    };
+
+    add_file(
+        "initramfs.txt",
+        b"Hello from Initramfs!\nThis is a kernel experiment.\n",
+    );
+    // Pack benchmarks as `init` — the kernel loads `init` as the first process
+    add_file("init", &benchmarks_data);
+
+    let font_data = create_minimal_psf2_font();
+    add_file("font.psf", &font_data);
+
+    let initramfs_path = staged_dir.join("initramfs.img");
+    fs::write(&initramfs_path, &ramdisk).expect("creating initramfs should succeed");
+    println!(
+        "Bench initramfs created at {} ({} bytes)",
+        initramfs_path.display(),
+        ramdisk.len()
+    );
 }
 
 fn create_minimal_psf2_font() -> Vec<u8> {

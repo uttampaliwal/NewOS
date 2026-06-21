@@ -22,9 +22,9 @@ impl PipeInner {
 
     fn read(&mut self, buf: &mut [u8]) -> usize {
         let to_read = core::cmp::min(self.bytes_available, buf.len());
-        for i in 0..to_read {
+        for (i, byte) in buf.iter_mut().enumerate().take(to_read) {
             let idx = (self.read_pos + i) % PIPE_BUF_SIZE;
-            buf[i] = self.buffer[idx];
+            *byte = self.buffer[idx];
         }
         self.read_pos = (self.read_pos + to_read) % PIPE_BUF_SIZE;
         self.bytes_available -= to_read;
@@ -34,9 +34,9 @@ impl PipeInner {
     fn write(&mut self, buf: &[u8]) -> usize {
         let space = PIPE_BUF_SIZE - self.bytes_available;
         let to_write = core::cmp::min(space, buf.len());
-        for i in 0..to_write {
+        for (i, byte) in buf.iter().enumerate().take(to_write) {
             let idx = (self.write_pos + i) % PIPE_BUF_SIZE;
-            self.buffer[idx] = buf[i];
+            self.buffer[idx] = *byte;
         }
         self.write_pos = (self.write_pos + to_write) % PIPE_BUF_SIZE;
         self.bytes_available += to_write;
@@ -57,6 +57,12 @@ pub struct PipeBuffer {
     pub(crate) write_end_open: AtomicBool,
     pub(crate) read_end_open: AtomicBool,
     blocked_writers: Mutex<alloc::vec::Vec<crate::task::TaskId>>,
+}
+
+impl Default for PipeBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PipeBuffer {

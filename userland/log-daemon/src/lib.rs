@@ -174,7 +174,7 @@ impl LogRotator {
         if self.current_size >= ROTATION_SIZE {
             return true;
         }
-        if self.created_at.elapsed().map_or(false, |elapsed| elapsed >= ROTATION_AGE) {
+        if self.created_at.elapsed().is_ok_and(|elapsed| elapsed >= ROTATION_AGE) {
             return true;
         }
         false

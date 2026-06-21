@@ -408,7 +408,7 @@ pub fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn stage_ovmf(workspace_root: &Path, name: &str, source: &Option<PathBuf>) -> Option<PathBuf> {
+pub fn stage_ovmf(workspace_root: &Path, name: &str, source: &Option<PathBuf>) -> Option<PathBuf> {
     let source = source.as_ref()?;
     let firmware_dir = workspace_root.join("out").join("firmware");
     let _ = std::fs::create_dir_all(&firmware_dir);

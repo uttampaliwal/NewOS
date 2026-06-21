@@ -42,6 +42,10 @@ after = [\"compositor\", \"log-daemon\"]
 [service.fault-tester]
 path = \"fault-tester\"
 after = [\"shell\"]
+
+[service.benchmarks]
+path = \"benchmarks\"
+after = [\"fault-tester\"]
 ";
 
 // ── TOML parser ──────────────────────────────────────────────────────────

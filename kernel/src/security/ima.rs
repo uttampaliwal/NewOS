@@ -85,8 +85,8 @@ impl Sha256 {
         ];
 
         let mut w = [0u32; 64];
-        for i in 0..16 {
-            w[i] = (self.buffer[i * 4] as u32) << 24
+        for (i, slot) in w.iter_mut().enumerate().take(16) {
+            *slot = (self.buffer[i * 4] as u32) << 24
                 | (self.buffer[i * 4 + 1] as u32) << 16
                 | (self.buffer[i * 4 + 2] as u32) << 8
                 | (self.buffer[i * 4 + 3] as u32);
@@ -267,7 +267,7 @@ fn generate_random_u64() -> u64 {
         }
     }
     // Fallback LCG
-    let seed = 0xdeadbeefcafe_babeu64;
+    let seed = 0xdead_beef_cafe_babe_u64;
     seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
 }
 

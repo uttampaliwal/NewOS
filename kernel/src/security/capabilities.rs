@@ -266,7 +266,7 @@ impl CapabilitySet {
     ///
     /// When no file capabilities are attached to the executable:
     /// - permitted := bounding & inheritable (if UID unchanged) OR
-    ///                bounding + securebits (if UID changed)
+    ///   bounding + securebits (if UID changed)
     /// - effective := 0 (effective is cleared on exec)
     /// - inheritable unchanged
     /// - ambient := ambient & inheritable & bounding

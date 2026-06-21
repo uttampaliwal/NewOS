@@ -230,7 +230,7 @@ impl Broker {
         registration: ServiceRegistration,
     ) -> Result<(), BrokerError> {
         let conn = self.connections.get_mut(&conn_id)
-            .ok_or_else(|| BrokerError::ConnectionClosed(conn_id))?;
+            .ok_or(BrokerError::ConnectionClosed(conn_id))?;
         conn.registration = Some(registration.clone());
         self.registry.insert(registration.interface.clone(), conn_id);
         Ok(())
@@ -265,11 +265,11 @@ impl Broker {
     /// Disconnect a connection.
     pub fn disconnect(&mut self, conn_id: u64) {
         // Remove from registry
-        if let Some(conn) = self.connections.get(&conn_id) {
-            if let Some(ref reg) = conn.registration {
-                self.registry.remove(&reg.interface);
-                self.subscribers.remove(&reg.interface);
-            }
+        if let Some(conn) = self.connections.get(&conn_id)
+            && let Some(ref reg) = conn.registration
+        {
+            self.registry.remove(&reg.interface);
+            self.subscribers.remove(&reg.interface);
         }
         self.connections.remove(&conn_id);
         // Clean up pending calls from this connection
@@ -292,12 +292,11 @@ impl Broker {
             .ok_or_else(|| BrokerError::ServiceNotFound(interface.to_string()))?;
 
         // Check the service has that method
-        if let Some(conn) = self.connections.get(target_id) {
-            if let Some(ref reg) = conn.registration {
-                if !reg.methods.is_empty() && !reg.methods.contains(&method.to_string()) {
-                    return Err(BrokerError::MethodNotFound(method.to_string()));
-                }
-            }
+        if let Some(conn) = self.connections.get(target_id)
+            && let Some(ref reg) = conn.registration
+            && !reg.methods.is_empty() && !reg.methods.contains(&method.to_string())
+        {
+            return Err(BrokerError::MethodNotFound(method.to_string()));
         }
 
         self.pending_calls.insert(call_id, caller_id);

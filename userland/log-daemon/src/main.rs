@@ -219,63 +219,59 @@ fn accept_one(listener: &UnixListener) -> Option<UnixStream> {
 // ---------------------------------------------------------------------------
 
 fn handle_ipc(daemon: &LogDaemon, broker: &mut UnixStream, msg: IpcMessage) {
-    match msg {
-        IpcMessage::MethodCall { id, method, args, .. } => {
-            let response = match method.as_str() {
-                "Submit" => {
-                    let json_str = args.first().and_then(|v| v.as_str()).unwrap_or("");
-                    match LogEntry::from_json(json_str.as_bytes()) {
-                        Ok(mut entry) => match daemon.submit_entry(&mut entry) {
-                            Ok(()) => IpcMessage::MethodReturn {
-                                id,
-                                result: Ok(ipc_str("logged")),
-                            },
-                            Err(e) => IpcMessage::MethodReturn {
-                                id,
-                                result: Err(IpcError::new(ERROR_INTERNAL, e)),
-                            },
-                        },
-                        Err(e) => IpcMessage::MethodReturn {
+    if let IpcMessage::MethodCall { id, method, args, .. } = msg {
+        let response = match method.as_str() {
+            "Submit" => {
+                let json_str = args.first().and_then(|v| v.as_str()).unwrap_or("");
+                match LogEntry::from_json(json_str.as_bytes()) {
+                    Ok(mut entry) => match daemon.submit_entry(&mut entry) {
+                        Ok(()) => IpcMessage::MethodReturn {
                             id,
-                            result: Err(IpcError::new(ERROR_INVALID_ARGS, e)),
+                            result: Ok(ipc_str("logged")),
                         },
-                    }
-                }
-                "Recent" => {
-                    let n = args
-                        .first()
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(10)
-                        .max(1)
-                        .min(1000) as usize;
-                    match daemon.recent_entries(n) {
-                        Ok(entries) => {
-                            let arr: Vec<IpcValue> = entries
-                                .into_iter()
-                                .map(|e| {
-                                    let json = serde_json::to_value(&e).unwrap_or_default();
-                                    ipc_value_from_json(json)
-                                })
-                                .collect();
-                            IpcMessage::MethodReturn {
-                                id,
-                                result: Ok(IpcValue::Array(arr)),
-                            }
-                        }
                         Err(e) => IpcMessage::MethodReturn {
                             id,
                             result: Err(IpcError::new(ERROR_INTERNAL, e)),
                         },
-                    }
+                    },
+                    Err(e) => IpcMessage::MethodReturn {
+                        id,
+                        result: Err(IpcError::new(ERROR_INVALID_ARGS, e)),
+                    },
                 }
-                _ => IpcMessage::MethodReturn {
-                    id,
-                    result: Err(IpcError::new(ERROR_INTERNAL, format!("unknown method {method}"))),
-                },
-            };
-            send_msg(broker, &response);
-        }
-        _ => {}
+            }
+            "Recent" => {
+                let n = args
+                    .first()
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(10)
+                    .clamp(1, 1000) as usize;
+                match daemon.recent_entries(n) {
+                    Ok(entries) => {
+                        let arr: Vec<IpcValue> = entries
+                            .into_iter()
+                            .map(|e| {
+                                let json = serde_json::to_value(&e).unwrap_or_default();
+                                ipc_value_from_json(json)
+                            })
+                            .collect();
+                        IpcMessage::MethodReturn {
+                            id,
+                            result: Ok(IpcValue::Array(arr)),
+                        }
+                    }
+                    Err(e) => IpcMessage::MethodReturn {
+                        id,
+                        result: Err(IpcError::new(ERROR_INTERNAL, e)),
+                    },
+                }
+            }
+            _ => IpcMessage::MethodReturn {
+                id,
+                result: Err(IpcError::new(ERROR_INTERNAL, format!("unknown method {method}"))),
+            },
+        };
+        send_msg(broker, &response);
     }
 }
 

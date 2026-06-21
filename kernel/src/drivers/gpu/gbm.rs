@@ -25,6 +25,12 @@ pub struct GbmManager {
     pub buffers: BTreeMap<GbmBufferId, GbmBuffer>,
 }
 
+impl Default for GbmManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GbmManager {
     pub const fn new() -> Self {
         Self {
@@ -36,7 +42,7 @@ impl GbmManager {
     pub fn create(&mut self, width: u32, height: u32, format: u32) -> Option<GbmBufferId> {
         let stride = width * BPP;
         let size = stride as u64 * height as u64;
-        let num_pages = ((size + PAGE_SIZE - 1) / PAGE_SIZE) as usize;
+        let num_pages = size.div_ceil(PAGE_SIZE) as usize;
 
         if num_pages == 0 {
             return None;

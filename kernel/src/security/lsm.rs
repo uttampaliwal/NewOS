@@ -66,6 +66,12 @@ pub struct LsmStack {
     hooks: Vec<Box<dyn LsmHook>>,
 }
 
+impl Default for LsmStack {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LsmStack {
     pub fn new() -> Self {
         Self { hooks: Vec::new() }
@@ -125,6 +131,12 @@ impl LsmStack {
 /// POSIX capability checks against the process's permitted set.
 pub struct DacHook;
 
+impl Default for DacHook {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DacHook {
     pub fn new() -> Self {
         Self
@@ -149,10 +161,8 @@ impl LsmHook for DacHook {
         };
         let inner = proc.inner.lock();
         use crate::security::capabilities::Capability;
-        if let Some(c) = Capability::from_bit(cap_bit) {
-            if !inner.sec_ctx.has_capability(c) {
-                return Err(LsmError::AccessDenied);
-            }
+        if let Some(c) = Capability::from_bit(cap_bit) && !inner.sec_ctx.has_capability(c) {
+            return Err(LsmError::AccessDenied);
         }
         Ok(())
     }

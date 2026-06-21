@@ -121,7 +121,7 @@ fn default_action(sig: u8, proc: &Arc<Mutex<ProcessControlBlock>>) {
             let my_pid = inner.id;
             // Reparent children to init.
             let table = crate::process::PROCESS_TABLE.lock();
-            for (_pid, pcb_arc) in table.iter() {
+            for pcb_arc in table.values() {
                 let mut pcb = pcb_arc.lock();
                 if pcb.ppid == my_pid {
                     pcb.ppid = crate::process::ProcessId(1);

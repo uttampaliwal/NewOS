@@ -288,10 +288,10 @@ fn handle_prctl(args: SyscallArgs) -> SyscallResult {
         };
         filter_len
     ];
-    for i in 0..filter_len {
+    for (i, slot) in instructions.iter_mut().enumerate() {
         unsafe {
             let insn_ptr = filter_ptr.add(i);
-            instructions[i] = core::ptr::read_unaligned(insn_ptr);
+            *slot = core::ptr::read_unaligned(insn_ptr);
         }
     }
 
@@ -441,7 +441,7 @@ fn handle_exit(args: SyscallArgs) -> SyscallResult {
             // Reparent any children whose parent is about to disappear.
             let my_pid = inner.id;
             let table = crate::process::PROCESS_TABLE.lock();
-            for (_pid, pcb_arc) in table.iter() {
+            for pcb_arc in table.values() {
                 let mut pcb = pcb_arc.lock();
                 if pcb.ppid == my_pid {
                     crate::serial::println!(
@@ -918,7 +918,7 @@ fn handle_wait_impl(target_pid: i32, status_ptr: *mut i32) -> SyscallResult {
             // Write exit status to user buffer if provided.
             if !status_ptr.is_null() {
                 // POSIX encodes exit status as (exit_code & 0xff) << 8.
-                let encoded = ((exit_code as i32) & 0xff) << 8;
+                let encoded = (exit_code & 0xff) << 8;
                 unsafe { status_ptr.write(encoded); }
             }
             return SyscallResult::Success(child_pid.0 as u64);
@@ -1325,7 +1325,7 @@ fn handle_sigaction(args: SyscallArgs) -> SyscallResult {
     let new_ptr = args.arg1 as *const [u64; 3]; // {action, flags, restorer}
     let old_ptr = args.arg2 as *mut [u64; 3];
 
-    if sig < 1 || sig > 31 {
+    if !(1..=31).contains(&sig) {
         return SyscallResult::Error(22); // EINVAL
     }
     // SIGKILL and SIGSTOP can't be caught or ignored.

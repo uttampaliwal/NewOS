@@ -159,6 +159,12 @@ pub struct UnixSocketState {
     inner: Mutex<SocketState>,
 }
 
+impl Default for UnixSocketState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UnixSocketState {
     pub fn new() -> Self {
         UnixSocketState {
@@ -167,6 +173,7 @@ impl UnixSocketState {
     }
 
     /// Bind this socket to `path` and start listening.
+    #[allow(clippy::result_unit_err)]
     pub fn bind(this: &Arc<Self>, path: &str) -> Result<String, ()> {
         if path.is_empty() {
             return Err(());
@@ -186,6 +193,7 @@ impl UnixSocketState {
     }
 
     /// Set (or update) the listen backlog.
+    #[allow(clippy::result_unit_err)]
     pub fn listen(this: &Arc<Self>, backlog: usize) -> Result<(), ()> {
         let mut inner = this.inner.lock();
         match &mut *inner {
@@ -212,6 +220,7 @@ impl UnixSocketState {
     }
 
     /// Connect to a listening socket at `path`.
+    #[allow(clippy::result_unit_err)]
     pub fn connect(this: &Arc<Self>, path: &str) -> Result<(), ()> {
         let server_sock = lookup_bind(path).ok_or(())?;
 

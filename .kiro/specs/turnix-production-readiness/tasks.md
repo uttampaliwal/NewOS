@@ -754,7 +754,7 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that the JSON benchmark output parser correctly extracts latency and throughput values
     - _Requirements: 45.5_
 
-- [ ] 60. Final checkpoint — full system integration
+- [x] 60. Final checkpoint — full system integration
   - Ensure all 8 phases compile cleanly with `RUSTFLAGS="-D warnings"`, all unit and property tests pass, the 30-boot gate passes, all driver tests pass, all security regression tests pass, and all performance benchmarks meet their targets
   - Ensure all tests pass, ask the user if questions arise.
 

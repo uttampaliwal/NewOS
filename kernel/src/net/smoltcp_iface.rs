@@ -155,7 +155,7 @@ impl NetworkStack {
 
     pub fn alloc_ephemeral_port(&mut self) -> u16 {
         let port = self.next_ephemeral_port;
-        self.next_ephemeral_port = if self.next_ephemeral_port >= 65535 {
+        self.next_ephemeral_port = if self.next_ephemeral_port == 65535 {
             49152
         } else {
             self.next_ephemeral_port + 1

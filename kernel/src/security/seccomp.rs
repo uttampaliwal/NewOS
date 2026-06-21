@@ -270,8 +270,8 @@ impl SeccompFilter {
                         BPF_SUB => acc = acc.wrapping_sub(insn.k),
                         BPF_MUL => acc = acc.wrapping_mul(insn.k),
                         BPF_DIV => {
-                            if insn.k != 0 {
-                                acc /= insn.k;
+                            if let Some(v) = acc.checked_div(insn.k) {
+                                acc = v;
                             } else {
                                 acc = 0;
                             }
@@ -334,7 +334,7 @@ pub fn default_allow_filter() -> SeccompFilter {
     // The default filter: always ALLOW.
     SeccompFilter::new(
         alloc::vec![BpfInstruction {
-            code: BPF_RET | 0x00,
+            code: BPF_RET,
             jt: 0,
             jf: 0,
             k: SeccompAction::Allow.to_raw(),
@@ -357,7 +357,7 @@ mod tests {
     fn allow_filter() -> SeccompFilter {
         SeccompFilter::new(
             vec![BpfInstruction {
-                code: BPF_RET | 0x00,
+                code: BPF_RET,
                 jt: 0,
                 jf: 0,
                 k: SeccompAction::Allow.to_raw(),
@@ -371,7 +371,7 @@ mod tests {
     fn kill_filter() -> SeccompFilter {
         SeccompFilter::new(
             vec![BpfInstruction {
-                code: BPF_RET | 0x00,
+                code: BPF_RET,
                 jt: 0,
                 jf: 0,
                 k: SeccompAction::KillThread.to_raw(),
@@ -401,13 +401,13 @@ mod tests {
                     k: syscall_nr,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
@@ -484,7 +484,7 @@ mod tests {
     fn test_no_new_privs_flag() {
         let filter = SeccompFilter::new(
             vec![BpfInstruction {
-                code: BPF_RET | 0x00,
+                code: BPF_RET,
                 jt: 0,
                 jf: 0,
                 k: SeccompAction::Allow.to_raw(),
@@ -519,13 +519,13 @@ mod tests {
                     k: 0xFF,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
@@ -562,14 +562,14 @@ mod tests {
                 },
                 // If > 100: ALLOW
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 // Else: KILL
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
@@ -605,13 +605,13 @@ mod tests {
                     k: 0x100,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
@@ -665,7 +665,7 @@ mod tests {
     #[test]
     fn test_filter_too_long_rejected() {
         let instructions = alloc::vec![BpfInstruction {
-            code: BPF_RET | 0x00,
+            code: BPF_RET,
             jt: 0,
             jf: 0,
             k: SeccompAction::Allow.to_raw(),
@@ -740,7 +740,7 @@ mod tests {
         // Filter: return Errno(42)
         let filter = SeccompFilter::new(
             vec![BpfInstruction {
-                code: BPF_RET | 0x00,
+                code: BPF_RET,
                 jt: 0,
                 jf: 0,
                 k: SeccompAction::Errno(42).to_raw(),
@@ -756,7 +756,7 @@ mod tests {
     fn test_kill_process_action_filter() {
         let filter = SeccompFilter::new(
             vec![BpfInstruction {
-                code: BPF_RET | 0x00,
+                code: BPF_RET,
                 jt: 0,
                 jf: 0,
                 k: SeccompAction::KillProcess.to_raw(),
@@ -784,13 +784,13 @@ mod tests {
                     k: 1, // skip 1 instruction
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::Allow.to_raw(),
@@ -821,13 +821,13 @@ mod tests {
                     k: 50,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
@@ -858,13 +858,13 @@ mod tests {
                     k: 50,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0,
                     jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
@@ -896,12 +896,12 @@ mod tests {
                     k: 0,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
@@ -939,12 +939,12 @@ mod tests {
                     k: 0x42,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
@@ -978,12 +978,12 @@ mod tests {
                     k: 0xFFFFFFFFu32,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
@@ -1016,12 +1016,12 @@ mod tests {
                     k: 1,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
@@ -1054,12 +1054,12 @@ mod tests {
                     k: 0,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
@@ -1087,12 +1087,12 @@ mod tests {
                     k: 64,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
@@ -1135,12 +1135,12 @@ mod tests {
                     k: 0, // Should be 0 (out of bounds)
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
@@ -1168,12 +1168,12 @@ mod tests {
                     k: 0x1234,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
@@ -1201,12 +1201,12 @@ mod tests {
                     k: 0x34,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
@@ -1234,12 +1234,12 @@ mod tests {
                     k: 0,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
@@ -1272,12 +1272,12 @@ mod tests {
                     k: 0,
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
-                    code: BPF_RET | 0x00,
+                    code: BPF_RET,
                     jt: 0, jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
