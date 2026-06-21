@@ -42,8 +42,7 @@ impl InputManager {
     {
         let mut buf = [InputEvent::new(0, 0, 0); 64];
         let count = libturnix::input_read(&mut buf);
-        for i in 0..(count as usize) {
-            let ev = &buf[i];
+        for ev in &buf[..count as usize] {
             if ev.kind == INPUT_KIND_SYN {
                 continue;
             }

@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "host_bin", no_std)]
+
 use sha2::{Digest, Sha256};
 
 pub const PASSWD_PATH: &str = "/etc/turnix/passwd";
@@ -74,10 +76,10 @@ fn hex_nibble(n: u8) -> u8 {
 
 pub fn authenticate<'a>(username: &str, password: &str, passwd_content: &'a str) -> Option<PasswdEntry<'a>> {
     for line in passwd_content.lines() {
-        if let Ok(entry) = parse_passwd_entry(line) {
-            if entry.username == username && verify_password(password, entry.password_hash) {
-                return Some(entry);
-            }
+        if let Ok(entry) = parse_passwd_entry(line)
+            && entry.username == username && verify_password(password, entry.password_hash)
+        {
+            return Some(entry);
         }
     }
     None

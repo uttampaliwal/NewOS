@@ -154,6 +154,8 @@ fn build_userland(workspace_root: &Path) -> PathBuf {
             "build",
             "-p",
             "init",
+            "--features",
+            "host_bin",
             "--target",
             "x86_64-unknown-none",
             "--release",
@@ -186,6 +188,8 @@ fn build_shell(workspace_root: &Path) -> PathBuf {
             "build",
             "-p",
             "shell",
+            "--features",
+            "host_bin",
             "--target",
             "x86_64-unknown-none",
             "--release",
@@ -218,6 +222,8 @@ fn build_fault_tester(workspace_root: &Path) -> PathBuf {
             "build",
             "-p",
             "fault-tester",
+            "--features",
+            "host_bin",
             "--target",
             "x86_64-unknown-none",
             "--release",
@@ -235,6 +241,108 @@ fn build_fault_tester(workspace_root: &Path) -> PathBuf {
     if !built_bin.exists() {
         eprintln!(
             "Expected userland fault-tester binary was not produced: {}",
+            built_bin.display()
+        );
+        std::process::exit(1);
+    }
+    built_bin
+}
+
+fn build_compositor(workspace_root: &Path) -> PathBuf {
+    run_or_die_with_env(
+        "cargo",
+        [
+            "+nightly",
+            "build",
+            "-p",
+            "compositor",
+            "--features",
+            "host_bin",
+            "--target",
+            "x86_64-unknown-none",
+            "--release",
+        ],
+        workspace_root,
+        &[("RUSTFLAGS", "-C link-arg=-Tuserland/init/linker.ld")],
+    );
+
+    let built_bin = workspace_root
+        .join("target")
+        .join("x86_64-unknown-none")
+        .join("release")
+        .join("compositor");
+
+    if !built_bin.exists() {
+        eprintln!(
+            "Expected userland compositor binary was not produced: {}",
+            built_bin.display()
+        );
+        std::process::exit(1);
+    }
+    built_bin
+}
+
+fn build_display_manager(workspace_root: &Path) -> PathBuf {
+    run_or_die_with_env(
+        "cargo",
+        [
+            "+nightly",
+            "build",
+            "-p",
+            "display-manager",
+            "--features",
+            "host_bin",
+            "--target",
+            "x86_64-unknown-none",
+            "--release",
+        ],
+        workspace_root,
+        &[("RUSTFLAGS", "-C link-arg=-Tuserland/init/linker.ld")],
+    );
+
+    let built_bin = workspace_root
+        .join("target")
+        .join("x86_64-unknown-none")
+        .join("release")
+        .join("display-manager");
+
+    if !built_bin.exists() {
+        eprintln!(
+            "Expected userland display-manager binary was not produced: {}",
+            built_bin.display()
+        );
+        std::process::exit(1);
+    }
+    built_bin
+}
+
+fn build_desktop_shell(workspace_root: &Path) -> PathBuf {
+    run_or_die_with_env(
+        "cargo",
+        [
+            "+nightly",
+            "build",
+            "-p",
+            "desktop-shell",
+            "--features",
+            "host_bin",
+            "--target",
+            "x86_64-unknown-none",
+            "--release",
+        ],
+        workspace_root,
+        &[("RUSTFLAGS", "-C link-arg=-Tuserland/init/linker.ld")],
+    );
+
+    let built_bin = workspace_root
+        .join("target")
+        .join("x86_64-unknown-none")
+        .join("release")
+        .join("desktop-shell");
+
+    if !built_bin.exists() {
+        eprintln!(
+            "Expected userland desktop-shell binary was not produced: {}",
             built_bin.display()
         );
         std::process::exit(1);
@@ -295,6 +403,18 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     let fault_tester_data =
         fs::read(&fault_tester_bin).expect("failed to read fault-tester binary");
 
+    let compositor_bin = build_compositor(workspace_root);
+    let compositor_data =
+        fs::read(&compositor_bin).expect("failed to read compositor binary");
+
+    let display_manager_bin = build_display_manager(workspace_root);
+    let display_manager_data =
+        fs::read(&display_manager_bin).expect("failed to read display-manager binary");
+
+    let desktop_shell_bin = build_desktop_shell(workspace_root);
+    let desktop_shell_data =
+        fs::read(&desktop_shell_bin).expect("failed to read desktop-shell binary");
+
     let mut ramdisk = Vec::new();
 
     // Helper to add a "file" to our simple ramdisk
@@ -315,6 +435,9 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     add_file("init", &init_data);
     add_file("shell", &shell_data);
     add_file("fault-tester", &fault_tester_data);
+    add_file("compositor", &compositor_data);
+    add_file("display-manager", &display_manager_data);
+    add_file("desktop-shell", &desktop_shell_data);
 
     // Create and add a minimal PSF2 font for the terminal
     let font_data = create_minimal_psf2_font();
@@ -323,7 +446,7 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     let initramfs_path = staged_dir.join("initramfs.img");
     fs::write(&initramfs_path, &ramdisk).expect("creating initramfs should succeed");
     println!(
-        "Initramfs created at {} ({} bytes, including 'init')",
+        "Initramfs created at {} ({} bytes, including 'init', 'compositor', 'display-manager', 'desktop-shell')",
         initramfs_path.display(),
         ramdisk.len()
     );
@@ -470,6 +593,7 @@ fn find_ovmf_code() -> Option<PathBuf> {
     candidates.push(PathBuf::from("/usr/share/ovmf/OVMF.fd"));
     candidates.push(PathBuf::from("/usr/share/ovmf/x64/OVMF_CODE.fd"));
     candidates.push(PathBuf::from("/usr/share/OVMF/OVMF_CODE.fd"));
+    candidates.push(PathBuf::from("/usr/share/edk2/x64/OVMF_CODE.4m.fd"));
     candidates.push(PathBuf::from(
         r"C:\msys64\ucrt64\share\qemu\edk2-x86_64-code.fd",
     ));
@@ -502,6 +626,7 @@ fn find_ovmf_vars() -> Option<PathBuf> {
     candidates.push(PathBuf::from("/usr/share/ovmf/OVMF.fd"));
     candidates.push(PathBuf::from("/usr/share/ovmf/x64/OVMF_VARS.fd"));
     candidates.push(PathBuf::from("/usr/share/OVMF/OVMF_VARS.fd"));
+    candidates.push(PathBuf::from("/usr/share/edk2/x64/OVMF_VARS.4m.fd"));
     candidates.push(PathBuf::from(
         r"C:\msys64\ucrt64\share\qemu\edk2-x86_64-vars.fd",
     ));

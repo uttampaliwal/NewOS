@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod allocator;
+
 use turnix_abi::syscall::Syscall;
 
 pub fn print(message: &str) {

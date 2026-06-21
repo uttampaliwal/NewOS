@@ -97,7 +97,6 @@ fn get_phys_mem_offset() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
 
     fn make_surface(
         id: u64,
@@ -222,7 +221,7 @@ mod tests {
         let background = make_surface(1, 0, 0, 100, 100, 0, 1);
         let foreground = make_surface(2, 10, 10, 50, 50, 1, 2);
 
-        let surfaces = vec![foreground.clone(), background.clone()];
+        let surfaces = [foreground.clone(), background.clone()];
         let mut sorted: Vec<&Surface> = surfaces.iter().collect();
         sorted.sort_by_key(|s| s.z_order);
 

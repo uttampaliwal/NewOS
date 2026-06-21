@@ -4,7 +4,11 @@
 #[cfg(not(test))]
 use core::panic::PanicInfo;
 
+use libturnix::allocator::BumpAllocator;
 use libturnix::{exit, print, println};
+
+#[global_allocator]
+static ALLOCATOR: BumpAllocator = BumpAllocator;
 
 use compositor::state::TurnixCompositor;
 

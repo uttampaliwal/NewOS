@@ -1,9 +1,15 @@
 #![no_std]
 #![no_main]
+#![allow(dead_code)]
 
 extern crate alloc;
 
 use alloc::vec::Vec;
+
+use libturnix::allocator::BumpAllocator;
+
+#[global_allocator]
+static ALLOCATOR: BumpAllocator = BumpAllocator;
 
 use desktop_shell::{fill_gradient, fill_rect, parse_desktop_entry, DesktopEntry};
 use libturnix::{
@@ -176,9 +182,12 @@ fn launch_application(entry: &DesktopEntry) {
     let pid = fork();
     if pid == 0 {
         exec(entry.exec.as_str(), core::ptr::null(), core::ptr::null());
-        print("exec failed: ");
-        println(entry.exec.as_str());
-        exit(1);
+        #[allow(unreachable_code)]
+        {
+            print("exec failed: ");
+            println(entry.exec.as_str());
+            exit(1);
+        }
     }
 }
 

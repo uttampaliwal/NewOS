@@ -4,7 +4,6 @@ extern crate alloc;
 use alloc::string::String;
 
 /// Desktop entry (.desktop file) parser for the application launcher.
-
 pub const APPLICATIONS_DIR: &str = "/usr/share/applications";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,6 +68,7 @@ pub fn parse_desktop_entry(content: &str) -> Option<DesktopEntry> {
 }
 
 /// Fill a pixel buffer with a solid color (BGRA format).
+#[allow(clippy::too_many_arguments)]
 pub fn fill_rect(pixels: &mut [u8], width: u32, height: u32, x: u32, y: u32, w: u32, h: u32, color: [u8; 4]) {
     for row in y..(y + h).min(height) {
         for col in x..(x + w).min(width) {

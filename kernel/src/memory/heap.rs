@@ -9,7 +9,7 @@ use crate::memory::allocator::Locked;
 use crate::memory::allocator::fixed_size_block::FixedSizeBlockAllocator;
 
 pub const HEAP_START: usize = 0xFFFF_A000_0000_0000;
-pub const HEAP_SIZE: usize = 1024 * 1024; // 1 MiB
+pub const HEAP_SIZE: usize = 8 * 1024 * 1024; // 8 MiB
 
 #[cfg_attr(not(test), global_allocator)]
 pub static ALLOCATOR: Locked<FixedSizeBlockAllocator> = Locked::new(FixedSizeBlockAllocator::new());

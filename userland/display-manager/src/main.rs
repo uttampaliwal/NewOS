@@ -3,9 +3,15 @@
 
 extern crate alloc;
 
+use alloc::format;
 use alloc::string::String;
 
-use display_manager::{authenticate, PASSWD_PATH};
+use libturnix::allocator::BumpAllocator;
+
+#[global_allocator]
+static ALLOCATOR: BumpAllocator = BumpAllocator;
+
+use display_manager::{authenticate, PasswdEntry, PASSWD_PATH};
 use libturnix::{exit, fork, print, println, read, setgid, setuid, waitpid, close, open};
 use turnix_abi::syscall::{CapData, CapHeader, LINUX_CAPABILITY_VERSION};
 
@@ -63,7 +69,8 @@ fn load_passwd() -> Option<String> {
 }
 
 fn launch_session(entry: &PasswdEntry) {
-    println("Starting session for user: ", entry.username);
+    print("Starting session for user: ");
+    println(entry.username);
 
     let pid = fork();
 
@@ -90,10 +97,13 @@ fn launch_session(entry: &PasswdEntry) {
         libturnix::capset(&header, &data);
 
         libturnix::exec("desktop-shell", core::ptr::null(), core::ptr::null());
-        println("exec desktop-shell failed");
-        exit(1);
+        #[allow(unreachable_code)]
+        {
+            println("exec desktop-shell failed");
+            exit(1);
+        }
     } else {
-        println("Session spawned as PID ", pid);
+        println(&format!("Session spawned as PID {}", pid));
         loop {
             let exited_pid = waitpid(-1, core::ptr::null_mut(), 0) as u64;
             if exited_pid == pid {
@@ -111,7 +121,8 @@ pub extern "C" fn _start() -> ! {
     let passwd_content = match load_passwd() {
         Some(c) => c,
         None => {
-            println("WARNING: no password file found at ", PASSWD_PATH);
+            print("WARNING: no password file found at ");
+            println(PASSWD_PATH);
             println("Default credentials: root/root, turnix/turnix");
             println("Create /etc/turnix/passwd with lines: username:uid:gid:home:shell:sha256hex");
             println("Proceeding with emergency fallback authentication");

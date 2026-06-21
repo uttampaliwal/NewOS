@@ -90,10 +90,13 @@ pub extern "C" fn _start() -> ! {
             let argv: [*const u8; 2] = [path.as_ptr(), core::ptr::null()];
             let envp: [*const u8; 1] = [core::ptr::null()];
             exec(path, argv.as_ptr(), envp.as_ptr());
-            print("FAILED to exec ");
-            print(path);
-            println("");
-            exit(1);
+            #[allow(unreachable_code)]
+            {
+                print("FAILED to exec ");
+                print(path);
+                println("");
+                exit(1);
+            }
         } else if (pid as i64) < 0 {
             print("FAILED to fork for ");
             print(svc.name);

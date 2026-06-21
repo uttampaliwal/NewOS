@@ -51,10 +51,10 @@ impl Surface {
     pub fn clip_rect(&self, screen_w: u32, screen_h: u32) -> Option<ClipRect> {
         let sx = self.x.max(0) as u32;
         let sy = self.y.max(0) as u32;
-        let ex = (self.x as i32 + self.width as i32)
+        let ex = (self.x + self.width as i32)
             .min(screen_w as i32)
             .max(0) as u32;
-        let ey = (self.y as i32 + self.height as i32)
+        let ey = (self.y + self.height as i32)
             .min(screen_h as i32)
             .max(0) as u32;
         if sx >= ex || sy >= ey {
@@ -120,10 +120,10 @@ impl TurnixCompositor {
     }
 
     pub fn remove_surface(&mut self, id: SurfaceId) {
-        if let Some(surface) = self.surfaces.remove(&id) {
-            if surface.buffer_id != 0 {
-                libturnix::gbm_destroy(surface.buffer_id);
-            }
+        if let Some(surface) = self.surfaces.remove(&id)
+            && surface.buffer_id != 0
+        {
+            libturnix::gbm_destroy(surface.buffer_id);
         }
         if self.focused == Some(id) {
             self.focused = None;
@@ -250,24 +250,16 @@ impl TurnixCompositor {
             Some(fd) => fd,
             None => return,
         };
-        loop {
-            match libturnix::accept(listener) {
-                Some(client_fd) => {
-                    // Read the PID from the first message. For now, use a simple
-                    // protocol: the first message contains just the client PID as u64.
-                    let mut pid_buf = [0u8; 8];
-                    match libturnix::read(client_fd, &mut pid_buf) {
-                        Some(8) => {
-                            let pid = u64::from_ne_bytes(pid_buf);
-                            self.client_fds.insert(pid, client_fd);
-                        }
-                        _ => {
-                            // Invalid handshake — close.
-                            let _ = libturnix::close(client_fd);
-                        }
-                    }
+        while let Some(client_fd) = libturnix::accept(listener) {
+            let mut pid_buf = [0u8; 8];
+            match libturnix::read(client_fd, &mut pid_buf) {
+                Some(8) => {
+                    let pid = u64::from_ne_bytes(pid_buf);
+                    self.client_fds.insert(pid, client_fd);
                 }
-                None => break, // No more pending connections
+                _ => {
+                    libturnix::close(client_fd);
+                }
             }
         }
     }
@@ -278,7 +270,7 @@ impl TurnixCompositor {
         for (pid, fd) in pairs {
             if !protocol::process_client_fd(self, pid, fd) {
                 to_remove.push(pid);
-                let _ = libturnix::close(fd);
+                libturnix::close(fd);
             }
         }
 
@@ -386,8 +378,7 @@ impl TurnixCompositor {
     pub fn tick(&mut self) {
         let mut events = [InputEvent::new(0, 0, 0); 64];
         let event_count = libturnix::input_read(&mut events);
-        for i in 0..(event_count as usize) {
-            let ev = &events[i];
+        for ev in &events[..event_count as usize] {
             if ev.kind == INPUT_KIND_SYN {
                 continue;
             }
@@ -412,7 +403,7 @@ impl TurnixCompositor {
         };
 
         // Remove existing socket file and bind
-        let _ = libturnix::unlink(protocol::SOCKET_PATH);
+        libturnix::unlink(protocol::SOCKET_PATH);
         let addr_bytes = protocol::SOCKET_PATH.as_bytes();
         let mut sockaddr = [0u8; 110];
         sockaddr[0] = 1; // AF_UNIX family byte (little-endian)
@@ -420,12 +411,12 @@ impl TurnixCompositor {
         sockaddr[2..2 + addr_bytes.len()].copy_from_slice(addr_bytes);
         if !libturnix::bind(socket_fd, sockaddr.as_ptr(), 2 + addr_bytes.len()) {
             println("ERROR: cannot bind compositor socket");
-            let _ = libturnix::close(socket_fd);
+            libturnix::close(socket_fd);
             return;
         }
         if !libturnix::listen(socket_fd, 8) {
             println("ERROR: cannot listen on compositor socket");
-            let _ = libturnix::close(socket_fd);
+            libturnix::close(socket_fd);
             return;
         }
 

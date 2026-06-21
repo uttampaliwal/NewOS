@@ -656,14 +656,14 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that Z-order compositing renders surfaces in the correct order
     - _Requirements: 42.2_
 
-- [ ] 52. Implement the display manager in `userland/display-manager/`
-  - [ ] 52.1 Create `userland/display-manager/` as a new workspace crate
+- [x] 52. Implement the display manager in `userland/display-manager/`
+  - [x] 52.1 Create `userland/display-manager/` as a new workspace crate
     - Implement a greetd-style login greeter: render a username/password prompt on the Wayland compositor
     - Implement PAM-style authentication: verify credentials against `/etc/turnix/passwd` (SHA-256 hashed passwords)
     - On successful login: fork a new session, set UID/GID, drop capabilities to user level, exec the desktop shell
     - On failed login: log the attempt and re-display the prompt
     - _Requirements: 43.1, 43.2, 43.3, 43.4_
-  - [ ]* 52.2 Write unit tests for display manager authentication
+  - [x]* 52.2 Write unit tests for display manager authentication
     - Test that a correct password hash comparison succeeds
     - Test that an incorrect password is rejected and the attempt is logged
     - _Requirements: 43.2_
