@@ -42,13 +42,15 @@ pub struct NetworkConfig {
     pub static_config: Option<StaticIpConfig>,
     #[serde(default)]
     pub dns_servers: Vec<String>,
+    #[serde(default)]
+    pub dhcp_lease_file: Option<String>,
 }
 
 fn default_dhcp() -> bool { true }
 
 impl Default for NetworkConfig {
     fn default() -> Self {
-        Self { dhcp: true, static_config: None, dns_servers: vec![] }
+        Self { dhcp: true, static_config: None, dns_servers: vec![], dhcp_lease_file: None }
     }
 }
 

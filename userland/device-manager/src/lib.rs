@@ -382,7 +382,19 @@ impl DeviceManager {
             HotplugEventType::DeviceAdded => self.handle_device_added(event),
             HotplugEventType::DeviceRemoved => self.handle_device_removed(event),
             HotplugEventType::DeviceChanged => {
-                // Re-check driver rules on change
+                // Re-check driver rules on device property change
+                if let Some(driver_rule) = self.driver_rules.match_device(event.vendor_id, event.device_id) {
+                    eprintln!(
+                        "dev-mgr: device changed {:04x}:{:04x} — driver: {}",
+                        event.vendor_id, event.device_id, driver_rule.driver_name
+                    );
+                    // Update the device entry if it exists
+                    if let Some(dev) = self.devices.iter_mut().find(|d| {
+                        d.vendor_id == event.vendor_id && d.device_id == event.device_id
+                    }) {
+                        dev.driver = Some(driver_rule.driver_name.clone());
+                    }
+                }
                 Ok(())
             }
         }

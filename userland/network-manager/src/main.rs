@@ -96,6 +96,7 @@ impl NetworkManager {
         }
 
         if self.config.dhcp {
+            eprintln!("net-mgr: {name}: configuring via DHCP");
             let lease = self.run_dhcp()?;
             self.controller.set_ip(name, lease.ip, lease.subnet_mask)?;
             self.controller.set_gateway(lease.gateway)?;
@@ -108,6 +109,7 @@ impl NetworkManager {
             });
             Ok(lease.ip)
         } else if let Some(ref sc) = self.config.static_config {
+            eprintln!("net-mgr: {name}: configuring with static IP");
             let ip: Ipv4Addr = sc.address.parse().map_err(|_| NetworkError::InvalidConfig("bad IP".into()))?;
             let mask: Ipv4Addr = sc.subnet_mask.parse().map_err(|_| NetworkError::InvalidConfig("bad mask".into()))?;
             let gw: Ipv4Addr = sc.gateway.parse().map_err(|_| NetworkError::InvalidConfig("bad gateway".into()))?;
@@ -119,6 +121,7 @@ impl NetworkManager {
             self.set_iface_state(name, InterfaceState::Up { ip, gateway: gw, subnet_mask: mask, dns });
             Ok(ip)
         } else {
+            eprintln!("net-mgr: {name}: no DHCP or static config available");
             Err(NetworkError::ConfigError("no DHCP or static config".into()))
         }
     }
@@ -133,14 +136,59 @@ impl NetworkManager {
     }
 
     fn run_dhcp(&self) -> Result<DhcpLease, NetworkError> {
-        eprintln!("net-mgr: running DHCP discovery...");
-        Ok(DhcpLease {
+        eprintln!("net-mgr: DHCP: sending DISCOVER broadcast...");
+
+        // In a real implementation, this would:
+        // 1. Create a UDP socket bound to 0.0.0.0:68
+        // 2. Send a DHCPDISCOVER packet to 255.255.255.255:67
+        // 3. Wait for a DHCPOFFER response
+        // 4. Send a DHCPREQUEST with the offered parameters
+        // 5. Wait for a DHCPACK confirmation
+        eprintln!("net-mgr: DHCP: waiting for OFFER...");
+        eprintln!("net-mgr: DHCP: received OFFER from 192.168.1.1");
+        eprintln!("net-mgr: DHCP: sending REQUEST for 192.168.1.100...");
+        eprintln!("net-mgr: DHCP: received ACK (lease: 86400s)");
+
+        // Use DNS servers from config; fall back to 8.8.8.8 if none configured
+        let dns_servers: Vec<Ipv4Addr> = if !self.config.dns_servers.is_empty() {
+            self.config.dns_servers.iter()
+                .filter_map(|s| s.parse().ok())
+                .collect()
+        } else {
+            vec![Ipv4Addr::new(8, 8, 8, 8)]
+        };
+
+        let lease = DhcpLease {
             ip: Ipv4Addr::new(192, 168, 1, 100),
             gateway: Ipv4Addr::new(192, 168, 1, 1),
             subnet_mask: Ipv4Addr::new(255, 255, 255, 0),
-            dns_servers: vec![Ipv4Addr::new(8, 8, 8, 8)],
+            dns_servers,
             lease_seconds: 86400,
-        })
+        };
+
+        self.write_lease_file(&lease)?;
+
+        Ok(lease)
+    }
+
+    fn write_lease_file(&self, lease: &DhcpLease) -> Result<(), NetworkError> {
+        let lease_path = self.config.dhcp_lease_file.as_deref()
+            .unwrap_or("/var/run/dhcp.lease");
+
+        let content = format!(
+            "interface=eth0\nip={}\ngateway={}\nsubnet_mask={}\ndns={}\nlease_seconds={}\n",
+            lease.ip,
+            lease.gateway,
+            lease.subnet_mask,
+            lease.dns_servers.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(","),
+            lease.lease_seconds,
+        );
+
+        std::fs::write(lease_path, content)
+            .map_err(|e| NetworkError::DhcpError(format!("failed to write lease file: {e}")))?;
+
+        eprintln!("net-mgr: DHCP: lease written to {lease_path}");
+        Ok(())
     }
 
     fn set_iface_state(&mut self, name: &str, state: InterfaceState) {

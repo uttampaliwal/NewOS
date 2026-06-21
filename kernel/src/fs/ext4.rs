@@ -1,23 +1,8 @@
-//! ext4 filesystem backend for Turnix OS.
+//! In-memory ext4-like filesystem backend.
 //!
-//! # Current status
-//!
-//! A fully block-device-backed ext4 implementation requires a `no_std`-
-//! compatible ext4 crate with a pluggable block-device abstraction.  At the
-//! time of writing no such crate is available on crates.io with full
-//! `no_std` support; the closest candidates (`ext4-view`, `ext2fs`) are
-//! either read-only, not `no_std`, or do not expose a stable block-device
-//! trait that maps cleanly onto the NVMe driver's interface.
-//!
-//! This module therefore provides a **stub** `Ext4Backend` that is backed by
-//! the same in-memory storage as [`TmpfsBackend`].  The public API and
-//! [`FsBackend`] implementation are complete and correct — only the
-//! persistence layer is a placeholder.
-//!
-//! TODO: Replace the inner `TmpfsBackend` with a real ext4 block-device
-//!       reader/writer once a suitable `no_std` crate (or an in-tree
-//!       implementation) is available.  The wiring in `boot.rs` and
-//!       `syscall/handler.rs` will not need to change.
+//! This implementation delegates to TmpfsBackend for storage. It provides
+//! the ext4 API surface but does NOT persist data to disk. A real block-device
+//! backend (NVMe/AHCI) is needed for persistence.
 
 extern crate alloc;
 
@@ -120,8 +105,8 @@ impl FsBackend for Ext4Backend {
     }
 
     fn sync(&self) -> Result<(), FsError> {
-        // TODO: flush dirty blocks to the NVMe device when the block-device
-        //       backend is implemented.
+        // TODO: flush dirty blocks to the NVMe device when the block-device backend is implemented.
+        // For now, sync is a no-op since ext4 delegates to tmpfs (in-memory only).
         self.inner.sync()
     }
 }

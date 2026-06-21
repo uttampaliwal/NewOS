@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError,
     ERROR_INTERNAL, ERROR_INVALID_ARGS};
-use log_daemon::{KernelLogSource, LogEntry, LogRotator, NullKernelLogSource};
+use log_daemon::{KernelLogSource, LogEntry, LogRotator, FileKernelLogSource};
 
 // ---------------------------------------------------------------------------
 // Shorthand helpers
@@ -150,8 +150,14 @@ fn main() {
         }
     }
 
-    // Set up kernel log forwarder (stub — replaced with real ring-buffer reader)
-    let mut kernel_log: Box<dyn KernelLogSource> = Box::new(NullKernelLogSource);
+    // Set up kernel log forwarder: read from /var/log/kernel.log if available
+    let kernel_log_path = "/var/log/kernel.log";
+    if Path::new(kernel_log_path).exists() {
+        eprintln!("log-daemon: forwarding kernel logs from {kernel_log_path}");
+    } else {
+        eprintln!("log-daemon: kernel log forwarding disabled ({kernel_log_path} not found)");
+    }
+    let mut kernel_log: Box<dyn KernelLogSource> = Box::new(FileKernelLogSource::new(kernel_log_path));
 
     // Main event loop: accept log submissions on the socket
     broker.set_read_timeout(Some(Duration::from_millis(500))).ok();

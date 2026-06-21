@@ -260,32 +260,57 @@ pub fn canary_value() -> u64 {
     STACK_CANARY_VALUE.load(Ordering::Acquire)
 }
 
-/// Generate a 64-bit random value using RDRAND.
+/// Generate a 64-bit random value using RDRAND, with multi-source fallback.
 fn generate_random_u64() -> u64 {
     #[cfg(target_arch = "x86_64")]
     {
-        let mut val: u64 = 0;
+        // Try RDRAND up to 10 times
         for _ in 0..10 {
+            let val: u64;
+            let ok: u8;
             unsafe {
                 core::arch::asm!(
                     "rdrand {0}",
-                    "jc 2f",
-                    "3: rdrand {0}",
-                    "jc 2f",
-                    "pause",
-                    "jmp 3b",
-                    "2:",
+                    "setc {1}",
                     out(reg) val,
+                    out(reg_byte) ok,
                 );
             }
-            if val != 0 {
+            if ok != 0 && val != 0 {
                 return val;
             }
         }
     }
-    // Fallback LCG
-    let seed = 0xdead_beef_cafe_babe_u64;
-    seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+    // Fallback: mix multiple entropy sources for non-deterministic canary.
+    static FALLBACK_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+    let counter = FALLBACK_COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    let tsc: u64 = {
+        #[cfg(target_arch = "x86_64")]
+        {
+            let lo: u32;
+            let hi: u32;
+            unsafe {
+                core::arch::asm!(
+                    "rdtsc",
+                    out("eax") lo,
+                    out("edx") hi,
+                );
+            }
+            ((hi as u64) << 32) | (lo as u64)
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            0
+        }
+    };
+    // Mix with stack pointer address for per-process variation
+    let stack_addr = &tsc as *const u64 as u64;
+    // Use a simple but non-trivial mixing function
+    let mut val = tsc.wrapping_add(stack_addr).wrapping_add(counter);
+    // Ensure the canary has at least one set bit in high and low bytes
+    // (prevents null-byte and 0xFF truncation attacks)
+    val |= 0x0101_0000_0000_0101;
+    val
 }
 
 /// Initialise IMA subsystem (init canary, seed log).

@@ -144,16 +144,53 @@ impl DacHook {
 }
 
 impl LsmHook for DacHook {
-    fn file_open(&self, _path: &str, _flags: u32, _uid: u32, _gid: u32) -> Result<(), LsmError> {
-        // The VFS already checks Unix permission bits in `check_permission`.
-        // This hook is a placeholder for future mandatory access control
-        // (e.g. SELinux-type label checks).
+    fn file_open(&self, path: &str, flags: u32, uid: u32, _gid: u32) -> Result<(), LsmError> {
+        if (path.starts_with("/proc/") || path.starts_with("/sys/")) && flags & 1 != 0 && uid != 0 {
+            crate::serial::println!(
+                "[DAC] Write denied for non-root to protected fs: {}",
+                path
+            );
+            return Err(LsmError::AccessDenied);
+        }
+        Ok(())
+    }
+
+    fn process_create(&self, parent_uid: u32, parent_gid: u32) -> Result<(), LsmError> {
+        crate::serial::println!(
+            "[DAC] Audit: process_create uid={} gid={}",
+            parent_uid,
+            parent_gid
+        );
+        Ok(())
+    }
+
+    fn ipc_send(&self, fd_type: u32, uid: u32, _gid: u32) -> Result<(), LsmError> {
+        if fd_type >= 2 && uid != 0 {
+            crate::serial::println!(
+                "[DAC] IPC denied: non-root shared memory IPC fd_type={}",
+                fd_type
+            );
+            return Err(LsmError::AccessDenied);
+        }
+        Ok(())
+    }
+
+    fn net_connect(&self, path: &str, uid: u32, _gid: u32) -> Result<(), LsmError> {
+        if let Some(colon_pos) = path.rfind(':')
+            && let Ok(port) = path[colon_pos + 1..].parse::<u16>()
+            && port < 1024
+            && uid != 0
+        {
+            crate::serial::println!(
+                "[DAC] Net denied: non-root connect to privileged port {}",
+                port
+            );
+            return Err(LsmError::AccessDenied);
+        }
         Ok(())
     }
 
     fn capability_check(&self, cap: u32, _uid: u32, _gid: u32) -> Result<(), LsmError> {
-        // Check that the current process has the requested capability.
-        // The `cap` argument is a bit position (0-based, same as Capability enum repr).
         let cap_bit = 1u64 << cap;
         let proc = match crate::task::scheduler::get_current_process() {
             Some(p) => p,
@@ -447,5 +484,33 @@ mod tests {
     fn test_check_capability_free_function() {
         // Without init, cap=0 should pass through empty stack
         assert_eq!(check_capability(0, 0, 0), Ok(()));
+    }
+
+    #[test]
+    fn test_dac_file_open_read_allowed() {
+        let hook = DacHook::new();
+        assert!(hook.file_open("/tmp/test", 0, 1000, 1000).is_ok());
+    }
+
+    #[test]
+    fn test_dac_protected_fs_write_denied() {
+        let hook = DacHook::new();
+        assert_eq!(hook.file_open("/proc/meminfo", 1, 1000, 1000), Err(LsmError::AccessDenied));
+        assert!(hook.file_open("/proc/meminfo", 1, 0, 0).is_ok());
+    }
+
+    #[test]
+    fn test_dac_ipc_privileged_channel_denied() {
+        let hook = DacHook::new();
+        assert_eq!(hook.ipc_send(2, 1000, 1000), Err(LsmError::AccessDenied));
+        assert!(hook.ipc_send(2, 0, 0).is_ok());
+    }
+
+    #[test]
+    fn test_dac_net_privileged_port_denied() {
+        let hook = DacHook::new();
+        assert_eq!(hook.net_connect("127.0.0.1:80", 1000, 1000), Err(LsmError::AccessDenied));
+        assert!(hook.net_connect("127.0.0.1:80", 0, 0).is_ok());
+        assert!(hook.net_connect("127.0.0.1:8080", 1000, 1000).is_ok());
     }
 }

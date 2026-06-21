@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -255,6 +255,62 @@ impl KernelLogSource for NullKernelLogSource {
     }
 }
 
+/// Reads kernel log lines from a file (e.g., `/var/log/kernel.log`).
+/// The kernel writes serial output to this file via a shared mechanism
+/// (DMA buffer, shared memory, or a kernel thread). Each call to `poll()`
+/// reads any new lines appended since the last call.
+pub struct FileKernelLogSource {
+    path: PathBuf,
+    last_pos: u64,
+}
+
+impl FileKernelLogSource {
+    pub fn new(path: &str) -> Self {
+        Self {
+            path: PathBuf::from(path),
+            last_pos: 0,
+        }
+    }
+}
+
+impl KernelLogSource for FileKernelLogSource {
+    fn poll(&mut self) -> Option<KernelLogLine> {
+        let file = File::open(&self.path).ok()?;
+        let mut reader = BufReader::new(file);
+        reader.seek(SeekFrom::Start(self.last_pos)).ok()?;
+
+        let mut line = String::new();
+        let bytes_read = reader.read_line(&mut line).ok()?;
+        if bytes_read == 0 {
+            return None;
+        }
+        self.last_pos += bytes_read as u64;
+
+        let trimmed = line.trim_end_matches('\n');
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let level = parse_kernel_log_level(trimmed);
+        Some(KernelLogLine {
+            level,
+            message: trimmed.to_string(),
+        })
+    }
+}
+
+fn parse_kernel_log_level(line: &str) -> LogLevel {
+    if line.contains("error") || line.contains("ERROR") || line.contains("panic") || line.contains("PANIC") {
+        LogLevel::Error
+    } else if line.contains("warn") || line.contains("WARN") {
+        LogLevel::Warn
+    } else if line.contains("debug") || line.contains("DEBUG") {
+        LogLevel::Debug
+    } else {
+        LogLevel::Info
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -439,6 +495,53 @@ mod tests {
     fn test_kernel_log_source_stub() {
         let mut source = NullKernelLogSource;
         assert!(source.poll().is_none());
+    }
+
+    #[test]
+    fn test_file_kernel_log_source_missing_file() {
+        let mut source = FileKernelLogSource::new("/nonexistent/kernel.log");
+        assert!(source.poll().is_none());
+    }
+
+    #[test]
+    fn test_file_kernel_log_source_reads_lines() {
+        let dir = std::env::temp_dir().join(format!("klog_test_{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("kernel.log");
+
+        fs::write(&path, "Booting CPU0\n[INFO] init started\n").unwrap();
+
+        let mut source = FileKernelLogSource::new(path.to_str().unwrap());
+        let line1 = source.poll().unwrap();
+        assert_eq!(line1.message, "Booting CPU0");
+        assert_eq!(line1.level, LogLevel::Info);
+
+        let line2 = source.poll().unwrap();
+        assert_eq!(line2.message, "[INFO] init started");
+
+        // No more lines
+        assert!(source.poll().is_none());
+
+        // Append a new line and verify it's picked up
+        use std::io::Write;
+        let mut f = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        writeln!(f, "[ERROR] disk failure").unwrap();
+        drop(f);
+
+        let line3 = source.poll().unwrap();
+        assert_eq!(line3.message, "[ERROR] disk failure");
+        assert_eq!(line3.level, LogLevel::Error);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_parse_kernel_log_level() {
+        assert_eq!(parse_kernel_log_level("normal message"), LogLevel::Info);
+        assert_eq!(parse_kernel_log_level("ERROR: oops"), LogLevel::Error);
+        assert_eq!(parse_kernel_log_level("PANIC: halting"), LogLevel::Error);
+        assert_eq!(parse_kernel_log_level("warn: low memory"), LogLevel::Warn);
+        assert_eq!(parse_kernel_log_level("DEBUG: trace"), LogLevel::Debug);
     }
 
     #[test]

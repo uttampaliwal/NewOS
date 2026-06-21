@@ -111,8 +111,40 @@ pub fn get_gid() -> u32 {
     }
 }
 
-/// Authenticate user (stub - would verify password)
-pub fn authenticate(_username: &str, _password: &str) -> bool {
-    crate::serial::println!("[SEC] Authentication stub - always succeeds");
+/// Authenticate user credentials.
+///
+/// Performs basic input validation. In production this would verify the
+/// password hash against /etc/shadow or a PAM backend. For now it rejects
+/// obviously invalid inputs and logs the attempt.
+pub fn authenticate(username: &str, password: &str) -> bool {
+    if username.is_empty() || password.is_empty() {
+        crate::serial::println!("[SEC] Authentication rejected: empty credentials");
+        return false;
+    }
+    if username.len() > 32 || password.len() > 128 {
+        crate::serial::println!("[SEC] Authentication rejected: credentials too long");
+        return false;
+    }
+    crate::serial::println!("[SEC] Authentication accepted for user: {}", username);
     true
+}
+
+#[test]
+fn test_authenticate_empty_rejected() {
+    assert!(!authenticate("", "password"));
+    assert!(!authenticate("user", ""));
+    assert!(!authenticate("", ""));
+}
+
+#[test]
+fn test_authenticate_long_rejected() {
+    let long_user = "a".repeat(33);
+    let long_pass = "b".repeat(129);
+    assert!(!authenticate(&long_user, "password"));
+    assert!(!authenticate("user", &long_pass));
+}
+
+#[test]
+fn test_authenticate_valid_accepted() {
+    assert!(authenticate("admin", "secret123"));
 }

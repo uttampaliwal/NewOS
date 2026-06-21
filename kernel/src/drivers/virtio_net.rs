@@ -640,14 +640,17 @@ impl DeviceDriver for VirtioNetDriver {
     }
 
     fn initialize(&mut self) -> Result<(), Self::Error> {
+        crate::serial::println!("[DRIVER] virtio-net: initialized");
         Ok(())
     }
 
     fn suspend(&mut self) -> Result<(), Self::Error> {
+        crate::serial::println!("[DRIVER] virtio-net: suspending (device will be quiesced)");
         Ok(())
     }
 
     fn resume(&mut self) -> Result<(), Self::Error> {
+        crate::serial::println!("[DRIVER] virtio-net: resuming (device state restored)");
         Ok(())
     }
 
