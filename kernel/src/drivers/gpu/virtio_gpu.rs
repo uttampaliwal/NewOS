@@ -5,7 +5,10 @@
 
 extern crate alloc;
 
+use alloc::collections::VecDeque;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 /// VirtIO-GPU controlq request types.
 #[repr(u32)]
@@ -170,6 +173,12 @@ pub struct VirtioGpuDriver {
     display_height: u32,
     /// Currently attached scanout resource.
     scanout_resource: Option<u32>,
+    /// Double-buffer state.
+    double_buffer: DoubleBuffer,
+    /// Pending VBlank events.
+    vblank_events: VecDeque<VBlankEvent>,
+    /// Flip completion callback flag.
+    flip_complete: Option<Arc<AtomicBool>>,
 }
 
 impl Default for VirtioGpuDriver {
@@ -186,6 +195,9 @@ impl VirtioGpuDriver {
             display_width: 0,
             display_height: 0,
             scanout_resource: None,
+            double_buffer: DoubleBuffer::new(60),
+            vblank_events: VecDeque::new(),
+            flip_complete: None,
         }
     }
 
@@ -369,6 +381,89 @@ impl VirtioGpuDriver {
     pub fn resources(&self) -> &[GpuResource] {
         &self.resources
     }
+
+    /// Initialize double-buffering with front and back resources.
+    pub fn init_double_buffer(&mut self, front_id: u32, back_id: u32) {
+        self.double_buffer.front = Some(front_id);
+        self.double_buffer.back = Some(back_id);
+        crate::serial::println!(
+            "[GPU] Double-buffer initialized: front={}, back={}",
+            front_id,
+            back_id
+        );
+    }
+
+    /// Perform a page flip (swap front/back).
+    pub fn page_flip(&mut self) -> Result<(), GpuError> {
+        if self.double_buffer.flip_pending {
+            return Err(GpuError::FlipPending);
+        }
+        self.double_buffer.swap();
+        self.double_buffer.flip_pending = true;
+
+        // Signal flip complete
+        if let Some(flag) = &self.flip_complete {
+            flag.store(true, Ordering::Release);
+        }
+
+        crate::serial::println!(
+            "[GPU] Page flip: frame={}, front={:?}",
+            self.double_buffer.frame_count,
+            self.double_buffer.front
+        );
+
+        Ok(())
+    }
+
+    /// Get the back buffer resource ID for rendering.
+    pub fn back_buffer(&self) -> Option<u32> {
+        self.double_buffer.back
+    }
+
+    /// Get the front buffer resource ID (currently displayed).
+    pub fn front_buffer(&self) -> Option<u32> {
+        self.double_buffer.front
+    }
+
+    /// Wait for VBlank (poll-based).
+    pub fn wait_for_vblank(&mut self, current_timestamp_us: u64) -> Option<VBlankEvent> {
+        if self.double_buffer.check_vblank(current_timestamp_us) {
+            let event = VBlankEvent {
+                sequence: self.double_buffer.frame_count,
+                timestamp_us: current_timestamp_us,
+                frame_duration_us: self.double_buffer.target_interval_us,
+            };
+            self.vblank_events.push_back(event);
+            Some(event)
+        } else {
+            None
+        }
+    }
+
+    /// Get the target refresh rate.
+    pub fn refresh_rate(&self) -> u32 {
+        self.double_buffer.estimated_fps()
+    }
+
+    /// Set target refresh rate.
+    pub fn set_refresh_rate(&mut self, hz: u32) {
+        self.double_buffer = DoubleBuffer::new(hz);
+    }
+
+    /// Check if a flip is pending.
+    pub fn is_flip_pending(&self) -> bool {
+        self.double_buffer.flip_pending
+    }
+
+    /// Clear flip pending flag (called after flip completes).
+    pub fn clear_flip_pending(&mut self) {
+        self.double_buffer.flip_pending = false;
+    }
+
+    /// Get frame count.
+    pub fn frame_count(&self) -> u64 {
+        self.double_buffer.frame_count
+    }
 }
 
 /// GPU driver errors.
@@ -378,6 +473,77 @@ pub enum GpuError {
     InvalidScanout,
     UnsupportedFormat,
     OutOfMemory,
+    FlipPending,
+}
+
+/// Double-buffer state for tear-free rendering.
+#[derive(Debug, Clone)]
+pub struct DoubleBuffer {
+    /// Front buffer resource ID (currently displayed).
+    pub front: Option<u32>,
+    /// Back buffer resource ID (being rendered to).
+    pub back: Option<u32>,
+    /// Whether a flip is pending.
+    pub flip_pending: bool,
+    /// Frame counter for VBlank sync.
+    pub frame_count: u64,
+    /// Last VBlank timestamp (microseconds).
+    pub last_vblank_us: u64,
+    /// Target refresh interval in microseconds (e.g., 16666 for 60Hz).
+    pub target_interval_us: u64,
+}
+
+impl DoubleBuffer {
+    pub fn new(target_refresh_hz: u32) -> Self {
+        let interval = if target_refresh_hz > 0 {
+            1_000_000 / target_refresh_hz as u64
+        } else {
+            16_666 // Default 60Hz
+        };
+        Self {
+            front: None,
+            back: None,
+            flip_pending: false,
+            frame_count: 0,
+            last_vblank_us: 0,
+            target_interval_us: interval,
+        }
+    }
+
+    /// Swap front and back buffers (page flip).
+    pub fn swap(&mut self) {
+        core::mem::swap(&mut self.front, &mut self.back);
+        self.frame_count += 1;
+    }
+
+    /// Check if a VBlank has occurred based on timestamp.
+    pub fn check_vblank(&mut self, current_us: u64) -> bool {
+        if current_us.saturating_sub(self.last_vblank_us) >= self.target_interval_us {
+            self.last_vblank_us = current_us;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Get current frame rate (approximate, based on recent frames).
+    pub fn estimated_fps(&self) -> u32 {
+        if self.target_interval_us == 0 {
+            return 0;
+        }
+        (1_000_000 / self.target_interval_us) as u32
+    }
+}
+
+/// VBlank event for frame synchronization.
+#[derive(Debug, Clone, Copy)]
+pub struct VBlankEvent {
+    /// VBlank sequence number.
+    pub sequence: u64,
+    /// Timestamp in microseconds since boot.
+    pub timestamp_us: u64,
+    /// Duration of the previous frame in microseconds.
+    pub frame_duration_us: u64,
 }
 
 #[cfg(test)]
@@ -469,5 +635,67 @@ mod tests {
         assert_eq!(r2, 2);
         assert_eq!(r3, 3);
         assert_eq!(gpu.resources().len(), 3);
+    }
+
+    #[test]
+    fn test_double_buffer_swap() {
+        setup();
+        let mut gpu = VirtioGpuDriver::new();
+        let r1 = gpu.create_resource_2d(1920, 1080, formats::DRM_FORMAT_XRGB8888);
+        let r2 = gpu.create_resource_2d(1920, 1080, formats::DRM_FORMAT_XRGB8888);
+        gpu.init_double_buffer(r1, r2);
+
+        assert_eq!(gpu.front_buffer(), Some(r1));
+        assert_eq!(gpu.back_buffer(), Some(r2));
+
+        gpu.page_flip().unwrap();
+        assert_eq!(gpu.front_buffer(), Some(r2));
+        assert_eq!(gpu.back_buffer(), Some(r1));
+        assert_eq!(gpu.frame_count(), 1);
+    }
+
+    #[test]
+    fn test_vblank_detection() {
+        setup();
+        let mut gpu = VirtioGpuDriver::new();
+        gpu.set_refresh_rate(60); // 16666us interval
+
+        // At time 0, no VBlank has elapsed since last_vblank_us starts at 0
+        let event1 = gpu.wait_for_vblank(0);
+        assert!(event1.is_none());
+
+        // 10ms later — no VBlank yet (interval is ~16.67ms)
+        let event2 = gpu.wait_for_vblank(10_000);
+        assert!(event2.is_none());
+
+        // 17ms later — VBlank should occur
+        let event3 = gpu.wait_for_vblank(17_000);
+        assert!(event3.is_some());
+    }
+
+    #[test]
+    fn test_flip_pending() {
+        setup();
+        let mut gpu = VirtioGpuDriver::new();
+        let r1 = gpu.create_resource_2d(100, 100, formats::DRM_FORMAT_XRGB8888);
+        let r2 = gpu.create_resource_2d(100, 100, formats::DRM_FORMAT_XRGB8888);
+        gpu.init_double_buffer(r1, r2);
+
+        gpu.page_flip().unwrap();
+        assert!(gpu.is_flip_pending());
+
+        // Second flip should fail
+        assert_eq!(gpu.page_flip(), Err(GpuError::FlipPending));
+
+        gpu.clear_flip_pending();
+        assert!(!gpu.is_flip_pending());
+    }
+
+    #[test]
+    fn test_refresh_rate() {
+        setup();
+        let mut gpu = VirtioGpuDriver::new();
+        gpu.set_refresh_rate(144);
+        assert_eq!(gpu.refresh_rate(), 144);
     }
 }

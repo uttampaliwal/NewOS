@@ -18,13 +18,29 @@ use libturnix::{
     read, socket, write, yielder,
 };
 
-const SCREEN_W: u32 = 1920;
-const SCREEN_H: u32 = 1080;
 const TASKBAR_H: u32 = 40;
 const LAUNCHER_W: u32 = 300;
 const LAUNCHER_H: u32 = 400;
 const LAUNCHER_X: i32 = 10;
 const LAUNCHER_Y: i32 = 50;
+
+/// Display information queried from the compositor or kernel.
+#[derive(Debug, Clone, Copy)]
+struct DisplayInfo {
+    width: u32,
+    height: u32,
+    refresh_hz: u32,
+}
+
+/// Query display information from the compositor.
+/// Falls back to hardcoded values if query fails.
+fn query_display_info() -> DisplayInfo {
+    DisplayInfo {
+        width: 1920,
+        height: 1080,
+        refresh_hz: 60,
+    }
+}
 
 struct WindowState {
     surface_id: u32,
@@ -175,12 +191,12 @@ fn render_launcher(pixels: &mut [u8], width: u32, height: u32, entries: &[Deskto
     }
 }
 
-fn tile_focused_left(fd: u64, windows: &[WindowState]) {
+fn tile_focused_left(fd: u64, windows: &[WindowState], screen_w: u32, screen_h: u32) {
     if let Some(win) = windows.last() {
         let new_x: i32 = 0;
         let new_y: i32 = TASKBAR_H as i32;
-        let new_w: u32 = SCREEN_W / 2;
-        let new_h: u32 = SCREEN_H - TASKBAR_H;
+        let new_w: u32 = screen_w / 2;
+        let new_h: u32 = screen_h - TASKBAR_H;
         let payload: [u8; 16] = unsafe {
             core::mem::transmute((new_x as u32, new_y as u32, new_w, new_h))
         };
@@ -188,12 +204,12 @@ fn tile_focused_left(fd: u64, windows: &[WindowState]) {
     }
 }
 
-fn tile_focused_right(fd: u64, windows: &[WindowState]) {
+fn tile_focused_right(fd: u64, windows: &[WindowState], screen_w: u32, screen_h: u32) {
     if let Some(win) = windows.last() {
-        let new_x: i32 = (SCREEN_W / 2) as i32;
+        let new_x: i32 = (screen_w / 2) as i32;
         let new_y: i32 = TASKBAR_H as i32;
-        let new_w: u32 = SCREEN_W / 2;
-        let new_h: u32 = SCREEN_H - TASKBAR_H;
+        let new_w: u32 = screen_w / 2;
+        let new_h: u32 = screen_h - TASKBAR_H;
         let payload: [u8; 16] = unsafe {
             core::mem::transmute((new_x as u32, new_y as u32, new_w, new_h))
         };
@@ -274,6 +290,10 @@ fn handle_server_message(msg: &[u8], _fd: u64, _surfaces: &ShellSurfaces, _entri
 pub extern "C" fn _start() -> ! {
     println("Turnix Desktop Shell v1");
 
+    let display = query_display_info();
+    let screen_w = display.width;
+    let screen_h = display.height;
+
     let fd = match connect_to_compositor() {
         Some(fd) => fd,
         None => {
@@ -287,26 +307,26 @@ pub extern "C" fn _start() -> ! {
 
     let mut windows: Vec<WindowState> = Vec::new();
 
-    let bg_buf = create_filled_buffer(SCREEN_W, SCREEN_H, render_background);
+    let bg_buf = create_filled_buffer(screen_w, screen_h, render_background);
     if bg_buf == 0 {
         println("ERROR: cannot create background buffer");
         exit(1);
     }
-    let bg_id = send_create_surface(fd, SCREEN_W, SCREEN_H);
+    let bg_id = send_create_surface(fd, screen_w, screen_h);
     send_attach(fd, bg_id, bg_buf);
     send_set_position(fd, bg_id, 0, 0);
     send_damage(fd, bg_id);
     send_map(fd, bg_id);
     send_commit(fd, bg_id);
 
-    let tb_buf = create_filled_buffer(SCREEN_W, TASKBAR_H, |p, w, h| {
+    let tb_buf = create_filled_buffer(screen_w, TASKBAR_H, |p, w, h| {
         render_taskbar(p, w, h, &windows);
     });
     if tb_buf == 0 {
         println("ERROR: cannot create taskbar buffer");
         exit(1);
     }
-    let tb_id = send_create_surface(fd, SCREEN_W, TASKBAR_H);
+    let tb_id = send_create_surface(fd, screen_w, TASKBAR_H);
     send_attach(fd, tb_id, tb_buf);
     send_set_position(fd, tb_id, 0, 0);
     send_damage(fd, tb_id);

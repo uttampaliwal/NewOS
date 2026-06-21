@@ -176,6 +176,117 @@ struct ConnectionState {
 }
 
 // ---------------------------------------------------------------------------
+// ServiceCredential
+// ---------------------------------------------------------------------------
+
+/// Credential presented by a service when connecting to the broker.
+#[derive(Debug, Clone)]
+pub struct ServiceCredential {
+    /// Service name (e.g., "org.turnix.NetworkManager").
+    pub name: String,
+    /// Process ID of the connecting service.
+    pub pid: u64,
+    /// UID of the connecting process.
+    pub uid: u32,
+    /// Optional shared secret (for production use).
+    pub secret: Option<[u8; 32]>,
+}
+
+impl ServiceCredential {
+    /// Serialize credential to bytes for IPC.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&(self.name.len() as u32).to_le_bytes());
+        buf.extend_from_slice(self.name.as_bytes());
+        buf.extend_from_slice(&self.pid.to_le_bytes());
+        buf.extend_from_slice(&self.uid.to_le_bytes());
+        match &self.secret {
+            Some(s) => {
+                buf.push(1);
+                buf.extend_from_slice(s);
+            }
+            None => buf.push(0),
+        }
+        buf
+    }
+
+    /// Deserialize credential from bytes.
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        if data.len() < 4 {
+            return None;
+        }
+        let name_len = u32::from_le_bytes(data[0..4].try_into().ok()?) as usize;
+        if data.len() < 4 + name_len + 8 + 4 + 1 {
+            return None;
+        }
+        let name = core::str::from_utf8(&data[4..4 + name_len])
+            .ok()?
+            .to_string();
+        let offset = 4 + name_len;
+        let pid = u64::from_le_bytes(data[offset..offset + 8].try_into().ok()?);
+        let offset = offset + 8;
+        let uid = u32::from_le_bytes(data[offset..offset + 4].try_into().ok()?);
+        let offset = offset + 4;
+        let has_secret = data[offset] != 0;
+        let secret = if has_secret && data.len() >= offset + 1 + 32 {
+            let mut s = [0u8; 32];
+            s.copy_from_slice(&data[offset + 1..offset + 33]);
+            Some(s)
+        } else {
+            None
+        };
+        Some(Self {
+            name,
+            pid,
+            uid,
+            secret,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AccessControlEntry
+// ---------------------------------------------------------------------------
+
+/// Access control entry for an interface.
+#[derive(Debug, Clone)]
+pub struct AccessControlEntry {
+    /// Interface name pattern (supports wildcards, e.g., "org.turnix.*").
+    pub interface_pattern: String,
+    /// Allowed method (or "*" for all methods).
+    pub method_pattern: String,
+    /// Allowed caller UIDs (empty = all allowed).
+    pub allowed_uids: Vec<u32>,
+    /// Denied caller UIDs.
+    pub denied_uids: Vec<u32>,
+}
+
+impl AccessControlEntry {
+    /// Check if this ACE allows the given call.
+    pub fn allows(&self, interface: &str, method: &str, uid: u32) -> bool {
+        // Check interface pattern
+        if self.interface_pattern == "*"
+            || interface.starts_with(self.interface_pattern.trim_end_matches('*'))
+        {
+        } else {
+            return false;
+        }
+        // Check method pattern
+        if self.method_pattern != "*" && self.method_pattern != method {
+            return false;
+        }
+        // Check UID
+        if !self.denied_uids.is_empty() && self.denied_uids.contains(&uid) {
+            return false;
+        }
+        if !self.allowed_uids.is_empty() && !self.allowed_uids.contains(&uid) {
+            return false;
+        }
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Broker
 // ---------------------------------------------------------------------------
 
@@ -191,17 +302,94 @@ pub struct Broker {
     subscribers: HashMap<String, Vec<u64>>,
     /// Pending method calls: call_id → caller_connection_id
     pending_calls: HashMap<u64, u64>,
+    /// Authenticated service credentials (connection_id → credential).
+    authenticated: HashMap<u64, ServiceCredential>,
+    /// Access control rules.
+    acl: Vec<AccessControlEntry>,
+    /// Require authentication for all connections.
+    require_auth: bool,
 }
 
 impl Broker {
-    pub fn new() -> Self {
+    pub fn new(require_auth: bool) -> Self {
         Self {
             next_conn_id: 1,
             registry: HashMap::new(),
             connections: HashMap::new(),
             subscribers: HashMap::new(),
             pending_calls: HashMap::new(),
+            authenticated: HashMap::new(),
+            acl: Vec::new(),
+            require_auth,
         }
+    }
+
+    /// Add an access control rule.
+    pub fn add_acl(&mut self, ace: AccessControlEntry) {
+        self.acl.push(ace);
+    }
+
+    /// Authenticate a connection with credentials.
+    pub fn authenticate(&mut self, connection_id: u64, credential: ServiceCredential) -> bool {
+        // Basic validation
+        if credential.name.is_empty() {
+            return false;
+        }
+
+        // Check ACLs
+        for ace in &self.acl {
+            if !ace.denied_uids.is_empty() && ace.denied_uids.contains(&credential.uid) {
+                eprintln!(
+                    "ipc-broker: auth denied for '{}' (uid={}) by ACL",
+                    credential.name, credential.uid
+                );
+                return false;
+            }
+        }
+
+        eprintln!(
+            "ipc-broker: authenticated '{}' (pid={}, uid={})",
+            credential.name, credential.pid, credential.uid
+        );
+        self.authenticated.insert(connection_id, credential);
+        true
+    }
+
+    /// Check if a connection is authenticated.
+    pub fn is_authenticated(&self, connection_id: u64) -> bool {
+        !self.require_auth || self.authenticated.contains_key(&connection_id)
+    }
+
+    /// Check if a connection can call a specific method.
+    pub fn check_access(&self, connection_id: u64, interface: &str, method: &str) -> bool {
+        if !self.require_auth {
+            return true;
+        }
+        let credential = match self.authenticated.get(&connection_id) {
+            Some(c) => c,
+            None => return false,
+        };
+
+        // Check ACL rules
+        for ace in &self.acl {
+            if ace.allows(interface, method, credential.uid) {
+                return true;
+            }
+        }
+
+        // No explicit ACL — check if there are any ACLs at all
+        // If no ACLs, allow all authenticated connections
+        self.acl.is_empty()
+    }
+
+    /// Get the credential for a connection.
+    pub fn get_credential(&self, connection_id: u64) -> Option<&ServiceCredential> {
+        self.authenticated.get(&connection_id)
+    }
+
+    /// Remove authentication when a connection disconnects.
+    pub fn remove_authentication(&mut self, connection_id: u64) {
+        self.authenticated.remove(&connection_id);
     }
 
     /// Accept a new connection via the given transport.
@@ -382,7 +570,7 @@ impl Broker {
 
 impl Default for Broker {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 
@@ -403,7 +591,7 @@ mod tests {
 
     #[test]
     fn test_service_registration_and_method_call() {
-        let mut broker = Broker::new();
+        let mut broker = Broker::new(false);
 
         // Service connects
         let svc_id = broker.accept(None);
@@ -443,7 +631,7 @@ mod tests {
 
     #[test]
     fn test_method_call_unregistered_service() {
-        let mut broker = Broker::new();
+        let mut broker = Broker::new(false);
         let client_id = broker.accept(None);
 
         let msg = IpcMessage::MethodCall {
@@ -458,7 +646,7 @@ mod tests {
 
     #[test]
     fn test_method_call_unknown_method() {
-        let mut broker = Broker::new();
+        let mut broker = Broker::new(false);
         let svc_id = broker.accept(None);
         broker
             .register_service(svc_id, make_service_registration("com.test.Foo", &["bar"]))
@@ -477,7 +665,7 @@ mod tests {
 
     #[test]
     fn test_method_return_unknown_call_id() {
-        let mut broker = Broker::new();
+        let mut broker = Broker::new(false);
         let svc_id = broker.accept(None);
 
         let reply = IpcMessage::MethodReturn {
@@ -490,7 +678,7 @@ mod tests {
 
     #[test]
     fn test_signal_broadcast() {
-        let mut broker = Broker::new();
+        let mut broker = Broker::new(false);
         let svc_id = broker.accept(None);
         broker
             .register_service(svc_id, make_service_registration("com.test.Events", &[]))
@@ -520,7 +708,7 @@ mod tests {
 
     #[test]
     fn test_disconnect_cleans_up_registry() {
-        let mut broker = Broker::new();
+        let mut broker = Broker::new(false);
         let svc_id = broker.accept(None);
         broker
             .register_service(svc_id, make_service_registration("com.test.Svc", &["do"]))
@@ -534,7 +722,7 @@ mod tests {
 
     #[test]
     fn test_property_get_forwarding() {
-        let mut broker = Broker::new();
+        let mut broker = Broker::new(false);
         let svc_id = broker.accept(None);
         broker
             .register_service(svc_id, make_service_registration("com.test.Config", &[]))
@@ -559,7 +747,7 @@ mod tests {
 
     #[test]
     fn test_property_set_forwarding() {
-        let mut broker = Broker::new();
+        let mut broker = Broker::new(false);
         let svc_id = broker.accept(None);
         broker
             .register_service(svc_id, make_service_registration("com.test.Config", &[]))
@@ -595,7 +783,7 @@ mod tests {
 
     #[test]
     fn test_multiple_registrations() {
-        let mut broker = Broker::new();
+        let mut broker = Broker::new(false);
 
         let svc1 = broker.accept(None);
         broker
@@ -626,5 +814,134 @@ mod tests {
         };
         let outputs = broker.handle_message(client, msg_b).unwrap();
         assert_eq!(outputs[0].0, svc2);
+    }
+
+    // -----------------------------------------------------------------------
+    // Authentication tests (GNET-4)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_credential_serialize_roundtrip() {
+        let cred = ServiceCredential {
+            name: "org.turnix.Test".into(),
+            pid: 1234,
+            uid: 1000,
+            secret: Some([0xAB; 32]),
+        };
+        let bytes = cred.to_bytes();
+        let parsed = ServiceCredential::from_bytes(&bytes).unwrap();
+        assert_eq!(parsed.name, "org.turnix.Test");
+        assert_eq!(parsed.pid, 1234);
+        assert_eq!(parsed.uid, 1000);
+        assert_eq!(parsed.secret, Some([0xAB; 32]));
+    }
+
+    #[test]
+    fn test_credential_no_secret() {
+        let cred = ServiceCredential {
+            name: "svc".into(),
+            pid: 1,
+            uid: 0,
+            secret: None,
+        };
+        let bytes = cred.to_bytes();
+        let parsed = ServiceCredential::from_bytes(&bytes).unwrap();
+        assert!(parsed.secret.is_none());
+    }
+
+    #[test]
+    fn test_acl_allows() {
+        let ace = AccessControlEntry {
+            interface_pattern: "org.turnix.*".into(),
+            method_pattern: "*".into(),
+            allowed_uids: vec![1000, 1001],
+            denied_uids: vec![],
+        };
+        assert!(ace.allows("org.turnix.Network", "GetStatus", 1000));
+        assert!(ace.allows("org.turnix.Network", "SetIP", 1001));
+        assert!(!ace.allows("org.turnix.Network", "GetStatus", 999));
+    }
+
+    #[test]
+    fn test_acl_denied_uid() {
+        let ace = AccessControlEntry {
+            interface_pattern: "*".into(),
+            method_pattern: "*".into(),
+            allowed_uids: vec![],
+            denied_uids: vec![0],
+        };
+        assert!(!ace.allows("anything", "anything", 0));
+        assert!(ace.allows("anything", "anything", 1000));
+    }
+
+    #[test]
+    fn test_broker_authenticate() {
+        let mut broker = Broker::new(true);
+        let cred = ServiceCredential {
+            name: "test".into(),
+            pid: 1,
+            uid: 1000,
+            secret: None,
+        };
+        assert!(broker.authenticate(1, cred));
+        assert!(broker.is_authenticated(1));
+        assert!(!broker.is_authenticated(2));
+    }
+
+    #[test]
+    fn test_broker_auth_empty_name() {
+        let mut broker = Broker::new(true);
+        let cred = ServiceCredential {
+            name: "".into(),
+            pid: 1,
+            uid: 1000,
+            secret: None,
+        };
+        assert!(!broker.authenticate(1, cred));
+    }
+
+    #[test]
+    fn test_broker_access_check() {
+        let mut broker = Broker::new(true);
+        broker.add_acl(AccessControlEntry {
+            interface_pattern: "org.turnix.Network".into(),
+            method_pattern: "GetStatus".into(),
+            allowed_uids: vec![1000],
+            denied_uids: vec![],
+        });
+
+        let cred = ServiceCredential {
+            name: "svc".into(),
+            pid: 1,
+            uid: 1000,
+            secret: None,
+        };
+        broker.authenticate(1, cred);
+
+        assert!(broker.check_access(1, "org.turnix.Network", "GetStatus"));
+        assert!(!broker.check_access(1, "org.turnix.Network", "SetIP"));
+        assert!(!broker.check_access(2, "org.turnix.Network", "GetStatus"));
+    }
+
+    #[test]
+    fn test_broker_no_auth_required() {
+        let broker = Broker::new(false);
+        assert!(broker.is_authenticated(1));
+        assert!(broker.check_access(1, "anything", "anything"));
+    }
+
+    #[test]
+    fn test_broker_remove_auth() {
+        let mut broker = Broker::new(true);
+        let cred = ServiceCredential {
+            name: "svc".into(),
+            pid: 1,
+            uid: 0,
+            secret: None,
+        };
+        broker.authenticate(1, cred);
+        assert!(broker.is_authenticated(1));
+        broker.remove_authentication(1);
+        assert!(!broker.is_authenticated(1));
     }
 }

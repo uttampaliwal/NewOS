@@ -14,7 +14,7 @@ fn main() {
         }
     };
 
-    let mut broker = Broker::new();
+    let mut broker = Broker::new(false);
     let mut next_conn_id = 1u64;
 
     // Accept connections sequentially (simple approach; in production a

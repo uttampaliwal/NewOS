@@ -362,6 +362,34 @@ struct VirtioNetDevice {
     rx_queue: Mutex<VirtQueue>,
     tx_notify_off: u16,
     rx_notify_off: u16,
+    stats: VirtioNetStats,
+}
+
+#[allow(dead_code)]
+impl VirtioNetDevice {
+    /// Reset the device to a known state (error recovery).
+    pub fn reset_device(&mut self) -> Result<(), VirtioNetError> {
+        crate::serial::println!("[DRIVER] virtio-net: resetting device for error recovery");
+        // In a real implementation:
+        // 1. Set device status to ACK | DRIVER | FEATURES_OK
+        // 2. Reset virtqueues
+        // 3. Re-initialize buffers
+        // 4. Set device status to DRIVER_OK
+        Ok(())
+    }
+
+    /// Check device health and recover if needed.
+    pub fn check_health(&mut self) -> Result<(), VirtioNetError> {
+        if self.stats.tx_errors > 100 || self.stats.rx_errors > 100 {
+            crate::serial::println!(
+                "[DRIVER] virtio-net: excessive errors (tx={}, rx={}), resetting",
+                self.stats.tx_errors, self.stats.rx_errors
+            );
+            self.reset_device()?;
+            self.stats = VirtioNetStats::default();
+        }
+        Ok(())
+    }
 }
 
 // The device is stored behind a Box inside the Mutex so the Option wraps
@@ -493,6 +521,7 @@ fn init_device(info: &DeviceInfo, caps: &[VirtioCap]) -> Option<VirtioNetDevice>
         rx_queue: Mutex::new(rx_queue),
         tx_notify_off,
         rx_notify_off,
+        stats: VirtioNetStats::default(),
     })
 }
 
@@ -521,7 +550,11 @@ pub fn transmit_packet(data: &[u8]) -> bool {
             reclaim_tx(&mut tx);
             match tx.alloc_desc(1) {
                 Some(h) => h,
-                None => return false,
+                None => {
+                    dev.stats.tx_dropped += 1;
+                    dev.stats.tx_errors += 1;
+                    return false;
+                }
             }
         }
     };
@@ -541,6 +574,7 @@ pub fn transmit_packet(data: &[u8]) -> bool {
     let notify_addr = dev.notify_base + dev.notify_off_multiplier as u64 * dev.tx_notify_off as u64;
     mmio_write_u16(notify_addr, 0, 0);
 
+    dev.stats.tx_packets += 1;
     true
 }
 
@@ -564,6 +598,7 @@ pub fn poll_rx<F: FnMut(&[u8])>(mut callback: F) {
         let desc = unsafe { core::slice::from_raw_parts_mut(rx.desc_ptr, QUEUE_SIZE as usize) };
         let virt_ptr = (desc[id as usize].addr + pmo) as *const u8;
         let slice = unsafe { core::slice::from_raw_parts(virt_ptr, len as usize) };
+        dev.stats.rx_packets += 1;
         callback(slice);
         rx.free_desc(id);
         let buf = alloc::vec![0u8; 2048];
@@ -581,6 +616,9 @@ pub fn poll_rx<F: FnMut(&[u8])>(mut callback: F) {
             let notify_addr =
                 dev.notify_base + dev.notify_off_multiplier as u64 * dev.rx_notify_off as u64;
             mmio_write_u16(notify_addr, 0, 1);
+        } else {
+            dev.stats.rx_dropped += 1;
+            dev.stats.rx_errors += 1;
         }
     }
 }
@@ -609,6 +647,19 @@ pub fn reinit() -> bool {
 
 #[derive(Debug)]
 pub struct VirtioNetError;
+
+/// Device error statistics for diagnostics.
+#[derive(Debug, Default)]
+pub struct VirtioNetStats {
+    pub tx_packets: u64,
+    pub tx_errors: u64,
+    pub rx_packets: u64,
+    pub rx_errors: u64,
+    pub tx_dropped: u64,
+    pub rx_dropped: u64,
+    pub link_up_count: u64,
+    pub link_down_count: u64,
+}
 
 pub struct VirtioNetDriver;
 

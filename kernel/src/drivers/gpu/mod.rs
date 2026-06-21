@@ -7,6 +7,7 @@
 //! - Framebuffer mapping and permission enforcement for the Compositor process
 
 pub mod drm;
+pub mod edid;
 pub mod gbm;
 pub mod virtio_gpu;
 

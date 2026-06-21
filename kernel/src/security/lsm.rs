@@ -5,6 +5,7 @@
 //! capability checks.
 
 use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 use spin::Mutex;
@@ -16,6 +17,178 @@ use spin::Mutex;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LsmError {
     AccessDenied,
+}
+
+/// A security label for MAC policy enforcement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecurityLabel {
+    /// User field (e.g., "system_u", "unconfined_u").
+    pub user: String,
+    /// Role field (e.g., "system_r", "unconfined_r").
+    pub role: String,
+    /// Type/level field (e.g., "kernel_t", "unconfined_t", "s0:c0.c1023").
+    pub level: String,
+}
+
+impl SecurityLabel {
+    pub fn new(user: &str, role: &str, level: &str) -> Self {
+        Self {
+            user: String::from(user),
+            role: String::from(role),
+            level: String::from(level),
+        }
+    }
+
+    /// Default unconfined label.
+    pub fn unconfined() -> Self {
+        Self::new("unconfined_u", "unconfined_r", "unconfined_t")
+    }
+
+    /// Kernel label.
+    pub fn kernel() -> Self {
+        Self::new("system_u", "system_r", "kernel_t")
+    }
+
+    /// Check if this label dominates another (for MAC checks).
+    pub fn dominates(&self, other: &SecurityLabel) -> bool {
+        if self.user != other.user || self.role != other.role {
+            return false;
+        }
+        // Simplified level ordering for MAC checks.
+        fn level_priority(level: &str) -> u32 {
+            if level.contains("admin") {
+                3
+            } else if level.contains("user") {
+                2
+            } else {
+                1
+            }
+        }
+        level_priority(&self.level) >= level_priority(&other.level)
+    }
+
+    /// Serialize to string format "user:role:level".
+    pub fn as_string(&self) -> String {
+        alloc::format!("{}:{}:{}", self.user, self.role, self.level)
+    }
+
+    /// Parse from "user:role:level" string.
+    pub fn parse_label(s: &str) -> Option<Self> {
+        let parts: Vec<&str> = s.splitn(3, ':').collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        Some(Self::new(parts[0], parts[1], parts[2]))
+    }
+}
+
+/// MAC (Mandatory Access Control) hook trait.
+///
+/// Extends the base LSM hook with label-based access decisions.
+pub trait MacHook: LsmHook {
+    /// Check MAC access for a file operation.
+    fn mac_file_access(
+        &self,
+        subject: &SecurityLabel,
+        object: &SecurityLabel,
+        _requested: u32,
+    ) -> Result<(), LsmError> {
+        if subject.dominates(object) {
+            Ok(())
+        } else {
+            Err(LsmError::AccessDenied)
+        }
+    }
+
+    /// Check MAC access for a process operation.
+    fn mac_process_access(
+        &self,
+        subject: &SecurityLabel,
+        target: &SecurityLabel,
+    ) -> Result<(), LsmError> {
+        if subject.dominates(target) {
+            Ok(())
+        } else {
+            Err(LsmError::AccessDenied)
+        }
+    }
+
+    /// Transition labels on process creation (fork/exec).
+    fn mac_transition(
+        &self,
+        parent: &SecurityLabel,
+        _child: &SecurityLabel,
+    ) -> Result<SecurityLabel, LsmError> {
+        Ok(parent.clone())
+    }
+
+    /// Get the label for a new process.
+    fn mac_create_process(&self, parent: &SecurityLabel) -> SecurityLabel {
+        parent.clone()
+    }
+
+    /// Get the label for a new file.
+    fn mac_create_file(&self, creator: &SecurityLabel) -> SecurityLabel {
+        creator.clone()
+    }
+}
+
+/// Default MAC hook that enforces label-based access control.
+pub struct MacHookImpl {
+    enabled: bool,
+}
+
+impl Default for MacHookImpl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MacHookImpl {
+    pub fn new() -> Self {
+        Self { enabled: true }
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+}
+
+impl LsmHook for MacHookImpl {
+    fn file_open(&self, _path: &str, _flags: u32, _uid: u32, _gid: u32) -> Result<(), LsmError> {
+        Ok(())
+    }
+
+    fn process_create(&self, _parent_uid: u32, _parent_gid: u32) -> Result<(), LsmError> {
+        Ok(())
+    }
+
+    fn capability_check(&self, _cap: u32, _uid: u32, _gid: u32) -> Result<(), LsmError> {
+        Ok(())
+    }
+}
+
+impl MacHook for MacHookImpl {
+    fn mac_file_access(
+        &self,
+        subject: &SecurityLabel,
+        object: &SecurityLabel,
+        _requested: u32,
+    ) -> Result<(), LsmError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        if subject.dominates(object) {
+            Ok(())
+        } else {
+            crate::serial::println!(
+                "[LSM] MAC denied: {} cannot access {}",
+                subject.as_string(),
+                object.as_string()
+            );
+            Err(LsmError::AccessDenied)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -216,9 +389,10 @@ static LSM_STACK: Mutex<Option<LsmStack>> = Mutex::new(None);
 pub fn init() {
     let mut stack = LsmStack::new();
     stack.register(Box::new(DacHook::new()));
+    stack.register(Box::new(MacHookImpl::new()));
     *LSM_STACK.lock() = Some(stack);
     LSM_INITIALIZED.store(true, Ordering::Release);
-    crate::serial::println!("[LSM] Initialised with DAC hook");
+    crate::serial::println!("[LSM] Initialised with DAC + MAC hooks");
 }
 
 /// Return a reference to the global LSM stack (or a no-op fallback).
@@ -495,7 +669,10 @@ mod tests {
     #[test]
     fn test_dac_protected_fs_write_denied() {
         let hook = DacHook::new();
-        assert_eq!(hook.file_open("/proc/meminfo", 1, 1000, 1000), Err(LsmError::AccessDenied));
+        assert_eq!(
+            hook.file_open("/proc/meminfo", 1, 1000, 1000),
+            Err(LsmError::AccessDenied)
+        );
         assert!(hook.file_open("/proc/meminfo", 1, 0, 0).is_ok());
     }
 
@@ -509,8 +686,91 @@ mod tests {
     #[test]
     fn test_dac_net_privileged_port_denied() {
         let hook = DacHook::new();
-        assert_eq!(hook.net_connect("127.0.0.1:80", 1000, 1000), Err(LsmError::AccessDenied));
+        assert_eq!(
+            hook.net_connect("127.0.0.1:80", 1000, 1000),
+            Err(LsmError::AccessDenied)
+        );
         assert!(hook.net_connect("127.0.0.1:80", 0, 0).is_ok());
         assert!(hook.net_connect("127.0.0.1:8080", 1000, 1000).is_ok());
+    }
+
+    #[test]
+    fn test_security_label_new() {
+        let label = SecurityLabel::new("user_u", "user_r", "user_t");
+        assert_eq!(label.user, "user_u");
+        assert_eq!(label.role, "user_r");
+        assert_eq!(label.level, "user_t");
+    }
+
+    #[test]
+    fn test_security_label_unconfined() {
+        let label = SecurityLabel::unconfined();
+        assert_eq!(
+            label.as_string(),
+            "unconfined_u:unconfined_r:unconfined_t"
+        );
+    }
+
+    #[test]
+    fn test_security_label_dominates() {
+        let a = SecurityLabel::new("u", "r", "admin_t");
+        let b = SecurityLabel::new("u", "r", "user_t");
+        let c = SecurityLabel::new("u", "r", "admin_t");
+
+        assert!(a.dominates(&b)); // admin dominates user (same user/role/level check)
+        assert!(a.dominates(&c)); // same level dominates
+        assert!(!b.dominates(&a)); // user doesn't dominate admin
+    }
+
+    #[test]
+    fn test_security_label_from_str() {
+        let label = SecurityLabel::parse_label("u:r:admin_t").unwrap();
+        assert_eq!(label.user, "u");
+        assert_eq!(label.role, "r");
+        assert_eq!(label.level, "admin_t");
+    }
+
+    #[test]
+    fn test_security_label_bad_format() {
+        assert!(SecurityLabel::parse_label("no_colons").is_none());
+        assert!(SecurityLabel::parse_label("only:one").is_none());
+    }
+
+    #[test]
+    fn test_mac_file_access_allowed() {
+        let mac = MacHookImpl::new();
+        let subject = SecurityLabel::new("u", "r", "admin_t");
+        let object = SecurityLabel::new("u", "r", "user_t");
+        assert!(mac.mac_file_access(&subject, &object, 0).is_ok());
+    }
+
+    #[test]
+    fn test_mac_file_access_denied() {
+        let mac = MacHookImpl::new();
+        let subject = SecurityLabel::new("u", "r", "user_t");
+        let object = SecurityLabel::new("u", "r", "admin_t");
+        assert_eq!(
+            mac.mac_file_access(&subject, &object, 0),
+            Err(LsmError::AccessDenied)
+        );
+    }
+
+    #[test]
+    fn test_mac_disabled_allows_all() {
+        let mut mac = MacHookImpl::new();
+        mac.set_enabled(false);
+        let subject = SecurityLabel::new("u", "r", "user_t");
+        let object = SecurityLabel::new("u", "r", "admin_t");
+        assert!(mac.mac_file_access(&subject, &object, 0).is_ok());
+    }
+
+    #[test]
+    fn test_mac_transition() {
+        let mac = MacHookImpl::new();
+        let parent = SecurityLabel::new("u", "r", "parent_t");
+        let child = mac
+            .mac_transition(&parent, &SecurityLabel::unconfined())
+            .unwrap();
+        assert_eq!(child, parent); // Child inherits parent label
     }
 }
