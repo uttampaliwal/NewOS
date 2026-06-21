@@ -1,49 +1,31 @@
-//! Minimal client-server protocol for the Turnix Wayland compositor.
-//!
-//! Clients connect via a Unix socket at `/tmp/wayland-0` and exchange
-//! fixed-size messages. This module defines the message format and
-//! dispatches incoming messages to the compositor state.
-
 use libturnix::read;
 
 use crate::state::TurnixCompositor;
+
+pub const SOCKET_PATH: &str = "/tmp/wayland-0";
 
 /// Opcodes for client-to-compositor messages.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ClientOpcode {
-    /// Create a new surface. Followed by SurfaceInfo payload.
     CreateSurface = 1,
-    /// Attach a GBM buffer to a surface.
     AttachBuffer = 2,
-    /// Mark a surface as damaged.
     Damage = 3,
-    /// Commit pending surface state.
     Commit = 4,
-    /// Set surface position on screen.
     SetPosition = 5,
-    /// Map (show) a surface.
     Map = 6,
-    /// Unmap (hide) a surface.
     Unmap = 7,
-    /// Request the compositor to shut down.
     Quit = 8,
 }
 
 /// Opcodes for compositor-to-client messages.
-#[allow(dead_code)]
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ServerOpcode {
-    /// Acknowledge a create-surface request.
     SurfaceCreated = 1,
-    /// Deliver a key event.
     KeyEvent = 2,
-    /// Deliver a pointer motion event.
     PointerMotion = 3,
-    /// Deliver a pointer button event.
     PointerButton = 4,
-    /// Error response.
     Error = 5,
 }
 
@@ -54,6 +36,16 @@ pub struct MessageHeader {
     pub opcode: u32,
     pub payload_len: u32,
     pub surface_id: u32,
+}
+
+impl MessageHeader {
+    pub const fn new(opcode: u32, payload_len: u32, surface_id: u32) -> Self {
+        Self { opcode, payload_len, surface_id }
+    }
+
+    pub fn to_bytes(&self) -> [u8; 12] {
+        unsafe { core::mem::transmute(*self) }
+    }
 }
 
 /// Payload for CreateSurface.
@@ -79,10 +71,42 @@ pub struct PositionInfo {
     pub y: i32,
 }
 
+/// Payload for KeyEvent server message.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KeyEventPayload {
+    pub key_code: u16,
+    pub state: u32,
+    pub _pad: u16,
+}
+
+/// Payload for PointerMotion server message.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PointerMotionPayload {
+    pub x: i32,
+    pub y: i32,
+}
+
+/// Payload for PointerButton server message.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PointerButtonPayload {
+    pub button: u32,
+    pub state: u32,
+}
+
+/// Write a server message (header + payload) to a client fd.
+pub fn send_server_message(fd: u64, header: &MessageHeader, payload: &[u8]) {
+    let hdr_bytes = header.to_bytes();
+    let mut msg = [0u8; 128];
+    msg[..12].copy_from_slice(&hdr_bytes);
+    let plen = payload.len().min(128 - 12);
+    msg[12..12 + plen].copy_from_slice(&payload[..plen]);
+    let _ = libturnix::write(fd, &msg[..12 + plen]);
+}
+
 /// Parse a raw client message and apply it to the compositor.
-///
-/// Returns `Some(opcode)` if the message was handled, or `None` if
-/// the connection should be closed (e.g. on protocol error).
 pub fn handle_client_message(
     compositor: &mut TurnixCompositor,
     client_pid: u64,
@@ -100,7 +124,15 @@ pub fn handle_client_message(
                 return None;
             }
             let info = unsafe { &*(buf.as_ptr().add(12) as *const SurfaceInfo) };
-            let _id = compositor.create_surface(client_pid, info.width, info.height);
+            let id = compositor.create_surface(client_pid, info.width, info.height);
+            if let Some(&fd) = compositor.client_fds.get(&client_pid) {
+                let ack = MessageHeader::new(
+                    ServerOpcode::SurfaceCreated as u32,
+                    0,
+                    id as u32,
+                );
+                send_server_message(fd, &ack, &[]);
+            }
             Some(ClientOpcode::CreateSurface)
         }
         op if op == ClientOpcode::AttachBuffer as u32 => {
@@ -116,7 +148,6 @@ pub fn handle_client_message(
             Some(ClientOpcode::Damage)
         }
         op if op == ClientOpcode::Commit as u32 => {
-            // Commit acknowledges the pending state is ready for display.
             compositor.composite_and_flip();
             Some(ClientOpcode::Commit)
         }
@@ -140,10 +171,7 @@ pub fn handle_client_message(
             compositor.running = false;
             Some(ClientOpcode::Quit)
         }
-        _ => {
-            // Unknown opcode — protocol error, close connection.
-            None
-        }
+        _ => None,
     }
 }
 
@@ -155,7 +183,7 @@ pub fn process_client_fd(compositor: &mut TurnixCompositor, client_pid: u64, fd:
             let data = &buf[..n as usize];
             handle_client_message(compositor, client_pid, data).is_some()
         }
-        Some(_) => true, // partial message, wait for more
-        None => false,   // connection closed or error
+        Some(_) => true,
+        None => false,
     }
 }

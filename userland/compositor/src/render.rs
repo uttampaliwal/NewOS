@@ -119,6 +119,7 @@ mod tests {
             buffer_id,
             damaged: true,
             mapped: true,
+            title: None,
         }
     }
 

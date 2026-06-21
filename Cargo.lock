@@ -485,6 +485,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop-shell"
+version = "0.1.0"
+dependencies = [
+ "libturnix",
+ "turnix-abi",
+]
+
+[[package]]
 name = "device-manager"
 version = "0.1.0"
 dependencies = [
