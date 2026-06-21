@@ -730,15 +730,15 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that the test harness correctly parses QEMU serial output for device discovery log lines
     - _Requirements: 45.3_
 
-- [ ] 58. Implement the security regression test suite
-  - [ ] 58.1 Create `kernel/tests/security_tests.rs` with security regression tests
+- [x] 58. Implement the security regression test suite
+  - [x] 58.1 Create `kernel/tests/security_tests.rs` with security regression tests
     - W^X test: boot QEMU, check serial log for `[WX] self-check: PASS`
     - ASLR test: boot QEMU 5 times, parse load addresses from serial log, assert all 5 are distinct
     - Seccomp test: run a test process that installs a seccomp filter blocking `write`, then attempts `write`; assert process is killed
     - Capability test: run a test process without `CAP_NET_ADMIN`, attempt to configure a network interface; assert `EPERM`
     - IMA test: boot QEMU, exec a binary, assert IMA measurement log contains one entry with the correct SHA-256
     - _Requirements: 45.4_
-  - [ ]* 58.2 Write unit tests for security test harness
+  - [x]* 58.2 Write unit tests for security test harness
     - Test that the ASLR address parser correctly extracts load addresses from serial log lines
     - _Requirements: 45.4_
 
