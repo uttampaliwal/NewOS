@@ -6,6 +6,7 @@ use crate::memory::vma::{VmaFlags, VmaProt};
 use crate::process::SignalAction;
 use crate::vfs::VFS;
 use alloc::sync::Arc;
+use turnix_abi::input::InputEvent;
 use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
 use x86_64::VirtAddr;
 
@@ -78,6 +79,7 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Capget => handle_capget(args),
         Syscall::Capset => handle_capset(args),
         Syscall::Prctl => handle_prctl(args),
+        Syscall::InputRead => handle_input_read(args),
     }
 }
 
@@ -1435,6 +1437,29 @@ fn handle_shutdown(_args: SyscallArgs) -> SyscallResult {
 fn handle_read_shutdown_signal(_args: SyscallArgs) -> SyscallResult {
     let pending = crate::acpi::take_init_shutdown_signal();
     SyscallResult::Success(if pending { 1 } else { 0 })
+}
+
+fn handle_input_read(args: SyscallArgs) -> SyscallResult {
+    // arg0: destination buffer pointer
+    // arg1: number of InputEvent slots (sizeof(InputEvent) = 8 bytes each)
+    let buf_ptr = args.arg0 as *mut InputEvent;
+    let slots = args.arg1 as usize;
+
+    if buf_ptr.is_null() || slots == 0 {
+        return SyscallResult::Success(0);
+    }
+
+    let mut count: u64 = 0;
+    for i in 0..slots {
+        if let Some(ev) = crate::input::read_event() {
+            unsafe { buf_ptr.add(i).write_unaligned(ev) };
+            count += 1;
+        } else {
+            break;
+        }
+    }
+
+    SyscallResult::Success(count)
 }
 
 pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallResult {

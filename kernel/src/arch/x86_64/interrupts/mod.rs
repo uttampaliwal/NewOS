@@ -261,22 +261,33 @@ lazy_static! {
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
     use crate::input::KEYBOARD;
-    use pc_keyboard::DecodedKey;
+    use pc_keyboard::{DecodedKey, KeyState};
+    use turnix_abi::input::{InputEvent, KEY_STATE_PRESSED, KEY_STATE_RELEASED};
     use x86_64::instructions::port::Port;
 
     let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
 
     let scancode: u8 = unsafe { port.read() };
-    if let Ok(Some(key_event)) = keyboard.add_byte(scancode)
-        && let Some(key) = keyboard.process_keyevent(key_event)
-    {
-        match key {
-            DecodedKey::Unicode(character) => {
-                crate::tty::TTY.lock().handle_input(character);
-                crate::input::add_char(character); // Keep for compatibility for now
+    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+        // Push the raw key event (press/release) for the normalized event bus.
+        let pressed = key_event.state == KeyState::Down;
+        let value = if pressed { KEY_STATE_PRESSED } else { KEY_STATE_RELEASED };
+        let keycode = crate::input::ps2_keycode_to_key(key_event.code);
+        crate::input::add_event(InputEvent::new(
+            turnix_abi::input::INPUT_KIND_KEY,
+            keycode,
+            value,
+        ));
+
+        if let Some(key) = keyboard.process_keyevent(key_event) {
+            match key {
+                DecodedKey::Unicode(character) => {
+                    crate::tty::TTY.lock().handle_input(character);
+                    crate::input::add_char(character);
+                }
+                DecodedKey::RawKey(_) => {}
             }
-            DecodedKey::RawKey(_) => {}
         }
     }
 

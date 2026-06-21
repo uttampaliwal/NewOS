@@ -805,26 +805,32 @@ pub fn reinit() -> bool {
 
 /// Deliver a USB HID keyboard input to the kernel input system.
 /// Called from the XHCI event handler when a HID interrupt transfer completes.
-pub fn deliver_hid_input(port_num: u8, keycode: u8, pressed: bool) {
-    if !pressed {
-        return; // We only process key press events for now
-    }
+pub fn deliver_hid_input(port_num: u8, usage: u8, pressed: bool) {
+    use turnix_abi::input::*;
 
-    // Map USB HID usage IDs to ASCII characters (basic US keyboard layout)
-    let c = hid_usage_to_ascii(keycode);
+    let value = if pressed { KEY_STATE_PRESSED } else { KEY_STATE_RELEASED };
+    let key = crate::input::hid_usage_to_keycode(usage);
+
+    // Normalized key event.
+    crate::input::add_event(InputEvent::new(INPUT_KIND_KEY, key, value));
+
+    // Also emit character events for compatible usages.
+    let c = hid_usage_to_ascii(usage);
     if let Some(ch) = c {
         crate::input::add_char(ch);
         crate::serial::println!(
-            "[XHCI:HID] Port {}: key 0x{:02x} -> '{}'",
+            "[XHCI:HID] Port {}: usage 0x{:02x} -> key={} char='{}'",
             port_num,
-            keycode,
+            usage,
+            key,
             ch,
         );
     } else {
         crate::serial::println!(
-            "[XHCI:HID] Port {}: unmapped key 0x{:02x}",
+            "[XHCI:HID] Port {}: usage 0x{:02x} -> key={}",
             port_num,
-            keycode,
+            usage,
+            key,
         );
     }
 }
