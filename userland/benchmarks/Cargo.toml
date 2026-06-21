@@ -1,0 +1,16 @@
+[package]
+name = "benchmarks"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "benchmarks"
+test = false
+required-features = ["host_bin"]
+
+[dependencies]
+turnix-abi = { path = "../../shared/abi" }
+libturnix = { path = "../libturnix" }
+
+[features]
+host_bin = []

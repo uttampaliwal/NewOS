@@ -134,39 +134,5 @@ jobs:
           targets: x86_64-unknown-none,x86_64-unknown-uefi
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
-      - name: Build image
-        run: cargo xtask build-uefi
-      - name: Boot QEMU and capture performance metrics
-        run: |
-          OVMF_CODE="/usr/share/edk2/x64/OVMF_CODE.4m.fd"
-          OVMF_VARS="/usr/share/edk2/x64/OVMF_VARS.4m.fd"
-          cp "$OVMF_VARS" /tmp/OVMF_VARS-perf.fd
-          timeout 30 qemu-system-x86_64 \
-            -cpu max -machine q35 -m 512M -monitor none -no-reboot \
-            -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
-            -drive if=pflash,format=raw,file=/tmp/OVMF_VARS-perf.fd \
-            -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-            -device qemu-xhci,id=xhci -device usb-kbd \
-            -display none -accel kvm -accel tcg \
-            -serial file:/tmp/ci-perf.log \
-            -drive format=raw,file=out/turnix.img,if=none,id=drv0 \
-            -device virtio-blk-pci,drive=drv0 || true
-          cat /tmp/ci-perf.log
-          echo "=== Performance benchmark results ==="
-          # Check for benchmark output markers
-          if grep -qi "fork.*lat\|fork.*ms\|fork.*time" /tmp/ci-perf.log; then
-            echo "[PASS] Fork latency benchmark output found"
-          else
-            echo "[INFO] Fork latency benchmark not yet implemented"
-          fi
-          if grep -qi "pipe.*throughput\|pipe.*mb\|pipe.*bandwidth" /tmp/ci-perf.log; then
-            echo "[PASS] Pipe throughput benchmark output found"
-          else
-            echo "[INFO] Pipe throughput benchmark not yet implemented"
-          fi
-          if grep -qi "page.*fault\|fault.*lat\|fault.*us" /tmp/ci-perf.log; then
-            echo "[PASS] Page fault latency benchmark output found"
-          else
-            echo "[INFO] Page fault latency benchmark not yet implemented"
-          fi
-          grep -q "\[BOOT OK\]" /tmp/ci-perf.log && echo "[PASS] Boot sentinel found" || echo "[FAIL] Boot sentinel not found"
+      - name: Run performance benchmarks
+        run: cargo xtask ci-bench

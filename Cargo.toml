@@ -21,6 +21,7 @@ members = [
     "userland/compositor",
     "userland/display-manager",
     "userland/desktop-shell",
+    "userland/benchmarks",
 ]
 default-members = [
     "shared/abi",

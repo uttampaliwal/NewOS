@@ -742,15 +742,15 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that the ASLR address parser correctly extracts load addresses from serial log lines
     - _Requirements: 45.4_
 
-- [ ] 59. Implement performance benchmarks
-  - [ ] 59.1 Create `userland/benchmarks/` as a new workspace crate with micro-benchmarks
+- [x] 59. Implement performance benchmarks
+  - [x] 59.1 Create `userland/benchmarks/` as a new workspace crate with micro-benchmarks
     - Fork latency benchmark: measure time from `fork` syscall to first instruction in child; assert < 10 ms on QEMU
     - Pipe throughput benchmark: write 1 GB through a pipe and measure throughput; assert > 100 MB/s
     - Page fault latency benchmark: access a fresh anonymous mmap page and measure fault-to-return latency; assert < 1 µs
     - Context switch latency benchmark: measure round-trip time for two processes yielding to each other
     - Report results as structured JSON to stdout for CI parsing
     - _Requirements: 45.5_
-  - [ ]* 59.2 Write unit tests for benchmark result parsing
+  - [x]* 59.2 Write unit tests for benchmark result parsing
     - Test that the JSON benchmark output parser correctly extracts latency and throughput values
     - _Requirements: 45.5_
 

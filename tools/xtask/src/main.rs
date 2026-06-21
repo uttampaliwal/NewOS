@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitStatus};
 
+mod bench;
 mod ci;
 mod driver_tests;
 mod security_tests;
@@ -21,6 +22,7 @@ enum Command {
     CiTest,
     CiDriverTests,
     CiSecurity,
+    CiBench,
 }
 
 fn main() {
@@ -39,6 +41,7 @@ fn main() {
         Command::CiTest => ci_test(&workspace_root),
         Command::CiDriverTests => ci_driver_tests(&workspace_root),
         Command::CiSecurity => ci_security(&workspace_root),
+        Command::CiBench => ci_bench(&workspace_root),
     }
 }
 
@@ -96,6 +99,7 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some("ci-test") => Command::CiTest,
         Some("ci-driver-tests") => Command::CiDriverTests,
         Some("ci-security") => Command::CiSecurity,
+        Some("ci-bench") => Command::CiBench,
         Some("uefi-loader") => {
             println!(
                 "`cargo xtask uefi-loader` is kept as a compatibility alias for `cargo xtask run-uefi`."
@@ -106,7 +110,7 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some(other) => {
             eprintln!("Unknown xtask command: {other}");
             eprintln!(
-                "Available commands: status, doctor, build-uefi, run-uefi, test-qemu, ci-boot, ci-test, ci-driver-tests, ci-security, uefi-loader"
+                "Available commands: status, doctor, build-uefi, run-uefi, test-qemu, ci-boot, ci-test, ci-driver-tests, ci-security, ci-bench, uefi-loader"
             );
             std::process::exit(2);
         }
@@ -674,6 +678,31 @@ fn ci_security(workspace_root: &Path) {
     } else {
         eprintln!(
             "CI security tests FAILED: {}/{} tests passed",
+            result.passed_count(),
+            result.total_count()
+        );
+        std::process::exit(1);
+    }
+}
+
+fn ci_bench(workspace_root: &Path) {
+    build_uefi(workspace_root);
+
+    eprintln!("CI benchmarks: booting QEMU and running performance tests");
+    let result = bench::run_bench_suite(workspace_root);
+    for r in &result.results {
+        let status = if r.passed { "PASS" } else { "FAIL" };
+        eprintln!("  [{status}] {}: {}", r.name, r.detail);
+    }
+    if result.all_passed() {
+        println!(
+            "CI benchmarks PASSED: {}/{} tests passed",
+            result.passed_count(),
+            result.total_count()
+        );
+    } else {
+        eprintln!(
+            "CI benchmarks FAILED: {}/{} tests passed",
             result.passed_count(),
             result.total_count()
         );
