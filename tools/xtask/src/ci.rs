@@ -404,7 +404,7 @@ pub fn parse_boot_result(output: &str) -> BootResult {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-fn normalize_path(path: &Path) -> String {
+pub fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
@@ -417,7 +417,7 @@ fn stage_ovmf(workspace_root: &Path, name: &str, source: &Option<PathBuf>) -> Op
     Some(dest)
 }
 
-fn find_ovmf_code() -> Option<PathBuf> {
+pub fn find_ovmf_code() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("TURNIX_OVMF_CODE") {
         let candidate = PathBuf::from(path);
         if candidate.exists() {
@@ -435,7 +435,7 @@ fn find_ovmf_code() -> Option<PathBuf> {
     candidates.into_iter().find(|path| path.exists())
 }
 
-fn find_ovmf_vars() -> Option<PathBuf> {
+pub fn find_ovmf_vars() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("TURNIX_OVMF_VARS") {
         let candidate = PathBuf::from(path);
         if candidate.exists() {

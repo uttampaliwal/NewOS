@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitStatus};
 
 mod ci;
+mod driver_tests;
 
 #[cfg(test)]
 mod ci_workflow_test;
@@ -17,6 +18,7 @@ enum Command {
     TestQemu,
     CiBoot,
     CiTest,
+    CiDriverTests,
 }
 
 fn main() {
@@ -33,13 +35,14 @@ fn main() {
         Command::TestQemu => test_qemu_smoke(&workspace_root),
         Command::CiBoot => ci_boot_gate(&workspace_root),
         Command::CiTest => ci_test(&workspace_root),
+        Command::CiDriverTests => ci_driver_tests(&workspace_root),
     }
 }
 
 fn print_status(workspace_root: &Path) {
     println!("Turnix workspace is ready at {}.", workspace_root.display());
     println!("Current milestone: stabilized higher-half kernel bring-up.");
-    println!("Useful commands: cargo xtask doctor, cargo xtask build-uefi, cargo xtask run-uefi, cargo xtask ci-boot, cargo xtask ci-test");
+    println!("Useful commands: cargo xtask doctor, cargo xtask build-uefi, cargo xtask run-uefi, cargo xtask ci-boot, cargo xtask ci-test, cargo xtask ci-driver-tests");
     println!("Compatibility alias: cargo xtask uefi-loader");
 }
 
@@ -88,6 +91,7 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some("test-qemu") => Command::TestQemu,
         Some("ci-boot") => Command::CiBoot,
         Some("ci-test") => Command::CiTest,
+        Some("ci-driver-tests") => Command::CiDriverTests,
         Some("uefi-loader") => {
             println!(
                 "`cargo xtask uefi-loader` is kept as a compatibility alias for `cargo xtask run-uefi`."
@@ -98,7 +102,7 @@ fn parse_command(raw: Option<&str>) -> Command {
         Some(other) => {
             eprintln!("Unknown xtask command: {other}");
             eprintln!(
-                "Available commands: status, doctor, build-uefi, run-uefi, test-qemu, ci-boot, ci-test, uefi-loader"
+                "Available commands: status, doctor, build-uefi, run-uefi, test-qemu, ci-boot, ci-test, ci-driver-tests, uefi-loader"
             );
             std::process::exit(2);
         }
@@ -616,6 +620,31 @@ fn ci_test(workspace_root: &Path) {
     } else {
         eprintln!(
             "CI test suite FAILED: {}/{} tests passed",
+            result.passed_count(),
+            result.total_count()
+        );
+        std::process::exit(1);
+    }
+}
+
+fn ci_driver_tests(workspace_root: &Path) {
+    build_uefi(workspace_root);
+
+    eprintln!("CI driver tests: booting QEMU with device passthrough");
+    let result = driver_tests::run_driver_test_suite(workspace_root);
+    for r in &result.results {
+        let status = if r.passed { "PASS" } else { "FAIL" };
+        eprintln!("  [{status}] {}: {}", r.name, r.detail);
+    }
+    if result.all_passed() {
+        println!(
+            "CI driver tests PASSED: {}/{} tests passed",
+            result.passed_count(),
+            result.total_count()
+        );
+    } else {
+        eprintln!(
+            "CI driver tests FAILED: {}/{} tests passed",
             result.passed_count(),
             result.total_count()
         );

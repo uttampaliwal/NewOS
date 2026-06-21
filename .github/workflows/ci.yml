@@ -90,32 +90,8 @@ jobs:
           targets: x86_64-unknown-none,x86_64-unknown-uefi
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
-      - name: Build and boot QEMU for driver verification
-        run: cargo xtask build-uefi
-      - name: Verify driver enumeration from serial log
-        run: |
-          OVMF_CODE="/usr/share/edk2/x64/OVMF_CODE.4m.fd"
-          OVMF_VARS="/usr/share/edk2/x64/OVMF_VARS.4m.fd"
-          cp "$OVMF_VARS" /tmp/OVMF_VARS.fd
-          timeout 30 qemu-system-x86_64 \
-            -cpu max -machine q35 -m 512M -monitor none -no-reboot \
-            -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
-            -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
-            -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-            -device qemu-xhci,id=xhci -device usb-kbd \
-            -display none -accel kvm -accel tcg \
-            -serial file:/tmp/ci-driver.log \
-            -drive format=raw,file=out/turnix.img,if=none,id=drv0 \
-            -device virtio-blk-pci,drive=drv0 \
-            -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
-            -device nvme,serial=deadbeef,drive=drv0 || true
-          echo "=== Serial log ==="
-          cat /tmp/ci-driver.log
-          echo "=== Checking drivers ==="
-          grep -qi "pci" /tmp/ci-driver.log && echo "[PASS] PCIe enumeration detected" || echo "[FAIL] PCIe enumeration not found"
-          grep -qi "virtio" /tmp/ci-driver.log && echo "[PASS] VirtIO device detected" || echo "[FAIL] VirtIO device not found"
-          grep -qi "nvme\|namespace" /tmp/ci-driver.log && echo "[PASS] NVMe namespace detected" || echo "[FAIL] NVMe not found"
-          grep -q "\[BOOT OK\]" /tmp/ci-driver.log && echo "[PASS] Boot sentinel found" || echo "[FAIL] Boot sentinel not found"
+      - name: Run driver test suite
+        run: cargo xtask ci-driver-tests
 
   # ── Job 5: security-regression ────────────────────────────────────────
   security-regression:

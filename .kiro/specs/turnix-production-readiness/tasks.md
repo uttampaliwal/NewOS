@@ -718,15 +718,15 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test that all required jobs are present in the workflow
     - _Requirements: 45.1_
 
-- [ ] 57. Implement the driver test suite
-  - [ ] 57.1 Create `kernel/tests/driver_tests.rs` (or `tools/xtask/src/driver_tests.rs`) with integration tests for each Phase 1 driver
+- [x] 57. Implement the driver test suite
+  - [x] 57.1 Create `kernel/tests/driver_tests.rs` (or `tools/xtask/src/driver_tests.rs`) with integration tests for each Phase 1 driver
     - PCIe enumeration test: assert at least 2 devices discovered (virtio-net, virtio-blk) in QEMU
     - VirtIO-Net test: assert MAC address is not `00:00:00:00:00:00` (real MAC negotiated)
     - NVMe test: assert at least one namespace discovered with capacity > 0
     - XHCI test: assert controller initialised without timeout (or gracefully marked unavailable)
     - GPU test: assert framebuffer mapped at expected address with correct size
     - _Requirements: 45.3_
-  - [ ]* 57.2 Write unit tests for driver test harness
+  - [x]* 57.2 Write unit tests for driver test harness
     - Test that the test harness correctly parses QEMU serial output for device discovery log lines
     - _Requirements: 45.3_
 
