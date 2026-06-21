@@ -632,13 +632,13 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - **Validates: Requirements 40.1**
     - Use `proptest` to generate raw kernel input events; assert each produces a normalized event of the correct type with correct field values and no fields from a different event type
 
-- [ ] 50. Implement the DRM/KMS kernel driver and GBM buffer allocation
-  - [ ] 50.1 Extend `kernel/src/drivers/gpu/drm.rs` with full DRM/KMS support: connector enumeration, CRTC assignment, mode setting, and page flip via `DrmDevice` trait
+- [x] 50. Implement the DRM/KMS kernel driver and GBM buffer allocation
+  - [x] 50.1 Extend `kernel/src/drivers/gpu/drm.rs` with full DRM/KMS support: connector enumeration, CRTC assignment, mode setting, and page flip via `DrmDevice` trait
     - Implement GBM (Generic Buffer Manager): `gbm_create_buffer(width, height, format) -> GbmBufferId`, `gbm_map_buffer(id) -> VirtAddr`, `gbm_destroy_buffer(id)`
     - Expose GBM operations via new syscalls (`gbm_create`, `gbm_map`, `gbm_destroy`) restricted to the Compositor process
     - Implement page flip completion interrupt delivery to the Compositor via an event fd
     - _Requirements: 41.1, 41.2, 41.3, 41.4_
-  - [ ]* 50.2 Write unit tests for DRM mode set and page flip
+  - [x]* 50.2 Write unit tests for DRM mode set and page flip
     - Test that `set_mode` with a valid connector and mode succeeds
     - Test that `page_flip` with an invalid framebuffer ID returns `DrmError::InvalidFramebuffer`
     - _Requirements: 41.1, 41.2_

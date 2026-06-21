@@ -80,6 +80,10 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Capset => handle_capset(args),
         Syscall::Prctl => handle_prctl(args),
         Syscall::InputRead => handle_input_read(args),
+        Syscall::GbmCreate => handle_gbm_create(args),
+        Syscall::GbmMap => handle_gbm_map(args),
+        Syscall::GbmDestroy => handle_gbm_destroy(args),
+        Syscall::DrmPageFlip => handle_drm_page_flip(args),
     }
 }
 
@@ -904,8 +908,8 @@ fn handle_yielder(args: SyscallArgs) -> SyscallResult {
     SyscallResult::Success(0)
 }
 
-fn handle_mmap_framebuffer_syscall(args: SyscallArgs) -> SyscallResult {
-    let caller_pid = args.arg0;
+fn handle_mmap_framebuffer_syscall(_args: SyscallArgs) -> SyscallResult {
+    let caller_pid = gpu::current_pid();
     match gpu::handle_mmap_framebuffer(caller_pid) {
         Ok(addr) => SyscallResult::Success(addr),
         Err(_) => SyscallResult::Error(-1),
@@ -1460,6 +1464,102 @@ fn handle_input_read(args: SyscallArgs) -> SyscallResult {
     }
 
     SyscallResult::Success(count)
+}
+
+fn handle_gbm_create(args: SyscallArgs) -> SyscallResult {
+    let caller_pid = gpu::current_pid();
+    {
+        let mgr = gpu::DRM_MANAGER.lock();
+        if !mgr.is_compositor(caller_pid) {
+            return SyscallResult::Error(1);
+        }
+    }
+
+    let width = args.arg0 as u32;
+    let height = args.arg1 as u32;
+    let format = args.arg2 as u32;
+
+    if width == 0 || height == 0 {
+        return SyscallResult::Error(22);
+    }
+
+    match gpu::gbm::gbm_create(width, height, format) {
+        Some(id) => SyscallResult::Success(id),
+        None => SyscallResult::Error(12),
+    }
+}
+
+fn handle_gbm_map(args: SyscallArgs) -> SyscallResult {
+    let caller_pid = gpu::current_pid();
+    {
+        let mgr = gpu::DRM_MANAGER.lock();
+        if !mgr.is_compositor(caller_pid) {
+            return SyscallResult::Error(1);
+        }
+    }
+
+    let id = args.arg0;
+    match gpu::gbm::gbm_map(id) {
+        Some(addr) => SyscallResult::Success(addr),
+        None => SyscallResult::Error(2),
+    }
+}
+
+fn handle_gbm_destroy(args: SyscallArgs) -> SyscallResult {
+    let caller_pid = gpu::current_pid();
+    {
+        let mgr = gpu::DRM_MANAGER.lock();
+        if !mgr.is_compositor(caller_pid) {
+            return SyscallResult::Error(1);
+        }
+    }
+
+    let id = args.arg0;
+    gpu::gbm::gbm_destroy(id);
+    SyscallResult::Success(0)
+}
+
+fn handle_drm_page_flip(args: SyscallArgs) -> SyscallResult {
+    let caller_pid = gpu::current_pid();
+    let crtc_id = args.arg1 as u32;
+    let gbm_id = args.arg0;
+
+    // Gather framebuffer info under DRM_MANAGER lock, then drop it before
+    // touching GBM to maintain consistent lock ordering (DRM → GBM).
+    let fb_addr;
+    let fb_size;
+    {
+        let mgr = gpu::DRM_MANAGER.lock();
+        if !mgr.is_compositor(caller_pid) {
+            return SyscallResult::Error(1);
+        }
+        fb_addr = mgr.framebuffer_addr();
+        fb_size = mgr.framebuffer_size();
+    }
+    if fb_addr == 0 || fb_size == 0 {
+        return SyscallResult::Error(2);
+    }
+
+    let gbm_phys = match gpu::gbm::gbm_map(gbm_id) {
+        Some(addr) => addr,
+        None => return SyscallResult::Error(2),
+    };
+    let buf_size = gpu::gbm::gbm_buffer_size(gbm_id).unwrap_or(fb_size);
+
+    let phys_mem_offset = crate::boot::get_phys_mem_offset();
+    let src = (phys_mem_offset + gbm_phys).as_ptr::<u8>();
+    let dst = (phys_mem_offset + fb_addr).as_mut_ptr::<u8>();
+    let copy_size = core::cmp::min(fb_size, buf_size);
+
+    unsafe {
+        core::ptr::copy_nonoverlapping(src, dst, copy_size as usize);
+    }
+
+    let mut mgr = gpu::DRM_MANAGER.lock();
+    match mgr.page_flip(crtc_id, 0) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(_) => SyscallResult::Error(5),
+    }
 }
 
 pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallResult {

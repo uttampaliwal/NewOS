@@ -58,6 +58,10 @@ pub enum Syscall {
     Clone = 43,
     Prctl = 44,
     InputRead = 45,
+    GbmCreate = 46,
+    GbmMap = 47,
+    GbmDestroy = 48,
+    DrmPageFlip = 49,
 }
 
 impl Syscall {
@@ -108,6 +112,10 @@ impl Syscall {
             43 => Some(Self::Clone),
             44 => Some(Self::Prctl),
             45 => Some(Self::InputRead),
+            46 => Some(Self::GbmCreate),
+            47 => Some(Self::GbmMap),
+            48 => Some(Self::GbmDestroy),
+            49 => Some(Self::DrmPageFlip),
             _ => None,
         }
     }

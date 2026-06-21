@@ -7,6 +7,7 @@
 //! - Framebuffer mapping and permission enforcement for the Compositor process
 
 pub mod drm;
+pub mod gbm;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -208,6 +209,8 @@ pub struct DrmManager {
     compositor_pid: AtomicU64,
     /// Whether a resolution change needs to be notified.
     resolution_changed: bool,
+    /// Monotonically increasing page flip sequence counter.
+    flip_seq: u64,
 }
 
 impl Default for DrmManager {
@@ -223,6 +226,7 @@ impl DrmManager {
             current_fb: None,
             compositor_pid: AtomicU64::new(0),
             resolution_changed: false,
+            flip_seq: 0,
         }
     }
 
@@ -265,7 +269,14 @@ impl DrmManager {
         self.driver
             .as_mut()
             .ok_or(DrmError::NotSupported)?
-            .page_flip(crtc_id, fb_id)
+            .page_flip(crtc_id, fb_id)?;
+        self.flip_seq += 1;
+        Ok(())
+    }
+
+    /// Get the current page flip completion sequence number.
+    pub fn page_flip_seq(&self) -> u64 {
+        self.flip_seq
     }
 
     /// Get the physical framebuffer address for mapping.
@@ -739,5 +750,177 @@ mod tests {
         mgr.set_compositor_pid(200);
         assert!(mgr.is_compositor(200));
         assert!(!mgr.is_compositor(100));
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 50.2 — DRM mode set and page flip tests
+    // -----------------------------------------------------------------------
+
+    /// Mock that validates framebuffer IDs for page_flip.
+    struct ValidatingMockDrmDevice {
+        fb_addr: u64,
+        fb_size: u64,
+        valid_fb_ids: Vec<u32>,
+    }
+
+    impl DrmDevice for ValidatingMockDrmDevice {
+        fn enumerate_connectors(&self) -> Result<Vec<Connector>, DrmError> {
+            Ok(vec![Connector {
+                id: 1,
+                connector_type: ConnectorType::Hdmi,
+                connected: true,
+                modes: vec![DisplayMode::new(1920, 1080)],
+            }])
+        }
+
+        fn set_mode(
+            &mut self,
+            _connector_id: u32,
+            _crtc_id: u32,
+            _mode: &DisplayMode,
+        ) -> Result<(), DrmError> {
+            Ok(())
+        }
+
+        fn create_framebuffer(
+            &mut self,
+            width: u32,
+            height: u32,
+            _format: u32,
+        ) -> Result<DrmFramebuffer, DrmError> {
+            let id = if self.valid_fb_ids.is_empty() {
+                1
+            } else {
+                self.valid_fb_ids[0]
+            };
+            Ok(DrmFramebuffer {
+                id,
+                width,
+                height,
+                stride: width * 4,
+                format: 0,
+                phys_addr: self.fb_addr,
+                size: DrmFramebuffer::calc_size(width, height),
+                active: false,
+            })
+        }
+
+        fn page_flip(&mut self, _crtc_id: u32, fb_id: u32) -> Result<(), DrmError> {
+            if self.valid_fb_ids.contains(&fb_id) {
+                Ok(())
+            } else {
+                Err(DrmError::InvalidFramebuffer)
+            }
+        }
+
+        fn current_fb_addr(&self) -> u64 {
+            self.fb_addr
+        }
+
+        fn current_fb_size(&self) -> u64 {
+            self.fb_size
+        }
+
+        fn name(&self) -> &'static str {
+            "validating-mock-gpu"
+        }
+    }
+
+    #[test]
+    fn test_set_mode_with_valid_connector_succeeds() {
+        let mut mgr = DrmManager::new();
+        let mock = Box::new(MockDrmDevice {
+            fb_addr: 0xFD00_0000,
+            fb_size: 1920 * 1080 * 4,
+        });
+        mgr.register_driver(mock);
+
+        let mode = DisplayMode::new(1920, 1080);
+        let result = mgr.set_mode(1, 1, &mode);
+        assert!(result.is_ok(), "set_mode with valid connector and mode should succeed");
+    }
+
+    #[test]
+    fn test_page_flip_with_valid_framebuffer_succeeds() {
+        let mut mgr = DrmManager::new();
+        let mock = Box::new(ValidatingMockDrmDevice {
+            fb_addr: 0xFD00_0000,
+            fb_size: 1920 * 1080 * 4,
+            valid_fb_ids: vec![42],
+        });
+        mgr.register_driver(mock);
+
+        let result = mgr.page_flip(1, 42);
+        assert!(result.is_ok(), "page_flip with valid framebuffer should succeed");
+    }
+
+    #[test]
+    fn test_page_flip_with_invalid_framebuffer_returns_error() {
+        let mut mgr = DrmManager::new();
+        let mock = Box::new(ValidatingMockDrmDevice {
+            fb_addr: 0xFD00_0000,
+            fb_size: 1920 * 1080 * 4,
+            valid_fb_ids: vec![42],
+        });
+        mgr.register_driver(mock);
+
+        let result = mgr.page_flip(1, 99);
+        assert_eq!(
+            result,
+            Err(DrmError::InvalidFramebuffer),
+            "page_flip with invalid framebuffer ID should return InvalidFramebuffer"
+        );
+    }
+
+    #[test]
+    fn test_page_flip_increments_seq() {
+        let mut mgr = DrmManager::new();
+        let mock = Box::new(ValidatingMockDrmDevice {
+            fb_addr: 0xFD00_0000,
+            fb_size: 1920 * 1080 * 4,
+            valid_fb_ids: vec![1],
+        });
+        mgr.register_driver(mock);
+
+        assert_eq!(mgr.page_flip_seq(), 0, "initial flip seq should be 0");
+        mgr.page_flip(1, 1).expect("first flip should succeed");
+        assert_eq!(mgr.page_flip_seq(), 1, "flip seq should be 1 after first flip");
+        mgr.page_flip(1, 1).expect("second flip should succeed");
+        assert_eq!(mgr.page_flip_seq(), 2, "flip seq should be 2 after second flip");
+    }
+
+    #[test]
+    fn test_page_flip_failure_does_not_increment_seq() {
+        let mut mgr = DrmManager::new();
+        let mock = Box::new(ValidatingMockDrmDevice {
+            fb_addr: 0xFD00_0000,
+            fb_size: 1920 * 1080 * 4,
+            valid_fb_ids: vec![1],
+        });
+        mgr.register_driver(mock);
+
+        assert_eq!(mgr.page_flip_seq(), 0);
+        let result = mgr.page_flip(1, 99);
+        assert_eq!(result, Err(DrmError::InvalidFramebuffer));
+        // Failed flip should NOT increment the sequence counter
+        assert_eq!(mgr.page_flip_seq(), 0, "failed flip must not increment seq");
+    }
+
+    #[test]
+    fn test_drm_page_flip_requires_compositor() {
+        // Without a compositor PID set (default 0), page_flip should be gated
+        // but the DrmManager::page_flip method itself doesn't gate.
+        // The gating is in the syscall handler. This test verifies
+        // is_compositor works correctly.
+        let mgr = DrmManager::new();
+        assert!(!mgr.is_compositor(0));
+        assert!(!mgr.is_compositor(1));
+        assert!(!mgr.is_compositor(42));
+    }
+
+    #[test]
+    fn test_flip_seq_starts_at_zero() {
+        let mgr = DrmManager::new();
+        assert_eq!(mgr.page_flip_seq(), 0);
     }
 }

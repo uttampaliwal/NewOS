@@ -219,6 +219,10 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     }
     let _ = writeln!(writer, "[STG: GPU_PROBE]");
 
+    // Register PID 1 (init) as the Compositor process
+    crate::drivers::gpu::DRM_MANAGER.lock().set_compositor_pid(1);
+    let _ = writeln!(writer, "[STG: COMPOSITOR_PID_SET]");
+
     // 3.5 Initialize network stack (uses MAC from virtio-net)
     crate::drivers::net::init();
     let _ = writeln!(writer, "[STG: NET_INIT]");
