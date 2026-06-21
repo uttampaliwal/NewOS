@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -6,8 +5,7 @@ use crate::fetcher::{FetchError, PackageFetcher, verify_sha256};
 use crate::snapshot::{
     PackageDb, PackageEntry, Snapshot, SnapshotError, SnapshotId, SnapshotManager, SnapshotTrigger,
 };
-use semver::Version;
-use tpkg_format::{PackageSource, ResolvedPackage, TpkgManifest};
+use tpkg_format::{PackageSource, ResolvedPackage};
 
 // ---------------------------------------------------------------------------
 // InstallError
@@ -372,8 +370,11 @@ fn extract_archive(archive_path: &Path, output_dir: &Path) -> Result<(), Install
 mod tests {
     use super::*;
     use crate::snapshot::SnapshotManager;
+    use semver::Version;
     use sha2::Digest;
+    use std::collections::BTreeMap;
     use std::io::Write;
+    use tpkg_format::TpkgManifest;
 
     fn test_pipeline(tmp: &Path) -> InstallPipeline {
         let fetcher = PackageFetcher::new_without_client(tmp.join("packages"));
