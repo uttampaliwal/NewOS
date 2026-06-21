@@ -621,13 +621,13 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
 
 ## Phase 7 — Wayland Graphical Stack
 
-- [ ] 49. Implement the input event normalisation layer in `kernel/src/input/` and `userland/`
-  - [ ] 49.1 Extend `kernel/src/input/mod.rs` to define a normalised `InputEvent` enum (`KeyPress { key_code, modifiers }`, `KeyRelease { key_code }`, `PointerMotion { dx, dy }`, `PointerButton { button, pressed }`, `PointerAxis { axis, delta }`)
+- [x] 49. Implement the input event normalisation layer in `kernel/src/input/` and `userland/`
+  - [x] 49.1 Extend `kernel/src/input/mod.rs` to define a normalised `InputEvent` enum (evdev-style kind/code/value model covering `KeyPress`, `KeyRelease`, `PointerMotion`, `PointerButton`, `PointerAxis`)
     - Implement scan-code to key-code mapping table for PS/2 and USB HID keyboards
     - Implement pointer acceleration calculation for relative mouse motion
     - Expose a kernel input event ring buffer readable via a new `input_read` syscall
     - _Requirements: 40.1, 40.2, 40.3_
-  - [ ]* 49.2 Write property test for Input Event Normalization
+  - [x]* 49.2 Write property test for Input Event Normalization
     - **Property 30: Input Event Normalization**
     - **Validates: Requirements 40.1**
     - Use `proptest` to generate raw kernel input events; assert each produces a normalized event of the correct type with correct field values and no fields from a different event type
