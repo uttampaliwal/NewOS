@@ -19,6 +19,7 @@ members = [
     "userland/network-manager",
     "userland/device-manager",
     "userland/compositor",
+    "userland/display-manager",
 ]
 default-members = [
     "shared/abi",
@@ -29,6 +30,7 @@ default-members = [
     "userland/shell",
     "userland/fault-tester",
     "userland/compositor",
+    "userland/display-manager",
     "tools/xtask",
 ]
 resolver = "2"

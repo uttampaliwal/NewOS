@@ -50,6 +50,8 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::WriteFile => handle_write_file(args),
         Syscall::GetUid => handle_getuid(args),
         Syscall::GetGid => handle_getgid(args),
+        Syscall::SetUid => handle_setuid(args),
+        Syscall::SetGid => handle_setgid(args),
         Syscall::Brk => handle_brk(args),
         Syscall::Mkdir => handle_mkdir(args),
         Syscall::Unlink => handle_unlink(args),
@@ -135,6 +137,34 @@ fn handle_getuid(_args: SyscallArgs) -> SyscallResult {
 fn handle_getgid(_args: SyscallArgs) -> SyscallResult {
     let ctx = crate::security::current_context();
     SyscallResult::Success(ctx.gid as u64)
+}
+
+fn handle_setuid(args: SyscallArgs) -> SyscallResult {
+    let new_uid = args.arg0 as u32;
+    let current = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(-1),
+    };
+    let mut inner = current.inner.lock();
+    if !inner.sec_ctx.has_effective(crate::security::capabilities::Capability::Setuid) {
+        return SyscallResult::Error(-1);
+    }
+    inner.sec_ctx.uid = new_uid;
+    SyscallResult::Success(0)
+}
+
+fn handle_setgid(args: SyscallArgs) -> SyscallResult {
+    let new_gid = args.arg0 as u32;
+    let current = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(-1),
+    };
+    let mut inner = current.inner.lock();
+    if !inner.sec_ctx.has_effective(crate::security::capabilities::Capability::Setgid) {
+        return SyscallResult::Error(-1);
+    }
+    inner.sec_ctx.gid = new_gid;
+    SyscallResult::Success(0)
 }
 
 fn handle_capget(args: SyscallArgs) -> SyscallResult {

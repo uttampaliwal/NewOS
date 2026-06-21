@@ -374,6 +374,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "compositor"
+version = "0.1.0"
+dependencies = [
+ "libturnix",
+ "turnix-abi",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -495,6 +503,15 @@ dependencies = [
  "block-buffer",
  "crypto-common",
  "subtle",
+]
+
+[[package]]
+name = "display-manager"
+version = "0.1.0"
+dependencies = [
+ "libturnix",
+ "sha2",
+ "turnix-abi",
 ]
 
 [[package]]

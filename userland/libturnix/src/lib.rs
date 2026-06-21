@@ -10,6 +10,11 @@ pub fn print(message: &str) {
     );
 }
 
+pub fn println(message: &str) {
+    print(message);
+    print("\n");
+}
+
 pub fn read(fd: u64, buf: &mut [u8]) -> Option<u64> {
     let res = syscall3(
         Syscall::Read as u64,
@@ -146,6 +151,30 @@ pub fn getuid() -> u64 {
 
 pub fn getgid() -> u64 {
     syscall0(Syscall::GetGid as u64)
+}
+
+pub fn setuid(uid: u32) -> i64 {
+    syscall1(Syscall::SetUid as u64, uid as u64) as i64
+}
+
+pub fn setgid(gid: u32) -> i64 {
+    syscall1(Syscall::SetGid as u64, gid as u64) as i64
+}
+
+pub fn capset(header: &turnix_abi::syscall::CapHeader, data: &turnix_abi::syscall::CapData) -> i64 {
+    syscall2(
+        Syscall::Capset as u64,
+        header as *const _ as u64,
+        data as *const _ as u64,
+    ) as i64
+}
+
+pub fn capget(header: &turnix_abi::syscall::CapHeader, data: &mut turnix_abi::syscall::CapData) -> i64 {
+    syscall2(
+        Syscall::Capget as u64,
+        header as *const _ as u64,
+        data as *mut _ as u64,
+    ) as i64
 }
 
 pub fn mkdir(path: &str) -> bool {
@@ -304,6 +333,12 @@ pub fn listen(fd: u64, backlog: usize) -> bool {
 pub fn accept(fd: u64) -> Option<u64> {
     let res = syscall1(Syscall::Accept as u64, fd);
     if (res as i64) < 0 { None } else { Some(res) }
+}
+
+/// Connect a socket to a server address (sockaddr with 2-byte family prefix).
+pub fn connect(fd: u64, addr: *const u8, addr_len: usize) -> bool {
+    let res = syscall3(Syscall::Connect as u64, fd, addr as u64, addr_len as u64);
+    (res as i64) >= 0
 }
 
 fn syscall4(num: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64) -> u64 {

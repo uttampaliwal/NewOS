@@ -31,6 +31,10 @@ after = [\"ipc-broker\"]
 path = \"compositor\"
 after = [\"service-manager\"]
 
+[service.display-manager]
+path = \"display-manager\"
+after = [\"compositor\"]
+
 [service.shell]
 path = \"shell\"
 after = [\"compositor\", \"log-daemon\"]

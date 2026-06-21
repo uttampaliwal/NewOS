@@ -62,6 +62,8 @@ pub enum Syscall {
     GbmMap = 47,
     GbmDestroy = 48,
     DrmPageFlip = 49,
+    SetUid = 50,
+    SetGid = 51,
 }
 
 impl Syscall {
@@ -116,6 +118,8 @@ impl Syscall {
             47 => Some(Self::GbmMap),
             48 => Some(Self::GbmDestroy),
             49 => Some(Self::DrmPageFlip),
+            50 => Some(Self::SetUid),
+            51 => Some(Self::SetGid),
             _ => None,
         }
     }
