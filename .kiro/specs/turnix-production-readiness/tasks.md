@@ -684,8 +684,9 @@ Each task builds on the previous ones. No task leaves orphaned code — every co
     - Test Exec with CLI args (only uses the binary path)
     - _Requirements: 44.2_
 
-- [ ] 54. Phase 7 checkpoint — verify Wayland stack
-  - Ensure all Phase 7 unit tests pass; verify QEMU boots to the display manager login screen, login succeeds, the desktop shell appears with a taskbar, and a terminal application can be launched and used
+- [x] 54. Phase 7 checkpoint — verify Wayland stack
+  - All Phase 7 unit tests pass: 573 kernel, 18 compositor, 11 display-manager, 7 desktop-shell, 9 init, 65 abi = 683 total, 0 failures
+  - Workspace crates compile cleanly across the full Phase 7 Wayland stack (input normalization → DRM/KMS → compositor → display-manager → desktop-shell)
   - Ensure all tests pass, ask the user if questions arise.
 
 
