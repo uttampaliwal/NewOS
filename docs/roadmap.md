@@ -66,10 +66,13 @@ This document outlines the development trajectory of Turnix OS from foundational
 
 ---
 
-## ⚙️ Phase 6: System Services Layer (Planned)
+## ⚙️ Phase 6: System Services Layer (Complete)
 *   **IPC Broker Daemon**: Async event loop routing socket method calls and signal broadcasts.
 *   **Structured Logger**: Log rotation, HMAC-SHA256 seals, and serial logging integration.
 *   **Service Manager**: Unit file configurations, restart policy backoffs, and socket activation.
+*   **Network Manager**: DHCP client, DNS resolver, static IP configuration, IPC integration.
+*   **Device Manager**: Hotplug event handling, driver rules, USB auto-mount, IPC exposure.
+*   **Kernel Network Stack**: smoltcp TCP/IP with VirtIO-Net driver, AF_INET/AF_INET6 socket syscalls, LAPIC-timer-driven poll loop.
 
 ---
 
