@@ -89,14 +89,50 @@ This document outlines the development trajectory of Turnix OS from foundational
 
 ---
 
+## Phase 8: SMP & Hardware Scaling (Planned)
+
+* **SMP Support**: Multi-core boot with per-CPU scheduling.
+* **APIC (Advanced Programmable Interrupt Controller)**: Local APIC timer per core, I/O APIC for device interrupts.
+* **NUMA Awareness**: Memory allocation policies for NUMA topologies.
+* **Lock-Free Data Structures**: Per-CPU run queues, atomic counters for shared state.
+* **CPU Affinity**: Process-to-core binding via `sched_setaffinity`.
+
+---
+
+## Phase 9: Networking Stack Maturity (Planned)
+
+* **TCP/IP Stack Polish**: Connection state machine, congestion control (CUBIC).
+* **DNS Resolver**: Recursive resolver with cache and TTL support.
+* **HTTP/1.1 Client**: GET/POST with chunked transfer encoding.
+* **TLS 1.3**: rustls-based TLS for encrypted connections.
+* **Socket Options**: SO_REUSEADDR, TCP_NODELAY, keepalive.
+* **Network Namespace Isolation**: Full per-namespace routing tables and socket bindings.
+
+---
+
+## Phase 10: Desktop Environment Polish (Planned)
+
+* **Wayland Compositor Improvements**: Multi-monitor support, window decorations.
+* **GPU Acceleration**: VirtIO-GPU 3D, Vulkan compute shaders.
+* **Package Repository**: Public tpkg repository with signed packages.
+* **Font Rendering**: FreeType integration, subpixel antialiasing.
+* **Audio Stack**: ALSA-compatible audio via VirtIO-SND.
+* **Clipboard**: Wayland clipboard protocol implementation.
+
+---
+
+## Phase 11: Self-Hosting & Ecosystem (Planned)
+
+* **Self-Hosting Toolchain**: GCC/Rust cross-compiler running on Turnix.
+* **Rust Compiler Port**: Build Rust crates natively on Turnix.
+* **Native Development Environment**: Text editor, debugger, build system.
+* **POSIX Compliance**: Expanded POSIX syscall coverage for software compatibility.
+* **Container Support**: OCI-compatible container runtime using namespaces.
+* **Virtualization**: KVM-style paravirtualization for running VMs.
+
+---
+
 ## Known Limitations
 
 See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations:
 * ext4 writes are in-memory only (no block allocator, no journal)
-* No security architecture documentation or threat model
-* No fuzz testing infrastructure
-* No unified kernel error type
-* No userland observability commands (ps, meminfo, mount)
-* No performance benchmark suite
-* Kernel architecture boundary undefined (microkernel vs monolith)
-* Roadmap has no future phases beyond Phase 7

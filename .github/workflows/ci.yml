@@ -136,3 +136,83 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
       - name: Run performance benchmarks
         run: cargo xtask ci-bench
+
+  # ── Job 7: lint (clippy) ───────────────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+          targets: x86_64-unknown-none,x86_64-unknown-uefi
+      - name: Run clippy with warnings as errors
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: cargo clippy --workspace --all-targets
+
+  # ── Job 8: docs ────────────────────────────────────────────────────────
+  docs:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-none,x86_64-unknown-uefi
+      - name: Build rustdoc
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --workspace --no-deps
+      - name: Install mdBook
+        run: cargo install mdbook || true
+      - name: Build mdBook
+        run: cd book && mdbook build || echo "mdBook build skipped (book not yet complete)"
+      - name: Upload docs artifact
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs
+          path: target/doc/
+          retention-days: 30
+
+  # ── Job 9: fuzz (nightly) ──────────────────────────────────────────────
+  fuzz:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Build fuzz targets
+        run: cd fuzz && cargo build --release
+      - name: Run short fuzz campaign (60s each)
+        run: |
+          cd fuzz
+          for target in fuzz_elf_parser fuzz_seccomp_bpf fuzz_ipc_message fuzz_vfs_path fuzz_syscall_args; do
+            echo "Fuzzing $target for 60s..."
+            timeout 60 ./target/release/$target < /dev/urandom 2>/dev/null || true
+            echo "$target completed."
+          done

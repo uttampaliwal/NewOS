@@ -1,0 +1,26 @@
+[package]
+name = "turnix-fuzz"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Fuzz testing targets for Turnix kernel components"
+
+[[bin]]
+name = "fuzz_elf_parser"
+path = "fuzz_targets/fuzz_elf_parser.rs"
+
+[[bin]]
+name = "fuzz_seccomp_bpf"
+path = "fuzz_targets/fuzz_seccomp_bpf.rs"
+
+[[bin]]
+name = "fuzz_ipc_message"
+path = "fuzz_targets/fuzz_ipc_message.rs"
+
+[[bin]]
+name = "fuzz_vfs_path"
+path = "fuzz_targets/fuzz_vfs_path.rs"
+
+[[bin]]
+name = "fuzz_syscall_args"
+path = "fuzz_targets/fuzz_syscall_args.rs"

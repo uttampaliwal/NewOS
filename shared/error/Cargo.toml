@@ -1,0 +1,9 @@
+[package]
+name = "turnix-error"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Unified kernel error types for Turnix OS"
+
+[lib]
+path = "src/lib.rs"

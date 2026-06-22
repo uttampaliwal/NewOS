@@ -1,0 +1,42 @@
+[package]
+name = "observability"
+version = "0.1.0"
+edition = "2021"
+description = "System observability commands for Turnix OS"
+
+[[bin]]
+name = "ps"
+path = "src/bin/ps.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "meminfo"
+path = "src/bin/meminfo.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "mount"
+path = "src/bin/mount.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "lsns"
+path = "src/bin/lsns.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "capsh"
+path = "src/bin/capsh.rs"
+test = false
+required-features = ["host_bin"]
+
+[dependencies]
+turnix-abi = { path = "../../shared/abi" }
+libturnix = { path = "../libturnix" }
+
+[features]
+host_bin = []

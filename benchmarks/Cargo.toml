@@ -1,0 +1,10 @@
+[package]
+name = "host-benchmarks"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Performance benchmarks for Turnix kernel components"
+
+[[bin]]
+name = "run-benchmarks"
+path = "src/main.rs"

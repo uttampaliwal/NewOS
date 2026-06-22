@@ -881,6 +881,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "host-benchmarks"
+version = "0.1.0"
+
+[[package]]
 name = "http"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1375,6 +1379,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "observability"
+version = "0.1.0"
+dependencies = [
+ "libturnix",
+ "turnix-abi",
 ]
 
 [[package]]
@@ -2626,6 +2638,10 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "turnix-abi"
+version = "0.1.0"
+
+[[package]]
+name = "turnix-error"
 version = "0.1.0"
 
 [[package]]

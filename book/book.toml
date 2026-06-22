@@ -1,0 +1,14 @@
+[book]
+title = "Turnix OS Documentation"
+authors = ["Uttam", "Codex", "Antigravity"]
+description = "Comprehensive documentation for the Turnix operating system"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "build"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/uttampaliwal/turnix"

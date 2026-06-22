@@ -2,6 +2,7 @@
 members = [
     "boot/uefi-loader",
     "shared/abi",
+    "shared/error",
     "shared/ipc-proto",
     "shared/serial",
     "shared/tpkg-format",
@@ -21,7 +22,9 @@ members = [
     "userland/compositor",
     "userland/display-manager",
     "userland/desktop-shell",
+    "userland/observability",
     "userland/benchmarks",
+    "benchmarks",
 ]
 default-members = [
     "shared/abi",
@@ -37,6 +40,7 @@ default-members = [
     "tools/xtask",
 ]
 resolver = "2"
+exclude = ["fuzz"]
 
 [workspace.package]
 edition = "2024"

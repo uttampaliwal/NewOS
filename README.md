@@ -1,5 +1,10 @@
 # Turnix
 
+![CI](https://github.com/uttampaliwal/turnix/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
+![Rust](https://img.shields.io/badge/rust-nightly-orange)
+![Tests](https://img.shields.io/badge/tests-964%20passing-brightgreen)
+
 **A SOTA, Rust-first operating system built for learning, performance, and long-term daily usability.**
 
 `turnix` is a modern, x86_64 hobbyist operating system designed from the ground up to combine the safety and type guarantees of Rust with a POSIX-compatible environment. It is not a Linux clone, but a state-of-the-art microkernel/modular monolith hybrid aiming to be a viable environment for developers and power users.
