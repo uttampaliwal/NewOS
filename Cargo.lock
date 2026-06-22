@@ -2651,6 +2651,9 @@ dependencies = [
 [[package]]
 name = "turnix-serial"
 version = "0.1.0"
+dependencies = [
+ "spin",
+]
 
 [[package]]
 name = "turnix-std"

@@ -506,6 +506,8 @@ extern "sysv64" fn worker_task() -> ! {
         for _ in 0..200_000 {
             core::hint::spin_loop();
         }
+
+        crate::task::scheduler::yield_task();
     }
 }
 

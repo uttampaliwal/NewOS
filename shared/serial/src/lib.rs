@@ -2,11 +2,18 @@
 
 use core::fmt::{self, Write};
 use core::sync::atomic::{AtomicBool, Ordering};
+use spin::Mutex;
 
 pub const COM1_BASE: u16 = 0x3F8;
 
+/// Maximum number of LSR polling iterations before giving up.
+const UART_TIMEOUT: u32 = 100_000;
+
 /// Global flag to suppress serial port I/O (used in test mode).
 static SERIAL_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Mutex for serializing concurrent access to the UART hardware.
+static UART_LOCK: Mutex<()> = Mutex::new(());
 
 /// Disable hardware serial port access. Called by test harnesses.
 pub fn disable_serial() {
@@ -41,7 +48,14 @@ impl SerialWriter {
             return;
         }
         unsafe {
-            while (in8(COM1_BASE + 5) & 0x20) == 0 {}
+            let mut retries = 0u32;
+            while (in8(COM1_BASE + 5) & 0x20) == 0 {
+                retries += 1;
+                if retries >= UART_TIMEOUT {
+                    return;
+                }
+                core::hint::spin_loop();
+            }
             out8(COM1_BASE, byte);
         }
     }
@@ -110,6 +124,7 @@ macro_rules! println {
 
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
+    let _guard = UART_LOCK.lock();
     let mut writer = SerialWriter;
     let _ = writer.write_fmt(args);
 }
