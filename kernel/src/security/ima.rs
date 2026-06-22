@@ -262,6 +262,7 @@ fn get_evm_key() -> [u8; 32] {
 }
 
 /// Derive a 32-byte key from the TPM using get_random.
+#[cfg(not(test))]
 fn derive_key_from_tpm() -> Option<[u8; 32]> {
     const TPM_BASE_ADDR: u64 = 0xFED40000;
     let mut tpm = unsafe { crate::drivers::tpm::TpmDriver::new(TPM_BASE_ADDR) };
