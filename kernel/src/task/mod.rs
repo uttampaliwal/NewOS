@@ -364,18 +364,42 @@ impl Task {
         //
         // The scheduler restores using the pop sequence in timer_tick / start_scheduling.
 
+        // Sanitize RFLAGS: keep only safe bits (IF, AC, ID) and force bit 1 (reserved, must be 1).
+        // Clear IOPL (bits 12-13), NT (bit 14), VM (bit 17), and other dangerous flags.
+        const SAFE_RFLAGS_MASK: u64 = 0x202; // IF=1, reserved bit 1=1
+        let safe_rflags = (parent_frame.user_rflags & 0x3C7FFD) | SAFE_RFLAGS_MASK;
+
+        // Validate CS and SS are user-mode selectors
+        let user_cs = if parent_frame.user_cs & 0x3 == 0x3 {
+            parent_frame.user_cs
+        } else {
+            crate::serial::println!("[fork] WARN: parent CS={:#x} not user-mode, using 0x2b", parent_frame.user_cs);
+            0x2b // USER_CODE_SEGMENT
+        };
+        let user_ss = if parent_frame.user_ss & 0x3 == 0x3 {
+            parent_frame.user_ss
+        } else {
+            crate::serial::println!("[fork] WARN: parent SS={:#x} not user-mode, using 0x23", parent_frame.user_ss);
+            0x23 // USER_DATA_SEGMENT
+        };
+
+        crate::serial::println!(
+            "[fork] child frame: RIP={:#x} CS={:#x} RFLAGS={:#x} RSP={:#x} SS={:#x}",
+            parent_frame.user_rip, user_cs, safe_rflags, parent_frame.user_rsp, user_ss
+        );
+
         let mut stack_ptr = stack_top_virt.as_mut_ptr::<u64>();
 
         unsafe {
             // IRETQ frame (high addresses first — pushed last).
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(parent_frame.user_ss);
+            stack_ptr.write(user_ss);
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(parent_frame.user_rsp);
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(parent_frame.user_rflags);
+            stack_ptr.write(safe_rflags);
             stack_ptr = stack_ptr.sub(1);
-            stack_ptr.write(parent_frame.user_cs);
+            stack_ptr.write(user_cs);
             stack_ptr = stack_ptr.sub(1);
             stack_ptr.write(parent_frame.user_rip);
 

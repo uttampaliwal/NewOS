@@ -404,6 +404,8 @@ extern "x86-interrupt" fn gpf_handler(stack_frame: InterruptStackFrame, error_co
             "PROCESS FAULT: General Protection Fault with error code {}. Terminating process.",
             error_code
         );
+        crate::serial::println!("  CS={:#x} RIP={:?} RSP={:?}", stack_frame.code_segment.0, stack_frame.instruction_pointer, stack_frame.stack_pointer);
+        crate::serial::println!("  RFLAGS={:#x}", stack_frame.cpu_flags);
         crate::task::scheduler::exit_current_task();
     }
 
@@ -411,7 +413,7 @@ extern "x86-interrupt" fn gpf_handler(stack_frame: InterruptStackFrame, error_co
     let kernel_gs_base = KernelGsBase::read();
 
     crate::serial::println!("EXCEPTION: GENERAL PROTECTION FAULT in Kernel");
-    crate::serial::println!("Error Code: {:?}", error_code);
+    crate::serial::println!("Error Code: {:#x}", error_code);
     crate::serial::println!(
         "GS_BASE: {:?}, KERNEL_GS_BASE: {:?}",
         gs_base,
@@ -419,7 +421,8 @@ extern "x86-interrupt" fn gpf_handler(stack_frame: InterruptStackFrame, error_co
     );
     crate::serial::println!("Instruction Pointer: {:?}", stack_frame.instruction_pointer);
     crate::serial::println!("Stack Pointer: {:?}", stack_frame.stack_pointer);
-    crate::serial::println!("{:#?}", stack_frame);
+    crate::serial::println!("Code Segment: {:#x}", stack_frame.code_segment.0);
+    crate::serial::println!("RFLAGS: {:#x}", stack_frame.cpu_flags);
     panic!("GPF");
 }
 
