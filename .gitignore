@@ -6,6 +6,7 @@ turnix/
 extraa/
 baseline_checksums.csv
 disassembly.txt
+prompts.odt
 *.log
 *.tmp
 *.qcow2
