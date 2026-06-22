@@ -13,18 +13,7 @@ This file documents beginner-friendly issues that are great for new contributors
 
 ## Recommended Starter Issues
 
-### 1. Add more shell commands
-
-**Location**: `kernel/src/shell.rs`
-**Labels**: `enhancement`, `good first issue`
-**Difficulty**: Beginner
-
-Add support for additional commands like:
-- `date` - show current date/time (simulated)
-- `uptime` - show system uptime
-- `echo` - with options like `-n`
-
-### 2. Expand unit tests for shared/abi
+### 1. Expand unit tests for shared/abi
 
 **Location**: `shared/abi/`
 **Labels**: `testing`, `good first issue`
@@ -34,27 +23,31 @@ Current tests cover boot info and syscall IDs. Add tests for:
 - Memory descriptor validation
 - BootInfo serialization
 - Syscall header defaults
+- Network ABI types (NetSetAddrReq, NetQueryResp)
 
 Run tests:
-```powershell
+```bash
 cargo test -p turnix-abi
 ```
 
-### 3. Document interrupt handlers
+### 2. Improve documentation comments
 
-**Location**: `kernel/src/interrupts.rs`
+**Location**: various `kernel/src/` files
 **Labels**: `documentation`, `good first issue`
 **Difficulty**: Beginner
 
-Add doc comments explaining each interrupt handler.
+Add doc comments explaining public functions and types in:
+- `kernel/src/fs/vfs.rs` - VFS trait methods
+- `kernel/src/security/mod.rs` - Security subsystem
+- `kernel/src/net/mod.rs` - Network stack
 
-### 4. Scheduler statistics
+### 3. Add error context to syscall handlers
 
-**Location**: `kernel/src/task/scheduler.rs`
+**Location**: `kernel/src/syscall/handler.rs`
 **Labels**: `enhancement`, `good first issue`
 **Difficulty**: Intermediate
 
-Add serial output showing task count, running task ID.
+Many syscall handlers return generic `Error(code)` values. Add more descriptive error variants or context.
 
 ---
 

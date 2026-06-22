@@ -14,13 +14,13 @@ We use the serial port (COM1) as our primary diagnostic tool.
 QEMU has a built-in GDB stub that allows you to debug the kernel as if it were a normal program.
 
 1.  **Start QEMU with GDB stub**:
-    ```powershell
+    ```bash
     # Manually run QEMU with -s -S flags
     qemu-system-x86_64 -drive format=raw,file=fat:rw:out/esp -serial stdio -s -S
     ```
 2.  **Attach GDB**:
     ```bash
-    gdb target/x86_64-unknown-none/debug/newos-kernel-image
+    gdb target/x86_64-unknown-none/debug/turnix-kernel
     (gdb) target remote :1234
     (gdb) continue
     ```
@@ -44,3 +44,15 @@ When the kernel panics, it stops execution and prints the panic location and mes
 We use the `isa-debug-exit` device in QEMU to allow the kernel to shut down the VM. This is used for automated testing.
 - **Success Code**: `33` (exits with code 1 in shell)
 - **Failure Code**: Any other value.
+
+## 6. CI Test Suites
+
+Turnix provides QEMU-based CI test suites via `cargo xtask`:
+
+| Command | Description |
+|---------|-------------|
+| `cargo xtask ci-boot` | Boot gate test (30 consecutive QEMU boots) |
+| `cargo xtask ci-test` | Core boot and scheduler tests |
+| `cargo xtask ci-driver-tests` | PCIe, VirtIO, NVMe, XHCI, GPU detection |
+| `cargo xtask ci-security` | Security subsystem initialization checks |
+| `cargo xtask ci-bench` | Benchmark execution and validation |

@@ -103,9 +103,11 @@ graph TD
 | **Phase 2** | **Memory Subsystem** | VMAs, Demand Paging, mmap/munmap, LRU Page Cache, Swap, ASLR/KASLR, OOM Killer | ✅ Complete |
 | **Phase 3** | **POSIX Services** | Process table, `fork`/`exec`/`waitpid`, VFS mounts (tmpfs/ext4), Pipes, Sockets, Signals, Stdio, Init manifest daemon | ✅ Complete |
 | **Phase 4** | **Security Hardening** | POSIX Capabilities, Isolation Namespaces, Seccomp-BPF filters, LSM hooks, IMA/EVM, Stack Canaries | ✅ Complete |
-| **Phase 5** | **Package Management** | Dependency Solver (SAT CDCL), manifest parsing, TUF repositories, package staging, rollback pipeline | 🛠️ In Progress |
-| **Phase 6** | **System Services** | IPC Broker daemon, structured log framework (HMAC-SHA256), service unit manager (socket activation) | 📅 Planned |
-| **Phase 7** | **Desktop Environment** | Window Compositor (Wayland-like), input event routing, desktop session management | 📅 Planned |
+| **Phase 5** | **Package Management** | Dependency Solver (SAT CDCL), manifest parsing, TUF repositories, package staging, rollback pipeline | ✅ Complete |
+| **Phase 6** | **System Services** | IPC Broker daemon, structured log framework (HMAC-SHA256), service unit manager (socket activation) | ✅ Complete |
+| **Phase 7** | **Desktop Environment** | Window Compositor (Wayland-like), input event routing, desktop session management | ✅ Complete |
+
+> See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for known limitations and future work.
 
 ---
 

@@ -140,7 +140,7 @@ Fixes #42
 
 2. **Submit a PR:**
    - Push your branch: `git push origin feature/my-feature`
-   - Open a pull request against `main`
+   - Open a pull request against `development`
    - Fill in the PR template
    - Link any related issues
 
@@ -157,7 +157,7 @@ Fixes #42
 - Test coverage for shared/abi crate
 - Code cleanup and documentation comments
 
-###medium-Effort Issues
+### Medium-Effort Issues
 
 - Kernel logging framework
 - Error handling / panic strategy
@@ -173,10 +173,15 @@ Fixes #42
 
 ```
 docs/          - ADRs, phase docs, architecture notes
-boot/         - UEFI loader entry point
-kernel/       - no_std kernel core
-shared/abi    - types shared between kernel and userland
-tools/xtask   - build automation
+boot/          - UEFI loader entry point
+kernel/        - no_std kernel core
+shared/abi/    - types shared between kernel and userland
+shared/serial/ - serial port abstraction
+shared/ipc-proto/ - IPC protocol definitions
+shared/tpkg-format/ - package manifest format
+userland/      - userspace services and applications
+tools/xtask/   - build automation
+.github/       - CI workflows and templates
 ```
 
 See [docs/architecture.md](docs/architecture.md) for details.

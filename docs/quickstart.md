@@ -70,4 +70,4 @@ To submit changes to the codebase, please follow these steps:
 1. Run local tests: `cargo test --all-targets` and `cargo test -p turnix-kernel`.
 2. Format code and run check style: `cargo fmt` and `cargo clippy --workspace --all-targets`.
 3. Verify QEMU boots: `cargo xtask test-qemu`.
-4. Submit your pull request to the `turnix-next` integration branch.
+4. Submit your pull request to the `development` branch.
