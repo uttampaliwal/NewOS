@@ -1,7 +1,7 @@
 //! VirtIO-GPU driver implementation.
 //!
 //! Implements the VirtIO-GPU control queue protocol for QEMU's virtio-gpu device.
-//! Reference: https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html
+//! Reference: <https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html>
 
 extern crate alloc;
 

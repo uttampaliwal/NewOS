@@ -15,7 +15,7 @@ pub const EXT4_GOOD_OLD_FIRST_INO: u32 = 11;
 
 /// Ext4 superblock (on-disk layout, 1024 bytes starting at byte 1024).
 ///
-/// Reference: https://www.kernel.org/doc/html/latest/filesystems/ext4/super.html
+/// Reference: <https://www.kernel.org/doc/html/latest/filesystems/ext4/super.html>
 #[derive(Debug, Clone)]
 #[repr(C, packed)]
 pub struct Ext4Superblock {
