@@ -376,6 +376,49 @@ pub fn connect(fd: u64, addr: *const u8, addr_len: usize) -> bool {
     (res as i64) >= 0
 }
 
+// ── Network interface configuration syscall wrappers ────────────────────
+
+/// Set the IP address, netmask, and gateway for a network interface.
+pub fn net_set_addr(iface_id: u32, addr: [u8; 4], netmask: [u8; 4], gateway: [u8; 4]) -> i64 {
+    syscall4(
+        Syscall::NetSetAddr as u64,
+        iface_id as u64,
+        addr.as_ptr() as u64,
+        netmask.as_ptr() as u64,
+        gateway.as_ptr() as u64,
+    ) as i64
+}
+
+/// Set the default gateway for interface 0.
+pub fn net_set_route(gateway: [u8; 4]) -> i64 {
+    syscall1(
+        Syscall::NetSetRoute as u64,
+        gateway.as_ptr() as u64,
+    ) as i64
+}
+
+/// Query the current configuration of a network interface.
+/// Returns `Some(NetQueryResp)` on success.
+pub fn net_query(iface_id: u32) -> Option<turnix_abi::NetQueryResp> {
+    let mut resp = turnix_abi::NetQueryResp {
+        ip: [0; 4],
+        netmask: [0; 4],
+        gateway: [0; 4],
+        mtu: 0,
+        flags: 0,
+    };
+    let res = syscall2(
+        Syscall::NetQuery as u64,
+        iface_id as u64,
+        &mut resp as *mut turnix_abi::NetQueryResp as u64,
+    );
+    if (res as i64) < 0 {
+        None
+    } else {
+        Some(resp)
+    }
+}
+
 fn syscall4(num: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64) -> u64 {
     let res: u64;
     unsafe {

@@ -194,6 +194,155 @@ struct SupportedProtocolCap {
     _reserved2: [u8; 2],
 }
 
+/// XHCI extended capability types.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum XhciExtCapType {
+    /// USB Legacy Support.
+    UsbLegacy = 0x01,
+    /// USB Debug Capability.
+    UsbDebug = 0x02,
+    /// Host Notification Capability.
+    HostNotify = 0x03,
+    /// Extended Power Management.
+    ExtPower = 0x04,
+    /// I/O Virtualization Capability.
+    IoVirt = 0x05,
+    /// Host Time Sync Capability.
+    TimeSync = 0x06,
+    /// Debug Capability (DC).
+    DebugCap = 0x0A,
+    /// Extended Debug Capability.
+    ExtDebug = 0x0C,
+    /// Defined but unknown.
+    Unknown(u8),
+}
+
+impl From<u8> for XhciExtCapType {
+    fn from(val: u8) -> Self {
+        match val {
+            0x01 => Self::UsbLegacy,
+            0x02 => Self::UsbDebug,
+            0x03 => Self::HostNotify,
+            0x04 => Self::ExtPower,
+            0x05 => Self::IoVirt,
+            0x06 => Self::TimeSync,
+            0x0A => Self::DebugCap,
+            0x0C => Self::ExtDebug,
+            other => Self::Unknown(other),
+        }
+    }
+}
+
+/// A parsed XHCI extended capability entry.
+#[derive(Debug, Clone)]
+pub struct XhciExtCap {
+    /// Capability type.
+    pub cap_type: XhciExtCapType,
+    /// Capability-specific data (first 4 bytes).
+    pub data: [u8; 4],
+    /// Next capability offset (0 = end of list).
+    pub next_offset: u16,
+}
+
+/// Parse XHCI extended capabilities from the capability registers.
+///
+/// Extended capabilities are linked as a singly-linked list.
+/// Each entry starts with a 16-bit offset to the next entry.
+pub fn parse_extended_capabilities(mmio_base: u64, hcc_params: u32) -> Vec<XhciExtCap> {
+    let mut caps = Vec::new();
+
+    // HCCPARAMS offset 0x10 contains the extended capability pointer
+    // (bits [15:0] are the offset from the MMIO base in 16-bit units)
+    let ext_cap_offset = (hcc_params & 0xFFFF) as u64 * 4; // Convert to byte offset
+
+    if ext_cap_offset == 0 {
+        return caps; // No extended capabilities
+    }
+
+    let mut offset = ext_cap_offset;
+    let mut visited = 0u32; // Prevent infinite loops
+
+    loop {
+        if visited > 100 {
+            break; // Safety limit
+        }
+        visited += 1;
+
+        // Read the extended capability register (32 bits)
+        let reg_addr = mmio_base + offset;
+        let reg = unsafe {
+            let ptr = reg_addr as *const u32;
+            core::ptr::read_volatile(ptr)
+        };
+
+        let cap_id = (reg & 0xFF) as u8;
+        let cap_version = ((reg >> 16) & 0x0F) as u8;
+        let next = ((reg >> 16) & 0xFFFF0) as u16; // Bits [31:20]
+
+        let mut data = [0u8; 4];
+        data.copy_from_slice(&reg.to_le_bytes());
+
+        let ext_cap = XhciExtCap {
+            cap_type: XhciExtCapType::from(cap_id),
+            data,
+            next_offset: next,
+        };
+
+        crate::serial::println!(
+            "[XHCI] Extended capability: type={:?} version={} next={:#x}",
+            ext_cap.cap_type,
+            cap_version,
+            next
+        );
+
+        caps.push(ext_cap);
+
+        if next == 0 || next as u64 == offset {
+            break; // End of list or self-referencing
+        }
+        offset = next as u64;
+    }
+
+    caps
+}
+
+/// Handle USB Legacy Support capability (BIOS -> OS handoff).
+pub fn handle_usb_legacy(mmio_base: u64, cap_offset: u64) -> Result<(), XhciError> {
+    let reg_addr = mmio_base + cap_offset;
+
+    unsafe {
+        // Read USBLEGSUP register
+        let leg_sup = core::ptr::read_volatile(reg_addr as *const u32);
+
+        // Check if BIOS owns the host controller (bit 16 = BIOS Ownership)
+        if leg_sup & (1 << 16) != 0 {
+            crate::serial::println!("[XHCI] BIOS owns host controller, requesting handoff...");
+
+            // Set OS Ownership bit (bit 24)
+            let new_val = leg_sup | (1 << 24);
+            core::ptr::write_volatile(reg_addr as *mut u32, new_val);
+
+            // Wait for BIOS to release (bit 16 should clear)
+            let deadline = crate::time::uptime_us() + 1_000_000;
+            loop {
+                let current = core::ptr::read_volatile(reg_addr as *const u32);
+                if current & (1 << 16) == 0 {
+                    crate::serial::println!("[XHCI] BIOS handoff complete");
+                    break;
+                }
+                if crate::time::uptime_us() > deadline {
+                    crate::serial::println!("[XHCI] Warning: BIOS handoff timeout");
+                    break;
+                }
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // MMIO helpers
 // ---------------------------------------------------------------------------

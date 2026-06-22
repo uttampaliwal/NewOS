@@ -5,6 +5,7 @@ pub mod net;
 pub mod nvme;
 pub mod pci;
 pub mod pcie;
+pub mod tpm;
 pub mod video;
 pub mod virtio_net;
 pub mod xhci;

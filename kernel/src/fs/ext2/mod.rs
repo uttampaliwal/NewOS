@@ -1,6 +1,10 @@
 //! ext2 filesystem driver for Turnix OS
 //! Provides persistent storage via ext2 filesystem.
 
+pub mod allocator;
+pub mod disk;
+pub mod write;
+
 extern crate alloc;
 
 use alloc::string::String;

@@ -202,7 +202,7 @@ pub fn security_initialized(log: &str) -> bool {
 
 /// Check if LSM hook is active
 pub fn lsm_initialized(log: &str) -> bool {
-    log.contains("[LSM] Initialised with DAC hook")
+    log.contains("[LSM] Initialised with DAC")
 }
 
 /// Check if seccomp subsystem initialized

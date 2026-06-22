@@ -68,6 +68,9 @@ pub enum Syscall {
     Dmesg = 53,
     XattrGet = 54,
     XattrSet = 55,
+    NetSetAddr = 56,
+    NetSetRoute = 57,
+    NetQuery = 58,
 }
 
 impl Syscall {
@@ -128,6 +131,9 @@ impl Syscall {
             53 => Some(Self::Dmesg),
             54 => Some(Self::XattrGet),
             55 => Some(Self::XattrSet),
+            56 => Some(Self::NetSetAddr),
+            57 => Some(Self::NetSetRoute),
+            58 => Some(Self::NetQuery),
             _ => None,
         }
     }

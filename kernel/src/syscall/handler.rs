@@ -90,6 +90,9 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Dmesg => handle_dmesg(args),
         Syscall::XattrGet => handle_xattr_get(args),
         Syscall::XattrSet => handle_xattr_set(args),
+        Syscall::NetSetAddr => handle_net_set_addr(args),
+        Syscall::NetSetRoute => handle_net_set_route(args),
+        Syscall::NetQuery => handle_net_query(args),
     }
 }
 
@@ -1739,6 +1742,137 @@ fn handle_dmesg(args: SyscallArgs) -> SyscallResult {
     }
 
     SyscallResult::Success(written as u64)
+}
+
+/// `NetSetAddr(iface_id, addr_ptr, netmask_ptr, gateway_ptr) -> 0`
+///
+/// Sets the IP address, netmask, and gateway for a network interface.
+/// - arg0: interface ID (0..7)
+/// - arg1: pointer to 4-byte IPv4 address
+/// - arg2: pointer to 4-byte netmask
+/// - arg3: pointer to 4-byte gateway
+fn handle_net_set_addr(args: SyscallArgs) -> SyscallResult {
+    // Check CAP_NET_ADMIN
+    if let Some(current) = crate::task::scheduler::get_current_process()
+        && !current.inner.lock().sec_ctx.has_capability(
+            crate::security::capabilities::Capability::NetAdmin,
+        )
+    {
+        return SyscallResult::Error(1); // EPERM
+    }
+
+    let iface_id = args.arg0 as u32;
+    let addr_ptr = args.arg1 as *const [u8; 4];
+    let netmask_ptr = args.arg2 as *const [u8; 4];
+    let gateway_ptr = args.arg3 as *const [u8; 4];
+
+    if iface_id >= 8
+        || addr_ptr.is_null()
+        || netmask_ptr.is_null()
+        || gateway_ptr.is_null()
+    {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let addr = unsafe { core::ptr::read_unaligned(addr_ptr) };
+    let netmask = unsafe { core::ptr::read_unaligned(netmask_ptr) };
+    let gateway = unsafe { core::ptr::read_unaligned(gateway_ptr) };
+
+    // Apply to smoltcp interface as well
+    {
+        let mut stack = crate::net::smoltcp_iface::NET_STACK.lock();
+        let prefix_len = netmask.iter().fold(0u8, |acc, b| acc + b.count_ones() as u8);
+        let ip_cidr = smoltcp::wire::IpCidr::new(
+            smoltcp::wire::IpAddress::Ipv4(smoltcp::wire::Ipv4Address::from_bytes(&addr)),
+            prefix_len,
+        );
+        stack.interface.update_ip_addrs(|addrs| {
+            addrs.clear();
+            let _ = addrs.push(ip_cidr);
+        });
+    }
+
+    {
+        let mut configs = crate::net::NET_CONFIGS.lock();
+        let cfg = &mut configs[iface_id as usize];
+        cfg.ip = addr;
+        cfg.netmask = netmask;
+        cfg.gateway = gateway;
+        cfg.up = true;
+    }
+
+    crate::serial::println!(
+        "[NET] set_addr iface={} ip={}.{}.{}.{} nm={}.{}.{}.{} gw={}.{}.{}.{}",
+        iface_id,
+        addr[0], addr[1], addr[2], addr[3],
+        netmask[0], netmask[1], netmask[2], netmask[3],
+        gateway[0], gateway[1], gateway[2], gateway[3],
+    );
+
+    SyscallResult::Success(0)
+}
+
+/// `NetSetRoute(gateway_ptr) -> 0`
+///
+/// Sets the default gateway on interface 0.
+/// - arg0: pointer to 4-byte gateway address
+fn handle_net_set_route(args: SyscallArgs) -> SyscallResult {
+    // Check CAP_NET_ADMIN
+    if let Some(current) = crate::task::scheduler::get_current_process()
+        && !current.inner.lock().sec_ctx.has_capability(
+            crate::security::capabilities::Capability::NetAdmin,
+        )
+    {
+        return SyscallResult::Error(1); // EPERM
+    }
+
+    let gateway_ptr = args.arg0 as *const [u8; 4];
+    if gateway_ptr.is_null() {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let gateway = unsafe { core::ptr::read_unaligned(gateway_ptr) };
+
+    {
+        let mut configs = crate::net::NET_CONFIGS.lock();
+        configs[0].gateway = gateway;
+    }
+
+    crate::serial::println!(
+        "[NET] set_route gw={}.{}.{}.{}",
+        gateway[0], gateway[1], gateway[2], gateway[3],
+    );
+
+    SyscallResult::Success(0)
+}
+
+/// `NetQuery(iface_id, resp_ptr) -> 0`
+///
+/// Queries the current configuration of a network interface.
+/// - arg0: interface ID (0..7)
+/// - arg1: pointer to NetQueryResp (16 bytes)
+fn handle_net_query(args: SyscallArgs) -> SyscallResult {
+    let iface_id = args.arg0 as u32;
+    let resp_ptr = args.arg1 as *mut turnix_abi::NetQueryResp;
+
+    if iface_id >= 8 || resp_ptr.is_null() {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let configs = crate::net::NET_CONFIGS.lock();
+    let cfg = &configs[iface_id as usize];
+
+    let resp = turnix_abi::NetQueryResp {
+        ip: cfg.ip,
+        netmask: cfg.netmask,
+        gateway: cfg.gateway,
+        mtu: cfg.mtu,
+        flags: if cfg.up { 1 } else { 0 },
+    };
+
+    unsafe { core::ptr::write_unaligned(resp_ptr, resp) };
+
+    SyscallResult::Success(0)
 }
 
 pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallResult {

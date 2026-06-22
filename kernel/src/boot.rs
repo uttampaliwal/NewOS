@@ -219,6 +219,22 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     }
     let _ = writeln!(writer, "[STG: GPU_PROBE]");
 
+    // 3.4d Probe TPM 2.0 TIS driver
+    {
+        const TPM_BASE_ADDR: u64 = 0xFED40000;
+        match unsafe { crate::drivers::tpm::TpmDriver::new(TPM_BASE_ADDR) }.probe() {
+            Ok(()) => {
+                if let Err(e) = crate::drivers::tpm::init(TPM_BASE_ADDR) {
+                    crate::serial::println!("[TPM] Init failed: {:?}", e);
+                }
+            }
+            Err(_) => {
+                crate::serial::println!("[TPM] Not found");
+            }
+        }
+    }
+    let _ = writeln!(writer, "[STG: TPM_PROBE]");
+
     // Register PID 1 (init) as the Compositor process
     crate::drivers::gpu::DRM_MANAGER.lock().set_compositor_pid(1);
     let _ = writeln!(writer, "[STG: COMPOSITOR_PID_SET]");

@@ -77,6 +77,8 @@ pub mod security;
 pub mod log_ring;
 pub mod serial;
 #[cfg(feature = "arch-x86_64")]
+pub mod time;
+#[cfg(feature = "arch-x86_64")]
 pub mod smp;
 #[cfg(feature = "arch-x86_64")]
 pub mod syscall;
