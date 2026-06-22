@@ -92,7 +92,11 @@ This document outlines the development trajectory of Turnix OS from foundational
 ## Known Limitations
 
 See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations:
-* ext4 writes delegate to tmpfs (no journaling)
-* EVM HMAC key is hardcoded (needs TPM derivation)
-* GP fault during fork/clone
-* UART busy-wait starves serial writes during driver init
+* ext4 writes are in-memory only (no block allocator, no journal)
+* No security architecture documentation or threat model
+* No fuzz testing infrastructure
+* No unified kernel error type
+* No userland observability commands (ps, meminfo, mount)
+* No performance benchmark suite
+* Kernel architecture boundary undefined (microkernel vs monolith)
+* Roadmap has no future phases beyond Phase 7
