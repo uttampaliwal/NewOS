@@ -33,7 +33,7 @@ pub mod test_serial {
     pub fn acquire() -> Guard {
         // Disable hardware serial once on first acquire to prevent
         // SIGSEGV from port I/O in userspace test mode.
-        if DISABLED_SERIAL.swap(true, Ordering::SeqCst) == false {
+        if !DISABLED_SERIAL.swap(true, Ordering::SeqCst) {
             turnix_serial::disable_serial();
         }
         while LOCKED.swap(true, Ordering::SeqCst) {

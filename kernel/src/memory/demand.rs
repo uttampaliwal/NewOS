@@ -189,7 +189,7 @@ mod tests {
     // ------------------------------------------------------------------
 
     fn arb_vma_prot() -> impl Strategy<Value = VmaProt> {
-        (0..8u8).prop_map(|bits| VmaProt::from_bits_truncate(bits))
+        (0..8u8).prop_map(VmaProt::from_bits_truncate)
     }
 
     /// Generate non-overlapping anonymous VMAs (page-aligned, non-zero size).
@@ -198,9 +198,9 @@ mod tests {
             let mut vmas = Vec::new();
             let mut cursor = VirtAddr::new(0x1000);
             for (gap, size, prot) in segments {
-                cursor = cursor + gap * 0x1000;
+                cursor += gap * 0x1000;
                 let start = cursor;
-                cursor = cursor + size * 0x1000;
+                cursor += size * 0x1000;
                 let end = cursor;
                 vmas.push(Vma {
                     start,
@@ -461,11 +461,11 @@ fn check_wx_exhaustive() {
         let mut buf = [0xFFu8; 64];
         let half = 32;
         unsafe { core::ptr::write_bytes(buf.as_mut_ptr(), 0, half); }
-        for i in 0..half {
-            assert_eq!(buf[i], 0, "byte {} should be zeroed", i);
+        for (i, &byte) in buf[..half].iter().enumerate() {
+            assert_eq!(byte, 0, "byte {} should be zeroed", i);
         }
-        for i in half..buf.len() {
-            assert_eq!(buf[i], 0xFF, "byte {} should be unchanged", i);
+        for (i, &byte) in buf[half..].iter().enumerate() {
+            assert_eq!(byte, 0xFF, "byte {} should be unchanged", i + half);
         }
     }
 

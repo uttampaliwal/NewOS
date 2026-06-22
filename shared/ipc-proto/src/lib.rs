@@ -258,7 +258,7 @@ mod tests {
             IpcValue::Null,
             IpcValue::Bool(true),
             IpcValue::Int(-42),
-            IpcValue::Float(3.14),
+            IpcValue::Float(core::f64::consts::PI),
             IpcValue::String("test".into()),
             IpcValue::Bytes(vec![0x00, 0xFF, 0xAB]),
             IpcValue::Array(vec![IpcValue::Int(1), IpcValue::Int(2)]),
@@ -296,7 +296,7 @@ mod tests {
     fn test_encode_message_too_large() {
         // postcard doesn't have a max size issue for reasonable values,
         // but we verify the encoding works for a large message
-        let large_args: Vec<IpcValue> = (0..1000).map(|i| IpcValue::Int(i)).collect();
+        let large_args: Vec<IpcValue> = (0..1000).map(IpcValue::Int).collect();
         let msg = IpcMessage::MethodCall {
             id: 1,
             interface: "test".into(),

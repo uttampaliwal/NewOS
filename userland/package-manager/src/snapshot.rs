@@ -361,7 +361,7 @@ mod tests {
 
         // Create snapshot of the original file
         let snap = mgr
-            .create_snapshot(SnapshotTrigger::PreInstall, &[target.clone()])
+            .create_snapshot(SnapshotTrigger::PreInstall, std::slice::from_ref(&target))
             .unwrap();
 
         // Modify the file

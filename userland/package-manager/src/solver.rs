@@ -316,6 +316,7 @@ mod tests {
             .prop_map(|s| s.parse().unwrap())
     }
 
+    #[allow(clippy::type_complexity)]
     fn arb_dep_graph() -> impl Strategy<Value = (DependencySolver, BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>>)> {
         let pkg_names = proptest::collection::vec(arb_package_name(), 2..=5);
         pkg_names.prop_flat_map(|names| {
@@ -431,6 +432,7 @@ mod tests {
     // Property 29: Cycle Detection
     // -----------------------------------------------------------------------
 
+    #[allow(clippy::type_complexity)]
     fn arb_cyclic_graph() -> impl Strategy<Value = (DependencySolver, BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>>)> {
         (arb_package_name(), arb_package_name(), arb_version()).prop_map(|(name_a, name_b, ver)| {
             let mut solver = DependencySolver::new();

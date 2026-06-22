@@ -1612,7 +1612,7 @@ mod tests {
 
         fn read(&self, inode: InodeId, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
             let inner = self.inner.lock();
-            for (_, (id, data)) in &inner.files {
+            for (id, data) in inner.files.values() {
                 if *id == inode {
                     let start = offset as usize;
                     if start >= data.len() {
@@ -1629,7 +1629,7 @@ mod tests {
 
         fn write(&self, inode: InodeId, offset: u64, buf: &[u8]) -> Result<usize, FsError> {
             let mut inner = self.inner.lock();
-            for (_, (id, data)) in &mut inner.files {
+            for (id, data) in inner.files.values_mut() {
                 if *id == inode {
                     let start = offset as usize;
                     if start > data.len() {

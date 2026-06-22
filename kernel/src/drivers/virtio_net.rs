@@ -911,8 +911,8 @@ mod tests {
         let mut desc_mem = alloc::vec![0u8; desc_len];
         let desc = unsafe { &mut *(desc_mem.as_mut_ptr() as *mut [Desc; QUEUE_SIZE as usize]) };
         // Initialize with all descriptors in use (self-loop or 0xFFFF)
-        for i in 0..QUEUE_SIZE as usize {
-            desc[i].next = 0xFFFF;
+        for desc_entry in desc.iter_mut().take(QUEUE_SIZE as usize) {
+            desc_entry.next = 0xFFFF;
         }
         let mut free_head = 0xFFFFu16;
         let mut free_count = 0u16;

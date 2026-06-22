@@ -1505,7 +1505,7 @@ mod tests {
     }
 
     fn build_rsdt_blob(entries: &[u32]) -> Vec<u8> {
-        let mut body = Vec::with_capacity(entries.len() * mem::size_of::<u32>());
+        let mut body = Vec::with_capacity(core::mem::size_of_val(entries));
         for entry in entries {
             body.extend_from_slice(&entry.to_le_bytes());
         }

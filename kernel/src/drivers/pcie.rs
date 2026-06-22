@@ -234,7 +234,7 @@ mod tests {
                 prefetchable,
             }) => {
                 assert_eq!(base, 0x1234567800000000);
-                assert_eq!(prefetchable, false);
+                assert!(!prefetchable);
             }
             _ => panic!("Expected Memory64 BAR"),
         }
@@ -258,7 +258,7 @@ mod tests {
                 prefetchable,
             }) => {
                 assert_eq!(base, 0x80000000);
-                assert_eq!(prefetchable, true);
+                assert!(prefetchable);
             }
             _ => panic!("Expected Memory32 BAR"),
         }
@@ -304,7 +304,7 @@ mod tests {
                 base, prefetchable, ..
             }) => {
                 assert_eq!(base, 0x80000000);
-                assert_eq!(prefetchable, true);
+                assert!(prefetchable);
             }
             _ => panic!("Expected Memory32 BAR at index 1"),
         }
@@ -315,7 +315,7 @@ mod tests {
                 base, prefetchable, ..
             }) => {
                 assert_eq!(base, 0x1234567800000000);
-                assert_eq!(prefetchable, false);
+                assert!(!prefetchable);
             }
             _ => panic!("Expected Memory64 BAR at index 2"),
         }

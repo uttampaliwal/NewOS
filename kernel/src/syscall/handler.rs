@@ -2122,7 +2122,7 @@ mod tests {
             }
 
             // POSIX encodes exit status as (exit_code & 0xff) << 8.
-            let expected_status = ((exit_code as i32) & 0xff) << 8;
+            let expected_status = (exit_code & 0xff) << 8;
             assert_eq!(status, expected_status,
                 "wait returned wrong exit status for code {}", exit_code);
 

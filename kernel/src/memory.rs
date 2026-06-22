@@ -173,7 +173,7 @@ mod tests {
             ramdisk_size: 0,
             memory_map: BootMemoryMap {
                 descriptors: descriptors.as_ptr(),
-                map_size: descriptors.len() * size_of::<BootMemoryDescriptor>(),
+                map_size: core::mem::size_of_val(descriptors),
                 desc_size: size_of::<BootMemoryDescriptor>(),
                 desc_version: 1,
             },

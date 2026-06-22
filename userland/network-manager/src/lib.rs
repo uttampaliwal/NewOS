@@ -332,7 +332,7 @@ mod tests {
         dns: &[Ipv4Addr],
         lease_secs: u32,
     ) -> Vec<u8> {
-        let mut dns_vec: heapless::Vec<Ipv4Address, { smoltcp::wire::DHCP_MAX_DNS_SERVER_COUNT as usize }> =
+        let mut dns_vec: heapless::Vec<Ipv4Address, { smoltcp::wire::DHCP_MAX_DNS_SERVER_COUNT }> =
             heapless::Vec::new();
         for a in dns {
             dns_vec.push(Ipv4Address(a.octets())).ok();

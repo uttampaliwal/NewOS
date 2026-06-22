@@ -34,7 +34,8 @@ cargo test -p turnix-kernel
 
 ## Known Limitations
 
-See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations including:
-- ext4 writes delegate to tmpfs (no journaling)
-- EVM HMAC key is hardcoded
-- GP fault during fork/clone
+See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for all tracked issues. Key kernel-specific items:
+- **#1** ext4 writes are in-memory only (no block allocator, no journal)
+- **#3** GP fault during fork/clone (mitigated with RFLAGS sanitization)
+- **#17** No scheduler classes (CFS/RT/deadline) — only round-robin
+- **#20** No performance tracing (ftrace, kprobes)

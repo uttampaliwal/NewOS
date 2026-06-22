@@ -502,8 +502,7 @@ mod tests {
 
     #[test]
     fn net_namespace_new() {
-        let ns = NetNamespace::new();
-        drop(ns);
+        let _ns = NetNamespace::new();
     }
 
     #[test]

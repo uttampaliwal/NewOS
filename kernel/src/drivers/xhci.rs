@@ -1093,7 +1093,7 @@ mod tests {
     use super::*;
     use crate::drivers::framework::Bar;
     use alloc::format;
-    use alloc::vec;
+
 
     // -----------------------------------------------------------------------
     // Port speed detection tests
@@ -1284,6 +1284,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn test_controller_reset_timeout_path() {
         // Verify that the reset timeout iter count is reasonable
         assert!(RESET_TIMEOUT_ITER > 0);
@@ -1403,6 +1404,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn test_portsc_change_bits() {
         // Change bits must include all writable change status bits
         assert!(PORTSC_CHANGE_BITS & PORTSC_CSC != 0);
@@ -1556,7 +1558,7 @@ mod tests {
 
     #[test]
     fn test_xhci_enumerate_port_filtering() {
-        let ports = vec![
+        let ports = [
             make_port_status(1, false, false, PortSpeed::None),
             make_port_status(2, true, true, PortSpeed::Usb20High),
             make_port_status(3, true, true, PortSpeed::Usb30Super),

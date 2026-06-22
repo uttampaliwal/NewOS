@@ -114,14 +114,6 @@ has been updated to reference `master` instead of `main`. CI triggers on
 `lsm.md` (pluggable hook framework, DAC/MAC policies),
 `ima-evm.md` (integrity measurement, EVM verification, TPM integration).
 
-**Proposed Fix:** Create `docs/security/` with:
-- `threat-model.md` — trust boundaries, attacker models, TCB definition
-- `capabilities.md` — POSIX capability sets and enforcement points
-- `namespaces.md` — namespace isolation semantics
-- `seccomp.md` — BPF filter format and inheritance
-- `lsm.md` — hook framework and DAC/MAC policies
-- `ima-evm.md` — integrity measurement flow
-
 ---
 
 ## 8. No Fuzz Testing Infrastructure (Resolved)
@@ -262,6 +254,236 @@ all 5 fuzz targets).
 
 ---
 
+## 17. No Scheduler Classes (CFS/RT/Deadline)
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/scheduler/` |
+| **Status** | Open |
+
+**Impact:** Only round-robin scheduling exists. Cannot support real-time
+workloads, fair-share scheduling, or deadline-sensitive tasks. Modern OS
+kernels implement multiple scheduler classes with priority-based dispatch.
+
+**Proposed Fix:** Implement scheduler class framework:
+- `RealTimeScheduler`: FIFO and RR policies with static priorities
+- `FairScheduler`: CFS-like virtual runtime, vruntime tracking, red-black tree
+- `IdleScheduler`: idle task per CPU
+- `BatchScheduler`: background batch processing
+- Scheduler domains for NUMA-aware load balancing
+
+**Tracking:** `docs/roadmap.md` Phase 8, `docs/sota-gap-analysis.md` #2
+
+---
+
+## 18. No cgroups v2 or Resource Accounting
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/cgroup/` (new) |
+| **Status** | Open |
+
+**Impact:** No resource limiting, accounting, or isolation. Containers,
+service isolation, and fair resource distribution all depend on cgroups.
+Without cgroups, any process can consume unlimited CPU, memory, or I/O.
+
+**Proposed Fix:** Implement cgroups v2 hierarchy:
+- CPU controller: CFS bandwidth, cpu.max, cpu.weight
+- Memory controller: memory.max, memory.high, memory.oom.group
+- I/O controller: io.max, io.weight, io.latency
+- PIDs controller: pids.max
+- `/sys/fs/cgroup` filesystem interface
+- `clone3()` with CLONE_INTO_CGROUP support
+
+**Tracking:** `docs/roadmap.md` Phase 10, `docs/sota-gap-analysis.md` #7
+
+---
+
+## 19. No Async I/O (epoll, io_uring, futex)
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/io/` (new) |
+| **Status** | Open |
+
+**Impact:** No event-driven I/O multiplexing. All network servers and
+high-concurrency applications depend on epoll/select/poll. Without it,
+Turnix cannot run nginx,数据库, or any production workload.
+
+**Proposed Fix:** Implement:
+- `epoll`: epoll_create1, epoll_ctl, epoll_wait with EPOLLIN/EPOLLOUT/EPOLLRDHUP
+- `io_uring`: submission queue, completion queue, SQE/CQE ring buffers
+- `futex`: FUTEX_WAIT/FUTEX_WAKE for userspace synchronization primitives
+- `eventfd`: event notification for I/O integration
+
+**Tracking:** `docs/roadmap.md` Phase 10, `docs/sota-gap-analysis.md` #9
+
+---
+
+## 20. No Performance Tracing (ftrace, kprobes)
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/tracing/` (new) |
+| **Status** | Open |
+
+**Impact:** No visibility into kernel internals. Cannot diagnose latency,
+contention, or performance regressions. All production kernels require
+observability infrastructure.
+
+**Proposed Fix:** Implement:
+- ftrace framework: function tracer, function_graph, trace events via tracefs
+- kprobes: dynamic instrumentation at any kernel function
+- uprobes: dynamic instrumentation at user-space addresses
+- perf: hardware performance counter abstraction (PMU)
+- trace output to ring buffer, readable via /sys/kernel/debug/tracing
+
+**Tracking:** `docs/roadmap.md` Phase 13, `docs/sota-gap-analysis.md` #10
+
+---
+
+## 21. No Memory Compression (zswap/zram)
+
+| | |
+|---|---|
+| **Severity** | Medium |
+| **Component** | `kernel/src/mm/swap.rs` |
+| **Status** | Open |
+
+**Impact:** Swap goes directly to block device. Compressed swap (zswap/zram)
+can hold 2-3x more data in RAM, reducing disk I/O and improving
+responsiveness under memory pressure.
+
+**Proposed Fix:**
+- zswap: compressed write-back cache in front of swap device
+- zram: compressed block device in RAM
+- LZ4 or ZSTD compression for swap pages
+- same-page merging (KSM) for deduplication
+
+**Tracking:** `docs/roadmap.md` Phase 11, `docs/sota-gap-analysis.md` #5
+
+---
+
+## 22. No Crash Dump / Reliability Engineering
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/panic.rs`, `kernel/src/reliability/` (new) |
+| **Status** | Open |
+
+**Impact:** Kernel panics produce only a register dump. No crash dump is
+captured for post-mortem analysis. No watchdog for hang detection. No fault
+injection for robustness testing. Production kernels require all three.
+
+**Proposed Fix:**
+- Crash dump: kdump-style capture of kernel memory to reserved region
+- Watchdog: hardware watchdog timer (HPET/LAPIC) with pre-panic countdown
+- Fault injection: configurable failure points for alloc, I/O, network
+- Panic reports: structured JSON logs with backtrace, oops decoding
+- Kernel checkpoints: save/restore state for live migration
+
+**Tracking:** `docs/roadmap.md` Phase 16, `docs/sota-gap-analysis.md` #16
+
+---
+
+## 23. No Kernel Crypto API
+
+| | |
+|---|---|
+| **Severity** | Medium |
+| **Component** | `kernel/src/crypto/` (new) |
+| **Status** | Open |
+
+**Impact:** Cryptographic operations are scattered across IMA/EVM and
+package verification. No unified in-kernel crypto API for encrypting
+filesystems, network traffic, or key management.
+
+**Proposed Fix:**
+- AEAD ciphers: AES-256-GCM, ChaCha20-Poly1305
+- Hash algorithms: SHA-256, SHA-3, BLAKE2
+- Key derivation: HKDF, PBKDF2
+- Random: /dev/random, /dev/urandom, getrandom syscall
+- HMAC for IMA/EVM and network authentication
+
+**Tracking:** `docs/roadmap.md` Phase 12, `docs/sota-gap-analysis.md` #6
+
+---
+
+## 24. No Device Driver PM / Hotplug Framework
+
+| | |
+|---|---|
+| **Severity** | Medium |
+| **Component** | `kernel/src/drv/` |
+| **Status** | Open |
+
+**Impact:** Drivers are standalone with no power management or hotplug
+support. Cannot suspend/resume, cannot handle USB/PCI hot-plug events,
+cannot do runtime power management. Laptops and servers require all three.
+
+**Proposed Fix:**
+- Driver model: Bus, Device, Driver trait objects with probe/remove/suspend/resume
+- Runtime PM: reference-counted autosuspend, runtime_get_sync/put_suspend
+- System PM: suspend-to-idle, suspend-to-RAM, hibernation
+- Hotplug: USB device insertion/removal events, PCI hot-add/hot-remove
+- Device tree or ACPI-based enumeration
+
+**Tracking:** `docs/roadmap.md` Phase 16, `docs/sota-gap-analysis.md` #8
+
+---
+
+## 25. No Hypervisor / Virtualization Support
+
+| | |
+|---|---|
+| **Severity** | Medium |
+| **Component** | `kernel/src/kvm/` (new) |
+| **Status** | Open |
+
+**Impact:** Cannot run guest VMs. Modern OSes increasingly support
+virtualization for containers (KVM), security sandboxing, and running
+legacy software.
+
+**Proposed Fix:**
+- VT-x/AMD-V: VMCS/VMCB management, VM entry/exit handling
+- Nested paging: EPT/NPT for guest physical → host physical mapping
+- Virtual devices: VirtIO net, block, console, input for guests
+- /dev/kvm interface for userspace hypervisors
+- VM launch: load ELF kernel into guest physical memory, set up CR3/CR4
+
+**Tracking:** `docs/roadmap.md` Phase 16, `docs/sota-gap-analysis.md` #14
+
+---
+
+## 26. No Userspace Coreutils / POSIX Utilities
+
+| | |
+|---|---|
+| **Severity** | Medium |
+| **Component** | `userland/coreutils/` (new) |
+| **Status** | Open |
+
+**Impact:** No standard UNIX utilities (ls, cat, grep, cp, mv, rm, chmod,
+etc.). Users must write custom programs for basic operations. An OS without
+coreutils is not usable for development or daily use.
+
+**Proposed Fix:** Port or rewrite core utilities:
+- File operations: cat, cp, mv, rm, ln, mkdir, rmdir, chmod, chown, chgrp
+- Text processing: grep, sed, awk, sort, uniq, wc, head, tail, cut, tr
+- System info: ps, top, df, du, free, uname, uptime, whoami, id
+- Process management: kill, nice, nohup, sleep, wait
+- Archives: tar, gzip, gunzip
+- Network: curl, wget, ssh, scp
+
+**Tracking:** `docs/roadmap.md` Phase 15, `docs/sota-gap-analysis.md` #12
+
+---
+
 ## Summary
 
 | # | Issue | Severity | Status |
@@ -282,3 +504,13 @@ all 5 fuzz targets).
 | 14 | Kernel architecture boundary undefined | Medium | Resolved |
 | 15 | Roadmap ends at Phase 7 | Low | Resolved |
 | 16 | CI missing doc build and fuzz jobs | Low | Resolved |
+| 17 | No scheduler classes (CFS/RT/deadline) | High | Open |
+| 18 | No cgroups v2 or resource accounting | High | Open |
+| 19 | No async I/O (epoll, io_uring, futex) | High | Open |
+| 20 | No performance tracing (ftrace, kprobes) | High | Open |
+| 21 | No memory compression (zswap/zram) | Medium | Open |
+| 22 | No crash dump / reliability engineering | High | Open |
+| 23 | No kernel crypto API | Medium | Open |
+| 24 | No device driver PM / hotplug framework | Medium | Open |
+| 25 | No hypervisor / virtualization support | Medium | Open |
+| 26 | No userspace coreutils / POSIX utilities | Medium | Open |

@@ -823,7 +823,7 @@ mod tests {
         unsafe {
             core::ptr::copy_nonoverlapping(
                 data.as_ptr(),
-                (phys_mem_offset + base_ptr + 0 * 4096) as *mut u8,
+                (phys_mem_offset + base_ptr) as *mut u8,
                 4096,
             );
         }
@@ -831,7 +831,7 @@ mod tests {
         let mut readback = [0u8; 4096];
         unsafe {
             core::ptr::copy_nonoverlapping(
-                (phys_mem_offset + base_ptr + 0 * 4096) as *const u8,
+                (phys_mem_offset + base_ptr) as *const u8,
                 readback.as_mut_ptr(),
                 4096,
             );

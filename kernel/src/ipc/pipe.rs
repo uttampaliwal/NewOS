@@ -98,6 +98,7 @@ impl PipeBuffer {
     }
 
     pub fn write_blocking(&self, buf: &[u8]) -> usize {
+        #[allow(clippy::never_loop)]
         loop {
             // Try a non-blocking write first.
             let mut inner = self.inner.lock();
@@ -284,8 +285,8 @@ mod tests {
         // Write enough to force at least one wrap of the ring buffer.
         let mut buf = alloc::vec![0u8; PIPE_BUF_SIZE];
         // Fill with a pattern.
-        for i in 0..PIPE_BUF_SIZE {
-            buf[i] = (i & 0xFF) as u8;
+        for (i, b) in buf.iter_mut().enumerate() {
+            *b = (i & 0xFF) as u8;
         }
         let written = pipe.write(&buf);
         assert_eq!(written, PIPE_BUF_SIZE);
@@ -294,13 +295,13 @@ mod tests {
         let mut first_half = alloc::vec![0u8; PIPE_BUF_SIZE / 2];
         let n = pipe.read(&mut first_half);
         assert_eq!(n, PIPE_BUF_SIZE / 2);
-        for i in 0..n {
-            assert_eq!(first_half[i], (i & 0xFF) as u8, "mismatch at offset {}", i);
+        for (i, b) in first_half.iter().enumerate().take(n) {
+            assert_eq!(*b, (i & 0xFF) as u8, "mismatch at offset {}", i);
         }
 
         // Write more data to force wrap-around position to change.
-        for i in 0..(PIPE_BUF_SIZE / 2) {
-            buf[i] = ((i + 0x80) & 0xFF) as u8;
+        for (i, b) in buf.iter_mut().enumerate().take(PIPE_BUF_SIZE / 2) {
+            *b = ((i + 0x80) & 0xFF) as u8;
         }
         let written2 = pipe.write(&buf[..PIPE_BUF_SIZE / 2]);
         assert_eq!(written2, PIPE_BUF_SIZE / 2);
@@ -311,9 +312,9 @@ mod tests {
         assert_eq!(total, PIPE_BUF_SIZE);
 
         // Second half of original.
-        for i in 0..PIPE_BUF_SIZE / 2 {
+        for (i, b) in full.iter().enumerate().take(PIPE_BUF_SIZE / 2) {
             assert_eq!(
-                full[i],
+                *b,
                 ((i + PIPE_BUF_SIZE / 2) & 0xFF) as u8,
                 "original second half mismatch at {}",
                 i

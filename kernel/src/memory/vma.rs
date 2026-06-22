@@ -144,7 +144,7 @@ mod tests {
     use x86_64::VirtAddr;
 
     fn arb_vma_prot() -> impl Strategy<Value = VmaProt> {
-        (0..8u8).prop_map(|bits| VmaProt::from_bits_truncate(bits))
+        (0..8u8).prop_map(VmaProt::from_bits_truncate)
     }
 
     /// Generate a list of non-overlapping VMA *candidates* — page-aligned,
@@ -155,9 +155,9 @@ mod tests {
             let mut vmas = Vec::new();
             let mut cursor = VirtAddr::new(0x1000);
             for (gap, size, prot) in segments {
-                cursor = cursor + gap * 0x1000;
+                cursor += gap * 0x1000;
                 let start = cursor;
-                cursor = cursor + size * 0x1000;
+                cursor += size * 0x1000;
                 let end = cursor;
                 vmas.push(Vma {
                     start,

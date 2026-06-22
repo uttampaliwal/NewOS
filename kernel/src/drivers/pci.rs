@@ -89,7 +89,7 @@ mod tests {
     fn test_config_address_format() {
         // Verify the PCI config address format:
         // bit 31 = 1 (enable), bus 16-23, device 11-15, function 8-10, offset 2-7
-        let address = ((0u32) << 16) | ((0u32) << 11) | ((0u32) << 8) | (0u32 & 0xFC) | 0x80000000;
+        let address = 0x80000000u32;
         assert_eq!(address, 0x80000000);
     }
 

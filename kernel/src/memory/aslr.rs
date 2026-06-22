@@ -379,6 +379,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn stack_and_heap_do_not_overlap_with_pie() {
         let pie_max = PIE_LOAD_BASE_MIN + ASLR_RANGE_PAGES * 4096;
         // 1 GiB margin between pie max and heap min

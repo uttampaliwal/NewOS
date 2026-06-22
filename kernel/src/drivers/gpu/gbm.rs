@@ -201,13 +201,13 @@ mod tests {
             assert_eq!(buf.height, 1080);
             assert_eq!(buf.stride, 1920 * 4);
             assert_eq!(buf.size, 1920 * 1080 * 4);
-            let num_pages = (buf.size + 4095) / 4096;
+            let num_pages = buf.size.div_ceil(4096);
             assert_eq!(buf.frames.len() as u64, num_pages);
             drop(mgr);
 
             gbm_destroy(id);
             let mgr = GBM_MANAGER.lock();
-            assert!(mgr.buffers.get(&id).is_none(), "buffer should be removed");
+            assert!(!mgr.buffers.contains_key(&id), "buffer should be removed");
         });
     }
 

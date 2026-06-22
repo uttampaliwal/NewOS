@@ -1425,7 +1425,7 @@ mod tests {
         let old_phase = ctrl.cq_expected_phase[0].load(Ordering::Relaxed);
         let new_head = cq_size as u16;
         ctrl.admin_cq_head.store(new_head, Ordering::Relaxed);
-        if new_head as usize % cq_size == 0 && new_head != 0 {
+        if (new_head as usize).is_multiple_of(cq_size) && new_head != 0 {
             ctrl.cq_expected_phase[0].store(!old_phase, Ordering::Relaxed);
         }
         assert!(
@@ -1533,7 +1533,7 @@ mod tests {
         // Wrap: advance head from cq_size to cq_size + 1 → triggers toggle.
         let old_phase = ctrl.cq_expected_phase[0].load(Ordering::Relaxed);
         let wrap_head = cq_size as u16;
-        if wrap_head as usize % cq_size == 0 && wrap_head != 0 {
+        if (wrap_head as usize).is_multiple_of(cq_size) && wrap_head != 0 {
             ctrl.cq_expected_phase[0].store(!old_phase, Ordering::Relaxed);
         }
         ctrl.admin_cq_head.store(wrap_head, Ordering::Relaxed);
@@ -1567,7 +1567,7 @@ mod tests {
         // --- Second wrap: toggle back to true ---
         let old_phase2 = ctrl.cq_expected_phase[0].load(Ordering::Relaxed);
         let wrap_head2 = wrap_head + cq_size as u16;
-        if wrap_head2 as usize % cq_size == 0 && wrap_head2 != 0 {
+        if (wrap_head2 as usize).is_multiple_of(cq_size) && wrap_head2 != 0 {
             ctrl.cq_expected_phase[0].store(!old_phase2, Ordering::Relaxed);
         }
         ctrl.admin_cq_head.store(wrap_head2, Ordering::Relaxed);

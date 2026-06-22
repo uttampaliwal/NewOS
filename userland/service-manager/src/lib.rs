@@ -869,11 +869,11 @@ path = "/bin/x"
         .unwrap();
 
         // db not started yet
-        assert_eq!(mgr.dependencies_ready("app").unwrap(), false);
+        assert!(!mgr.dependencies_ready("app").unwrap());
 
         mgr.mark_starting("db").unwrap();
         mgr.mark_running("db", 100, 1).unwrap();
-        assert_eq!(mgr.dependencies_ready("app").unwrap(), true);
+        assert!(mgr.dependencies_ready("app").unwrap());
     }
 
     #[test]
