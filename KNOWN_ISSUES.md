@@ -99,40 +99,30 @@ output or add yield points in the initialization loop.
 
 ---
 
-## 5. No `main` Branch Exists
+## 5. Branch Naming Inconsistency (Resolved)
 
 | | |
 |---|---|
 | **Severity** | Low |
 | **Component** | Repository structure |
-| **Impact** | Contributing docs reference `main` but only `development` exists. |
+| **Status** | Resolved |
 
-**Root Cause:** The repository uses `development` as the primary branch and
-`turnix-next` as the integration branch. Several docs reference `main` which
-does not exist.
-
-**Proposed Fix:** Update all documentation to reference `development` as the
-default branch. Consider renaming `development` to `main` if that is the
-intended convention.
+**Resolution:** The repository uses `master` as the production branch and
+`development` as the integration branch (Gitflow model). All documentation
+has been updated to reference `master` instead of `main`. CI triggers on
+`master` for production builds.
 
 ---
 
-## 6. Rust Toolchain Not Pinned
+## 6. Rust Toolchain Not Pinned (Resolved)
 
 | | |
 |---|---|
 | **Severity** | Low |
 | **Component** | `rust-toolchain.toml` |
-| **Impact** | Builds may break when nightly Rust changes. |
+| **Status** | Resolved |
 
-**Root Cause:** `rust-toolchain.toml` specifies `channel = "nightly"` without
-a date pin. The `docs/reproducible.md` claims the toolchain is pinned to
-`stable-2024-12-20` which is incorrect.
-
-**Proposed Fix:** Pin to a specific nightly date in `rust-toolchain.toml`:
-```toml
-channel = "nightly-2026-06-22"
-```
+**Resolution:** Toolchain pinned to `nightly-2026-06-22` in `rust-toolchain.toml`.
 
 ---
 
@@ -144,5 +134,5 @@ channel = "nightly-2026-06-22"
 | 2 | EVM HMAC key is hardcoded | High | Open |
 | 3 | GP fault during fork/clone | Medium | Open |
 | 4 | UART busy-wait starves serial | Low | Open |
-| 5 | No `main` branch | Low | Open |
-| 6 | Rust toolchain not pinned | Low | Open |
+| 5 | Branch naming inconsistency | Low | Resolved |
+| 6 | Rust toolchain not pinned | Low | Resolved |

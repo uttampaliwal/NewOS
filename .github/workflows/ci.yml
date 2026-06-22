@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [ turnix-next ]
+    branches: [ master, development ]
   push:
-    branches: [ turnix-next ]
+    branches: [ master, development ]
 
 jobs:
   # ── Job 1: build ──────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ This document outlines the formal Git branching strategy and development workflo
 Turnix follows a hybrid model combining **Gitflow** for releases and **GitHub Flow** for feature development.
 
 ### Core Branches
-- **`main`**: The production-ready state. Every commit to `main` must be tagged with a version and represent a stable milestone.
+- **`master`**: The production-ready state. Every commit to `master` must be tagged with a version and represent a stable milestone.
 - **`development`**: The primary integration branch. All feature branches merge here first. This branch must always pass CI builds.
 - **`unstable`**: Used for experimental or highly disruptive changes (e.g., architectural refactors) that are not yet ready for general integration.
 
@@ -17,7 +17,7 @@ Turnix follows a hybrid model combining **Gitflow** for releases and **GitHub Fl
   - *Example*: `feature/vfs-read-support`
 - **`bugfix/*`**: For standard bug fixes.
   - *Convention*: `bugfix/description`
-- **`hotfix/*`**: For critical production fixes targeting `main`.
+- **`hotfix/*`**: For critical production fixes targeting `master`.
   - *Convention*: `hotfix/v1.x.x-critical-fix`
 - **`release/*`**: For version stabilization and preparation.
   - *Convention*: `release/vX.Y.Z`
@@ -28,7 +28,7 @@ Turnix follows a hybrid model combining **Gitflow** for releases and **GitHub Fl
 
 ```mermaid
 graph TD
-    Main[main]
+    Main[master]
     Dev[development]
     Unstable[unstable]
     Feature[feature/*]
@@ -56,7 +56,7 @@ graph TD
 3. Follow the [Conventional Commits](https://www.conventionalcommits.org/) format (e.g., `feat:`, `fix:`, `docs:`, `chore:`).
 
 ### Merging Policy
-- **Pull Requests (PRs)**: Required for all merges to `development` and `main`.
+- **Pull Requests (PRs)**: Required for all merges to `development` and `master`.
 - **Code Review**: At least one approval is required from a core maintainer.
 - **CI Status**: All status checks (build, smoke tests) must pass.
 - **Squash and Merge**: Preferred for feature branches to keep `development` history clean.
@@ -74,13 +74,13 @@ graph TD
 ## 4. Stability & Rollbacks
 
 ### Status Checks
-- **CI Build**: UEFI loader and freestanding kernel must build successfully on Windows.
+- **CI Build**: UEFI loader and freestanding kernel must build successfully on Linux.
 - **Smoke Test**: QEMU must boot to the shell and execute a heartbeat check.
 
 ### Rollback Strategy
 - **`git revert`**: Preferred for single commits on shared branches to preserve history.
 - **`git reset --hard`**: Only for local branches or recovery of the Trae workspace state.
-- **Milestone Tags**: Always tag `main` before major merges.
+- **Milestone Tags**: Always tag `master` before major merges.
 
 ---
 

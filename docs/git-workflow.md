@@ -46,23 +46,23 @@ If conflicts occur:
 
 ## 4. Hotfixes
 
-Hotfixes are for critical bugs in `main` (production).
+Hotfixes are for critical bugs in `master` (production).
 
 ```bash
-git checkout main
-git pull origin main
+git checkout master
+git pull origin master
 git checkout -b hotfix/v1.x.x-critical-fix
 # ... implement fix ...
 git push origin hotfix/v1.x.x-critical-fix
 ```
 
-After merging the hotfix to `main`, ensure it is also merged back into `development`.
+After merging the hotfix to `master`, ensure it is also merged back into `development`.
 
 ## 5. Branch Protection Rules
 
 The following rules are enforced on the remote repository:
 
-- **`main` and `development`**:
+- **`master` and `development`**:
   - Require a pull request before merging.
   - Require status checks to pass (Build & Smoke Test).
   - Require at least 1 approval from a maintainer.
