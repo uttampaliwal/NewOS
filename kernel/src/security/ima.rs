@@ -230,15 +230,67 @@ pub fn evm_verify(
 
 /// System EVM HMAC key (32 bytes). In production this would be derived from
 /// a TPM-stored secret; here we use a fixed key for boot-time integrity.
-const EVM_HMAC_KEY: &[u8; 32] = b"turnix-evm-hmac-key-2024-v1!1234";
+static EVM_HMAC_KEY: Mutex<Option<[u8; 32]>> = Mutex::new(None);
+
+/// Fallback key used when TPM is not available.
+const EVM_HMAC_KEY_FALLBACK: &[u8; 32] = b"turnix-evm-hmac-key-2024-v1!1234";
+
+/// Set the EVM HMAC key (called during boot from TPM-derived random bytes).
+pub fn set_evm_key(key: [u8; 32]) {
+    *EVM_HMAC_KEY.lock() = Some(key);
+}
+
+/// Get the EVM HMAC key, initializing from TPM if available.
+fn get_evm_key() -> [u8; 32] {
+    let key_guard = EVM_HMAC_KEY.lock();
+    if let Some(key) = *key_guard {
+        return key;
+    }
+    drop(key_guard);
+
+    // Try to derive from TPM
+    if let Some(tpm_key) = derive_key_from_tpm() {
+        set_evm_key(tpm_key);
+        return tpm_key;
+    }
+
+    // Fallback to hardcoded key (no TPM available)
+    let fallback = *EVM_HMAC_KEY_FALLBACK;
+    set_evm_key(fallback);
+    fallback
+}
+
+/// Derive a 32-byte key from the TPM using get_random.
+fn derive_key_from_tpm() -> Option<[u8; 32]> {
+    const TPM_BASE_ADDR: u64 = 0xFED40000;
+    let mut tpm = unsafe { crate::drivers::tpm::TpmDriver::new(TPM_BASE_ADDR) };
+
+    if tpm.probe().is_err() {
+        return None;
+    }
+
+    match tpm.get_random(32) {
+        Ok(random_bytes) if random_bytes.len() >= 32 => {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&random_bytes[..32]);
+            crate::serial::println!("[EVM] Key derived from TPM");
+            Some(key)
+        }
+        _ => {
+            crate::serial::println!("[EVM] TPM key derivation failed, using fallback");
+            None
+        }
+    }
+}
 
 /// Compute an EVM HMAC-SHA256 over file metadata (inode, size, mtime).
 pub fn evm_compute_hmac(inode: u64, size: u64, mtime: u64) -> [u8; 32] {
+    let key = get_evm_key();
     let mut data = alloc::vec::Vec::new();
     data.extend_from_slice(&inode.to_le_bytes());
     data.extend_from_slice(&size.to_le_bytes());
     data.extend_from_slice(&mtime.to_le_bytes());
-    hmac_sha256(EVM_HMAC_KEY, &data)
+    hmac_sha256(&key, &data)
 }
 
 // ---------------------------------------------------------------------------
