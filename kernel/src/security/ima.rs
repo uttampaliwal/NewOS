@@ -248,13 +248,14 @@ fn get_evm_key() -> [u8; 32] {
     }
     drop(key_guard);
 
-    // Try to derive from TPM
+    // Try to derive from TPM (only on real hardware, not in test builds)
+    #[cfg(not(test))]
     if let Some(tpm_key) = derive_key_from_tpm() {
         set_evm_key(tpm_key);
         return tpm_key;
     }
 
-    // Fallback to hardcoded key (no TPM available)
+    // Fallback to hardcoded key (no TPM available or in test mode)
     let fallback = *EVM_HMAC_KEY_FALLBACK;
     set_evm_key(fallback);
     fallback
