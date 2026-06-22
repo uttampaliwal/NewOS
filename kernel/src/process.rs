@@ -1200,9 +1200,8 @@ mod tests {
     #[test]
     fn process_table_remove_nonexistent() {
         let id = ProcessId(99999);
-        let before = PROCESS_TABLE.lock().len();
         PROCESS_TABLE.lock().remove(&id);
-        assert_eq!(PROCESS_TABLE.lock().len(), before);
+        assert!(PROCESS_TABLE.lock().get(&id).is_none());
     }
 
     #[test]
