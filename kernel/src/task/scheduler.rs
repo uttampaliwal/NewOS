@@ -35,7 +35,8 @@ impl Scheduler {
 pub fn add_task(task: Task) {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
-        sched.tasks.push_back(task);
+        let pos = sched.tasks.iter().position(|t| t.priority > task.priority).unwrap_or(sched.tasks.len());
+        sched.tasks.insert(pos, task);
         sched.task_count += 1;
     });
 }
@@ -130,16 +131,37 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
         // Save current stack pointer
         prev_task.stack_ptr = current_stack_ptr;
 
-        // If the task is running, put it back in the queue as ready.
-        // If it was blocked or zombie, we don't put it back in the ready queue.
         let was_running = prev_task.state == super::TaskState::Running;
         let is_zombie = prev_task.state == super::TaskState::Zombie;
 
+        // Decrement time slice for running tasks.
+        let mut should_preempt = false;
+        if was_running && prev_task.time_slice > 0 && prev_task.time_slice != u32::MAX {
+            prev_task.time_slice -= 1;
+            if prev_task.time_slice == 0 {
+                should_preempt = true;
+            }
+        }
+
+        // SCHED_FIFO tasks run until they block/yield; don't preempt on time slice expiry.
+        if prev_task.policy == super::scheduler_class::SchedulingPolicy::SCHED_FIFO {
+            should_preempt = false;
+        }
+
         if let Some(mut next_task) = sched.tasks.pop_front() {
             // There is a next task to switch to.
-            if was_running {
+            // Only re-queue the previous task if it was preempted (time slice expired)
+            // or if a higher-priority task is available.
+            if was_running && (should_preempt || next_task.priority < prev_task.priority) {
                 prev_task.state = super::TaskState::Ready;
-                sched.tasks.push_back(prev_task);
+                prev_task.time_slice = super::scheduler_class::default_timeslice(prev_task.policy);
+                // Insert in priority order (lower number = higher priority).
+                let pos = sched.tasks.iter().position(|t| t.priority > prev_task.priority).unwrap_or(sched.tasks.len());
+                sched.tasks.insert(pos, prev_task);
+            } else if was_running {
+                // Put back the previous task at front, and push next_task to back.
+                sched.tasks.push_back(next_task);
+                next_task = prev_task;
             }
 
             // Prepare hardware for the next task
@@ -207,6 +229,24 @@ where
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
         sched.current_task.as_mut().map(f)
+    })
+}
+
+pub fn set_current_policy(policy: super::scheduler_class::SchedulingPolicy, priority: u8) {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut sched = SCHEDULER.lock();
+        if let Some(ref mut task) = sched.current_task {
+            task.policy = policy;
+            task.priority = priority;
+            task.time_slice = super::scheduler_class::default_timeslice(policy);
+        }
+    });
+}
+
+pub fn get_current_policy() -> Option<(super::scheduler_class::SchedulingPolicy, u8)> {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let sched = SCHEDULER.lock();
+        sched.current_task.as_ref().map(|t| (t.policy, t.priority))
     })
 }
 

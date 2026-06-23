@@ -7,6 +7,7 @@ use x86_64::structures::paging::{
 };
 
 pub mod scheduler;
+pub mod scheduler_class;
 pub mod signals;
 
 #[cfg(target_arch = "x86_64")]
@@ -53,6 +54,25 @@ pub struct Task {
     pub(crate) kernel_stack_top: usize,
     pub(crate) process: Process,
     pub state: TaskState,
+    pub policy: scheduler_class::SchedulingPolicy,
+    pub priority: u8,
+    pub time_slice: u32,
+}
+
+impl Task {
+    /// Create a minimal test task with default scheduling fields.
+    pub fn new_test(id: TaskId, process: Process, state: TaskState) -> Self {
+        Task {
+            id,
+            stack_ptr: 0,
+            kernel_stack_top: 0,
+            process,
+            state,
+            policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
+            priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
+            time_slice: scheduler_class::DEFAULT_TIMESLICE,
+        }
+    }
 }
 
 // SAFETY: Task owns its stack and contains no borrowed state.
@@ -172,6 +192,9 @@ impl Task {
             kernel_stack_top: stack_top_virt.as_u64() as usize,
             process: process.clone(),
             state: TaskState::Ready,
+            policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
+            priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
+            time_slice: scheduler_class::DEFAULT_TIMESLICE,
         };
         process.add_thread(id);
         task
@@ -280,6 +303,9 @@ impl Task {
             kernel_stack_top: stack_top_virt.as_u64() as usize,
             process,
             state: TaskState::Ready,
+            policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
+            priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
+            time_slice: scheduler_class::DEFAULT_TIMESLICE,
         }
     }
 
@@ -448,6 +474,9 @@ impl Task {
             kernel_stack_top: stack_top_virt.as_u64() as usize,
             process,
             state: TaskState::Ready,
+            policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
+            priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
+            time_slice: scheduler_class::DEFAULT_TIMESLICE,
         }
     }
 
@@ -557,6 +586,9 @@ impl Task {
             kernel_stack_top: stack_top_virt.as_u64() as usize,
             process,
             state: TaskState::Ready,
+            policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
+            priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
+            time_slice: scheduler_class::DEFAULT_TIMESLICE,
         }
     }
 

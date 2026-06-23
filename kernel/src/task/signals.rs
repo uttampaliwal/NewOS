@@ -348,13 +348,7 @@ mod tests {
         let process = Process {
             inner: Arc::new(Mutex::new(pcb)),
         };
-        let task = Task {
-            id: TaskId::new(),
-            stack_ptr: 0,
-            kernel_stack_top: 0,
-            process: process.clone(),
-            state: crate::task::TaskState::Running,
-        };
+        let task = Task::new_test(TaskId::new(), process.clone(), crate::task::TaskState::Running);
         scheduler::set_current_task_for_test(task);
         TestEnv { process, stack_layout, stack_ptr }
     }

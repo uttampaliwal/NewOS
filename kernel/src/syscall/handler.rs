@@ -106,6 +106,8 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::EpollCreate => handle_epoll_create(args),
         Syscall::EpollCtl => handle_epoll_ctl(args),
         Syscall::EpollWait => handle_epoll_wait(args),
+        Syscall::SchedSetScheduler => handle_sched_set_scheduler(args),
+        Syscall::SchedGetScheduler => handle_sched_get_scheduler(args),
     }
 }
 
@@ -2350,6 +2352,36 @@ fn handle_epoll_wait(args: SyscallArgs) -> SyscallResult {
 }
 
 // ---------------------------------------------------------------------------
+// Scheduler class syscalls
+// ---------------------------------------------------------------------------
+
+fn handle_sched_set_scheduler(args: SyscallArgs) -> SyscallResult {
+    let policy = args.arg0 as u8;
+    let priority = args.arg1 as u8;
+
+    let sched_policy = match crate::task::scheduler_class::SchedulingPolicy::from_u8(policy) {
+        Some(p) => p,
+        None => return SyscallResult::Error(22), // EINVAL
+    };
+
+    let actual_priority = if priority == 0 {
+        crate::task::scheduler_class::base_priority(sched_policy)
+    } else {
+        priority
+    };
+
+    crate::task::scheduler::set_current_policy(sched_policy, actual_priority);
+    SyscallResult::Success(0)
+}
+
+fn handle_sched_get_scheduler(_args: SyscallArgs) -> SyscallResult {
+    match crate::task::scheduler::get_current_policy() {
+        Some((policy, priority)) => SyscallResult::Success(((priority as u64) << 8) | (policy as u8 as u64)),
+        None => SyscallResult::Error(1),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Futex syscall
 // ---------------------------------------------------------------------------
 
@@ -2415,13 +2447,7 @@ mod tests {
                 seccomp_filter: None,
             }))
         };
-        let task = Task {
-            id: TaskId::new(),
-            stack_ptr: 0,
-            kernel_stack_top: 0,
-            process,
-            state: TaskState::Running,
-        };
+        let task = Task::new_test(TaskId::new(), process, TaskState::Running);
         crate::task::scheduler::set_current_task_for_test(task);
     }
 
@@ -2589,13 +2615,11 @@ mod tests {
             let parent_proc = crate::process::Process {
                 inner: make_pcb(900, 1, ProcessState::Running),
             };
-            let task = crate::task::Task {
-                id: crate::task::TaskId::new(),
-                stack_ptr: 0,
-                kernel_stack_top: 0,
-                process: parent_proc,
-                state: crate::task::TaskState::Running,
-            };
+            let task = crate::task::Task::new_test(
+                crate::task::TaskId::new(),
+                parent_proc,
+                crate::task::TaskState::Running,
+            );
             crate::task::scheduler::set_current_task_for_test(task);
 
             // Call wait(-1) and capture the exit status.
@@ -2644,13 +2668,7 @@ mod tests {
         let parent_proc = Process {
             inner: make_pcb(200, 1, ProcessState::Running),
         };
-        let task = Task {
-            id: TaskId::new(),
-            stack_ptr: 0,
-            kernel_stack_top: 0,
-            process: parent_proc,
-            state: TaskState::Running,
-        };
+        let task = Task::new_test(TaskId::new(), parent_proc, TaskState::Running);
         crate::task::scheduler::set_current_task_for_test(task);
 
         // Call handle_wait_impl — expects Zombie child, should reap it.
@@ -2686,13 +2704,7 @@ mod tests {
         let parent_proc = Process {
             inner: make_pcb(300, 1, ProcessState::Running),
         };
-        let task = Task {
-            id: TaskId::new(),
-            stack_ptr: 0,
-            kernel_stack_top: 0,
-            process: parent_proc,
-            state: TaskState::Running,
-        };
+        let task = Task::new_test(TaskId::new(), parent_proc, TaskState::Running);
         crate::task::scheduler::set_current_task_for_test(task);
 
         let result = handle_wait_impl(-1, core::ptr::null_mut());
@@ -2724,13 +2736,7 @@ mod tests {
         let parent_proc = Process {
             inner: make_pcb(400, 1, ProcessState::Running),
         };
-        let task = Task {
-            id: TaskId::new(),
-            stack_ptr: 0,
-            kernel_stack_top: 0,
-            process: parent_proc,
-            state: TaskState::Running,
-        };
+        let task = Task::new_test(TaskId::new(), parent_proc, TaskState::Running);
         crate::task::scheduler::set_current_task_for_test(task);
 
         // Wait specifically for child_a.

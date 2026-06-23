@@ -84,6 +84,8 @@ pub enum Syscall {
     EpollCreate = 69,
     EpollCtl = 70,
     EpollWait = 71,
+    SchedSetScheduler = 72,
+    SchedGetScheduler = 73,
 }
 
 impl Syscall {
@@ -160,6 +162,8 @@ impl Syscall {
             69 => Some(Self::EpollCreate),
             70 => Some(Self::EpollCtl),
             71 => Some(Self::EpollWait),
+            72 => Some(Self::SchedSetScheduler),
+            73 => Some(Self::SchedGetScheduler),
             _ => None,
         }
     }
