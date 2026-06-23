@@ -4,16 +4,24 @@ use spin::Mutex;
 pub const PIPE_BUF_SIZE: usize = 65536;
 
 struct PipeInner {
-    buffer: [u8; PIPE_BUF_SIZE],
+    buffer: *mut u8,
     read_pos: usize,
     write_pos: usize,
     bytes_available: usize,
 }
 
+unsafe impl Send for PipeInner {}
+unsafe impl Sync for PipeInner {}
+
 impl PipeInner {
     fn new() -> Self {
+        let buf = crate::memory::slab::slab_alloc(PIPE_BUF_SIZE)
+            .expect("pipe: failed to allocate buffer from slab");
+        unsafe {
+            core::ptr::write_bytes(buf, 0, PIPE_BUF_SIZE);
+        }
         PipeInner {
-            buffer: [0u8; PIPE_BUF_SIZE],
+            buffer: buf,
             read_pos: 0,
             write_pos: 0,
             bytes_available: 0,
@@ -24,7 +32,7 @@ impl PipeInner {
         let to_read = core::cmp::min(self.bytes_available, buf.len());
         for (i, byte) in buf.iter_mut().enumerate().take(to_read) {
             let idx = (self.read_pos + i) % PIPE_BUF_SIZE;
-            *byte = self.buffer[idx];
+            unsafe { *byte = self.buffer.add(idx).read_volatile(); }
         }
         self.read_pos = (self.read_pos + to_read) % PIPE_BUF_SIZE;
         self.bytes_available -= to_read;
@@ -36,7 +44,7 @@ impl PipeInner {
         let to_write = core::cmp::min(space, buf.len());
         for (i, byte) in buf.iter().enumerate().take(to_write) {
             let idx = (self.write_pos + i) % PIPE_BUF_SIZE;
-            self.buffer[idx] = *byte;
+            unsafe { self.buffer.add(idx).write_volatile(*byte); }
         }
         self.write_pos = (self.write_pos + to_write) % PIPE_BUF_SIZE;
         self.bytes_available += to_write;
@@ -49,6 +57,12 @@ impl PipeInner {
 
     fn space_available(&self) -> usize {
         PIPE_BUF_SIZE - self.bytes_available
+    }
+}
+
+impl Drop for PipeInner {
+    fn drop(&mut self) {
+        crate::memory::slab::slab_dealloc(self.buffer, PIPE_BUF_SIZE);
     }
 }
 

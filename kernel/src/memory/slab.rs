@@ -7,6 +7,7 @@ use spin::Mutex;
 pub struct Slab {
     base: *mut u8,
     obj_size: usize,
+    alloc_size: usize,
     total: usize,
     free_bitmap: u64,
     cursor: usize,
@@ -16,11 +17,12 @@ unsafe impl Send for Slab {}
 unsafe impl Sync for Slab {}
 
 impl Slab {
-    pub fn new(base: *mut u8, obj_size: usize, total: usize) -> Self {
+    pub fn new(base: *mut u8, obj_size: usize, total: usize, alloc_size: usize) -> Self {
         assert!(total <= 64, "slab max 64 objects");
         let mut slab = Slab {
             base,
             obj_size,
+            alloc_size,
             total,
             free_bitmap: (1u64 << total) - 1,
             cursor: 0,
@@ -137,7 +139,7 @@ impl SlabCache {
     pub fn dealloc(&mut self, ptr: *mut u8) -> bool {
         for slab in &mut self.slabs {
             if slab.base as usize <= ptr as usize
-                && (ptr as usize) < slab.base as usize + self.page_size
+                && (ptr as usize) < slab.base as usize + slab.alloc_size
                 && slab.dealloc(ptr)
             {
                 self.stats.total_freed += 1;
@@ -149,15 +151,16 @@ impl SlabCache {
     }
 
     fn grow(&mut self) {
-        let layout = Layout::from_size_align(self.page_size, 4096).unwrap();
+        let alloc_size = self.page_size.max(self.obj_size).next_multiple_of(4096);
+        let layout = Layout::from_size_align(alloc_size, 4096).unwrap();
         unsafe {
             let ptr = alloc(layout);
             if ptr.is_null() {
                 return;
             }
-            core::ptr::write_bytes(ptr, 0, self.page_size);
-            let objects_per_slab = self.page_size / self.obj_size;
-            let slab = Slab::new(ptr, self.obj_size, objects_per_slab);
+            core::ptr::write_bytes(ptr, 0, alloc_size);
+            let objects_per_slab = alloc_size / self.obj_size;
+            let slab = Slab::new(ptr, self.obj_size, objects_per_slab, alloc_size);
             self.slabs.push(slab);
             self.stats.slab_count += 1;
         }
@@ -171,7 +174,7 @@ impl SlabCache {
 impl Drop for SlabCache {
     fn drop(&mut self) {
         for slab in &self.slabs {
-            let layout = Layout::from_size_align(self.page_size, 4096).unwrap();
+            let layout = Layout::from_size_align(slab.alloc_size, 4096).unwrap();
             unsafe {
                 dealloc(slab.base, layout);
             }
