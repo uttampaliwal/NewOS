@@ -56,6 +56,7 @@ fn count_wx_violations(table: &PageTable, level: u8, phys_mem_offset: VirtAddr) 
             }
         } else if let Ok(frame) = entry.frame() {
             let next_ptr = (phys_mem_offset + frame.start_address().as_u64()).as_ptr::<PageTable>();
+            // SAFETY: The page table was walked from a valid root; the physical frame is present and mapped at phys_mem_offset.
             let next_table = unsafe { &*next_ptr };
             violations += count_wx_violations(next_table, level - 1, phys_mem_offset);
         }
@@ -90,6 +91,7 @@ pub fn clear_write_and_allow_exec(
 ) {
     let pml4_ptr =
         (phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+    // SAFETY: pml4_frame was read from CR3 and is a valid PML4 frame; phys_mem_offset is the correct offset.
     let pml4 = unsafe { &mut *pml4_ptr };
 
     let end_addr = virt_start + size - 1u64;
@@ -108,6 +110,7 @@ pub fn clear_write_and_allow_exec(
         }
         let p3_ptr = (phys_mem_offset + p4e.frame().unwrap().start_address().as_u64())
             .as_mut_ptr::<PageTable>();
+        // SAFETY: p4e is present (checked above); the physical frame maps to a valid page table at phys_mem_offset.
         let p3 = unsafe { &mut *p3_ptr };
         let p3e = &p3[vaddr.p3_index()];
         if p3e.is_unused() {
@@ -115,6 +118,7 @@ pub fn clear_write_and_allow_exec(
         }
         let p2_ptr = (phys_mem_offset + p3e.frame().unwrap().start_address().as_u64())
             .as_mut_ptr::<PageTable>();
+        // SAFETY: p3e is present (checked above); the physical frame maps to a valid page table at phys_mem_offset.
         let p2 = unsafe { &mut *p2_ptr };
         let p2e = &p2[vaddr.p2_index()];
         if p2e.is_unused() {
@@ -128,6 +132,7 @@ pub fn clear_write_and_allow_exec(
 
         let p1_ptr = (phys_mem_offset + p2e.frame().unwrap().start_address().as_u64())
             .as_mut_ptr::<PageTable>();
+        // SAFETY: p2e is present (checked above, not HUGE_PAGE); the physical frame maps to a valid page table at phys_mem_offset.
         let p1 = unsafe { &mut *p1_ptr };
         let p1e = &mut p1[vaddr.p1_index()];
 
@@ -145,6 +150,7 @@ pub fn boot_self_check(phys_mem_offset: VirtAddr) -> usize {
     let (pml4_frame, _) = Cr3::read();
     let pml4_ptr =
         (phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+    // SAFETY: pml4_frame was read from CR3 and is valid; phys_mem_offset is the correct physical memory offset.
     let mapper = unsafe { OffsetPageTable::new(&mut *pml4_ptr, phys_mem_offset) };
 
     let (passed, count) = check_wx_invariant(&mapper);

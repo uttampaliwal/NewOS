@@ -21,6 +21,9 @@ unsafe impl<'a, A: x86_64::structures::paging::FrameAllocator<Size4KiB>>
         // Zero the frame through the physical-memory window before use.
         let ptr = (self.physical_memory_offset + frame.start_address().as_u64())
             .as_mut_ptr::<u8>();
+        // SAFETY: ptr is derived from a valid physical frame address plus the
+        // physical-memory offset, which maps to a mapped page. The frame was
+        // just allocated and is therefore valid for 4096 bytes of writes.
         unsafe { core::ptr::write_bytes(ptr, 0, 4096) };
         Some(frame)
     }
@@ -37,6 +40,9 @@ pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static>
     let pml4_ptr =
         (physical_memory_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
 
+    // SAFETY: pml4_ptr is derived from the active PML4 frame (read via Cr3)
+    // plus the physical-memory offset, which is valid per the caller's safety
+    // contract. The reference is valid for the page table.
     unsafe { OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset) }
 }
 
@@ -68,6 +74,10 @@ pub fn create_process_pml4(
         (physical_memory_offset + new_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     crate::serial::println!("[STG: PML4_PTRS_DONE]");
 
+    // SAFETY: kernel_pml4_ptr is derived from the Cr3 PML4 frame plus the
+    // physical-memory offset, and new_pml4_ptr from a freshly allocated,
+    // zeroed frame plus the same offset. Both are valid for 512-entry page
+    // table access. Only higher-half indices (256..512) are written.
     unsafe {
         let kernel_pml4 = &*kernel_pml4_ptr;
         let new_pml4 = &mut *new_pml4_ptr;
@@ -101,6 +111,10 @@ pub fn clone_user_mappings(
         inner: frame_allocator,
         physical_memory_offset,
     };
+    // SAFETY: Both src and dst PML4 pointers are derived from valid frame
+    // addresses plus the physical-memory offset. The source frame is an
+    // existing page table and the destination was freshly allocated and zeroed.
+    // Only lower-half indices (0..256) are accessed.
     unsafe {
         let src_pml4 = &*src_pml4_ptr;
         let dst_pml4 = &mut *dst_pml4_ptr;
@@ -161,6 +175,10 @@ fn clone_table_level(
     let dst_next_table_ptr =
         (physical_memory_offset + new_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
 
+    // SAFETY: src_next_table_ptr is derived from a valid source page table
+    // entry's frame (verified non-unused via unwrap) plus the physical-memory
+    // offset. dst_next_table_ptr is from a freshly allocated frame plus the
+    // same offset. Both are valid for 512-entry page table access.
     unsafe {
         let src_next_table = &*src_next_table_ptr;
         let dst_next_table = &mut *dst_next_table_ptr;
@@ -198,6 +216,10 @@ pub fn clone_user_mappings_cow(
         inner: frame_allocator,
         physical_memory_offset,
     };
+    // SAFETY: Both src and dst PML4 pointers are derived from valid frame
+    // addresses plus the physical-memory offset. The source frame is an
+    // existing page table and the destination was freshly allocated and zeroed.
+    // All 512 entries are accessed within bounds.
     unsafe {
         let src_pml4 = &*src_pml4_ptr;
         let dst_pml4 = &mut *dst_pml4_ptr;
@@ -233,6 +255,9 @@ pub fn destroy_user_mappings(
     let pml4_ptr =
         (physical_memory_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
 
+    // SAFETY: pml4_ptr is derived from a valid frame address (the process
+    // PML4) plus the physical-memory offset. We only iterate over user-space
+    // entries (0..256) which are within bounds of the 512-entry page table.
     unsafe {
         let pml4 = &mut *pml4_ptr;
         for index in 0..256 {
@@ -287,6 +312,10 @@ fn destroy_table_level(
     let next_ptr =
         (physical_memory_offset + next_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
 
+    // SAFETY: next_ptr is derived from a valid page table entry's frame
+    // (verified non-unused and non-huge) plus the physical-memory offset.
+    // The pointer is valid for 512-entry page table access and we only read
+    // and recurse into non-unused entries.
     unsafe {
         let next_table = &mut *next_ptr;
         for index in 0..512 {
@@ -313,12 +342,18 @@ fn destroy_table_level(
 ///
 /// Page tables must be mapped at `physical_mem_offset` and `virt_addr`/`size` must be valid.
 pub unsafe fn set_user_accessible(virt_addr: VirtAddr, size: u64, physical_mem_offset: VirtAddr) {
+    // SAFETY: We temporarily disable write protection to modify page table
+    // entries that may have been set read-only by UEFI firmware. This runs
+    // with interrupts implicitly disabled (called during process setup).
     // Disable write protection to allow modifying RO page tables inherited from UEFI
     unsafe {
         Cr0::update(|f| f.remove(Cr0Flags::WRITE_PROTECT));
     }
 
     let (pml4_frame, _) = Cr3::read();
+    // SAFETY: The pointer is derived from the active PML4 frame (Cr3) plus
+    // the physical-memory offset, which is valid per the caller's safety
+    // contract. The reference is valid for 512-entry page table access.
     let pml4 = unsafe {
         &mut *((physical_mem_offset + pml4_frame.start_address().as_u64())
             .as_mut_ptr::<PageTable>())
@@ -338,24 +373,32 @@ pub unsafe fn set_user_accessible(virt_addr: VirtAddr, size: u64, physical_mem_o
         pml4[p4_idx].set_flags(f4 | PageTableFlags::USER_ACCESSIBLE);
 
         let p3_phys = pml4[p4_idx].frame().unwrap().start_address();
+        // SAFETY: p3_phys comes from a valid P4 entry's frame (verified via
+        // unwrap). The pointer is valid for 512-entry page table access.
         let p3 =
             unsafe { &mut *((physical_mem_offset + p3_phys.as_u64()).as_mut_ptr::<PageTable>()) };
         let f3 = p3[p3_idx].flags();
         p3[p3_idx].set_flags(f3 | PageTableFlags::USER_ACCESSIBLE);
 
         let p2_phys = p3[p3_idx].frame().unwrap().start_address();
+        // SAFETY: p2_phys comes from a valid P3 entry's frame (verified via
+        // unwrap). The pointer is valid for 512-entry page table access.
         let p2 =
             unsafe { &mut *((physical_mem_offset + p2_phys.as_u64()).as_mut_ptr::<PageTable>()) };
         let f2 = p2[p2_idx].flags();
         p2[p2_idx].set_flags(f2 | PageTableFlags::USER_ACCESSIBLE);
 
         let p1_phys = p2[p2_idx].frame().unwrap().start_address();
+        // SAFETY: p1_phys comes from a valid P2 entry's frame (verified via
+        // unwrap). The pointer is valid for 512-entry page table access.
         let p1 =
             unsafe { &mut *((physical_mem_offset + p1_phys.as_u64()).as_mut_ptr::<PageTable>()) };
         let f1 = p1[p1_idx].flags();
         p1[p1_idx].set_flags(f1 | PageTableFlags::USER_ACCESSIBLE);
     }
 
+    // SAFETY: Re-enabling write protection after all page table modifications
+    // are complete. This restores the normal kernel memory protection.
     // Re-enable write protection
     unsafe {
         Cr0::update(|f| f.insert(Cr0Flags::WRITE_PROTECT));

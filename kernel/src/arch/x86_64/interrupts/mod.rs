@@ -20,12 +20,19 @@ pub const ACPI_PCI_VECTOR_BASE: u8 = 0x50;
 pub const ACPI_PCI_VECTOR_COUNT: u8 = 32;
 pub const YIELD_INTERRUPT_VECTOR: u8 = 0x81;
 
+// SAFETY: PIC_1_OFFSET and PIC_2_OFFSET are valid ISA PIC configuration
+// values. This is initialized during early boot on the BSP with no
+// concurrent access.
 pub static PICS: Mutex<ChainedPics> =
     Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
 lazy_static! {
+    // SAFETY: The LAPIC base address is read from ACPI/MADT and is valid for
+    // MMIO access. Initialized during boot on the BSP with no concurrent access.
     pub static ref LAPIC: Mutex<apic::LocalApic> =
         Mutex::new(unsafe { apic::LocalApic::new(apic::get_base_addr()) });
+    // SAFETY: This is a placeholder initialization; the actual IOAPIC address
+    // is set later in init(). The zero address is replaced before use.
     pub static ref IOAPIC: Mutex<apic::IoApic> =
         Mutex::new(unsafe { apic::IoApic::new(VirtAddr::zero()) });
 }
@@ -44,6 +51,10 @@ impl InterruptIndex {
 
 pub fn init(phys_mem_offset: VirtAddr) {
     init_idt();
+    // SAFETY: This runs during boot on the BSP with interrupts disabled.
+    // phys_mem_offset maps valid MMIO regions for LAPIC and IOAPIC hardware.
+    // The PIC is disabled and LAPIC/IOAPIC are initialized with correct
+    // virtual addresses derived from the physical memory offset.
     unsafe {
         // Disable legacy PIC
         PICS.lock().disable();
@@ -197,6 +208,9 @@ unsafe extern "C" {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
+    // SAFETY: We are inside an interrupt handler. LAPIC.lock() provides
+    // exclusive access, and signal_eoi() writes to the LAPIC MMIO register
+    // to acknowledge the interrupt.
     unsafe {
         LAPIC.lock().signal_eoi();
     }
@@ -204,6 +218,9 @@ pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
     // After 15 saved GPRs (120 bytes), the CPU frame is:
     //   RIP(8), CS(8), RFLAGS(8), RSP(8), SS(8)
     // CS is at stack_ptr + 128.
+    // SAFETY: stack_ptr points to the interrupt stack frame saved by the
+    // assembly entry point. Offset 128 is the CS field (15 GPRs × 8 bytes +
+    // RIP × 8 bytes). The pointer is valid for this single read.
     let cs = unsafe { core::ptr::read_volatile((stack_ptr + 128) as *const u64) as u16 };
     if cs & 0x3 == 0x3 {
         // Came from user mode — preemption allowed.
@@ -226,6 +243,8 @@ lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
+        // SAFETY: We are configuring the IDT during single-threaded
+        // initialization. The IST index references a valid GDT stack.
         unsafe {
             idt.double_fault
                 .set_handler_fn(double_fault_handler)
@@ -235,6 +254,10 @@ lazy_static! {
         idt.general_protection_fault.set_handler_fn(gpf_handler);
 
         // Use our custom assembly entry point for the timer
+        // SAFETY: The assembly entry points (timer_interrupt_entry,
+        // yield_interrupt_entry) follow the x86-interrupt calling convention.
+        // The transmute converts raw function pointers to the IDT handler type.
+        // This runs during single-threaded IDT initialization.
         unsafe {
             let entry_ptr = timer_interrupt_entry as *const ();
             idt[InterruptIndex::Timer.as_u8()].set_handler_fn(core::mem::transmute::<
@@ -268,6 +291,8 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
 
+    // SAFETY: Port 0x60 is the PS/2 keyboard data port, a valid I/O port.
+    // Reading from it returns the current scancode from the keyboard controller.
     let scancode: u8 = unsafe { port.read() };
     if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
         // Push the raw key event (press/release) for the normalized event bus.
@@ -291,6 +316,8 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
         }
     }
 
+    // SAFETY: We are inside an interrupt handler. LAPIC.lock() provides
+    // exclusive access, and signal_eoi() acknowledges the interrupt.
     unsafe {
         LAPIC.lock().signal_eoi();
     }
@@ -298,12 +325,16 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
 
 extern "x86-interrupt" fn sci_interrupt_handler(_stack_frame: InterruptStackFrame) {
     crate::acpi::handle_sci_interrupt();
+    // SAFETY: We are inside an interrupt handler. LAPIC.lock() provides
+    // exclusive access, and signal_eoi() acknowledges the interrupt.
     unsafe {
         LAPIC.lock().signal_eoi();
     }
 }
 
 extern "x86-interrupt" fn generic_external_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    // SAFETY: We are inside an interrupt handler. LAPIC.lock() provides
+    // exclusive access, and signal_eoi() acknowledges the interrupt.
     unsafe {
         LAPIC.lock().signal_eoi();
     }
@@ -331,6 +362,9 @@ extern "x86-interrupt" fn double_fault_handler(
     );
     // Dump stack near RSP
     let rsp = stack_frame.stack_pointer.as_u64();
+    // SAFETY: We are in a double fault handler (unrecoverable). rsp is from
+    // the interrupt stack frame and points to valid kernel memory. The 16
+    // reads cover the immediate stack vicinity for diagnostic purposes.
     unsafe {
         for i in 0..16u64 {
             let addr = rsp + i * 8;
@@ -379,6 +413,10 @@ extern "x86-interrupt" fn page_fault_handler(
         crate::serial::print(format_args!("[PF] RIP bytes:"));
         for i in 0..16 {
             let byte_ptr = (rip.as_u64() + i) as *const u8;
+            // SAFETY: We are in a page fault handler on the panic path.
+            // read_volatile prevents the compiler from optimizing away the
+            // diagnostic read. If the address is unmapped, the serial output
+            // before this point will have been printed.
             unsafe {
                 let val = core::ptr::read_volatile(byte_ptr);
                 crate::serial::print(format_args!(" {:02x}", val));
@@ -439,7 +477,13 @@ pub fn configure_ioapic_route(
 ) -> Result<(), &'static str> {
     let phys_mem_offset = crate::boot::get_phys_mem_offset();
     let ioapic_virt = phys_mem_offset + ioapic_physical_address as u64;
+    // SAFETY: ioapic_virt is computed from a valid physical MMIO address plus
+    // the physical memory offset. The address is within the standard IOAPIC
+    // MMIO region.
     let mut ioapic = unsafe { apic::IoApic::new(ioapic_virt) };
+    // SAFETY: The IOAPIC was just constructed with a valid virtual address.
+    // We are the only thread accessing it (called during setup or with
+    // appropriate external synchronization).
     unsafe {
         ioapic.route_irq_configured(input, vector, active_low, level_triggered);
     }
