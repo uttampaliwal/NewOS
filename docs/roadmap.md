@@ -437,7 +437,6 @@ assessment.
 
 See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations:
 * ext4 writes are in-memory only (no block allocator, no journal)
-* No RCU or per-CPU infrastructure
 * No io_uring or zero-copy networking
 * No ftrace/kprobes/perf observability
 * No crash dump / reliability engineering

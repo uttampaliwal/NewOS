@@ -3,7 +3,7 @@
 ![CI](https://github.com/uttampaliwal/turnix/actions/workflows/ci.yml/badge.svg?branch=development)
 ![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Rust](https://img.shields.io/badge/rust-nightly-orange)
-![Tests](https://img.shields.io/badge/tests-974%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1053%20passing-brightgreen)
 
 **A SOTA, Rust-first operating system built for learning, performance, and long-term daily usability.**
 
@@ -106,7 +106,7 @@ graph TD
 | **12** | **Scalability** | SeqLock, RwLock, RCU, work queues, softirq, per-CPU counters | Done |
 | **13** | **Advanced I/O** | eventfd, timerfd, VFS read/write, epoll integration | Done |
 
-See [ROADMAP.md](ROADMAP.md) for the full 22-phase roadmap. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for known limitations.
+See [docs/roadmap.md](docs/roadmap.md) for the full 22-phase roadmap. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for known limitations.
 
 ---
 
@@ -147,7 +147,7 @@ cargo xtask build-kernel          # freestanding kernel
 ## Testing
 
 ```bash
-cargo test --workspace            # all host + kernel tests (~974)
+cargo test --workspace            # all host + kernel tests (~1053)
 cargo test -p turnix-kernel       # kernel-specific tests
 cargo clippy -- -D warnings       # lint (zero warnings)
 cargo fmt --check                 # format check
