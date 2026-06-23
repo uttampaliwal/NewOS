@@ -80,6 +80,7 @@ pub enum Syscall {
     MqUnlink = 65,
     MqSend = 66,
     MqReceive = 67,
+    Futex = 68,
 }
 
 impl Syscall {
@@ -152,6 +153,7 @@ impl Syscall {
             65 => Some(Self::MqUnlink),
             66 => Some(Self::MqSend),
             67 => Some(Self::MqReceive),
+            68 => Some(Self::Futex),
             _ => None,
         }
     }

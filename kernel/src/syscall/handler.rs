@@ -102,6 +102,7 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::MqUnlink => handle_mq_unlink(args),
         Syscall::MqSend => handle_mq_send(args),
         Syscall::MqReceive => handle_mq_receive(args),
+        Syscall::Futex => handle_futex(args),
     }
 }
 
@@ -2252,6 +2253,32 @@ fn handle_mq_receive(args: SyscallArgs) -> SyscallResult {
             SyscallResult::Success(n as u64)
         }
         Err(e) => SyscallResult::Error(e as i64),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Futex syscall
+// ---------------------------------------------------------------------------
+
+fn handle_futex(args: SyscallArgs) -> SyscallResult {
+    let uaddr = args.arg0;
+    let op = args.arg1 as u32;
+    let val = args.arg2 as u32;
+
+    match op {
+        crate::ipc::futex::FUTEX_WAIT => {
+            match crate::ipc::futex::futex_wait(uaddr, val) {
+                Ok(()) => SyscallResult::Success(0),
+                Err(e) => SyscallResult::Error(e as i64),
+            }
+        }
+        crate::ipc::futex::FUTEX_WAKE => {
+            match crate::ipc::futex::futex_wake(uaddr, val as usize) {
+                Ok(n) => SyscallResult::Success(n as u64),
+                Err(e) => SyscallResult::Error(e as i64),
+            }
+        }
+        _ => SyscallResult::Error(22), // EINVAL
     }
 }
 
