@@ -12,6 +12,7 @@ pub mod heap;
 pub mod oom;
 pub mod page_cache;
 pub mod paging;
+pub mod slab;
 pub mod swap;
 pub mod user;
 pub mod vma;
