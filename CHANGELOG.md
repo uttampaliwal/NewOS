@@ -15,17 +15,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Package manager network fetcher (PackageFetcher, HTTP client, SHA-256 verification)
 - XHCI extended capability parsing and USB legacy support handoff
 - Kernel time module (uptime_us via scheduler ticks)
+- POSIX shared memory (ShmOpen, ShmUnlink) via /dev/shm/ VFS
+- POSIX message queues (MqOpen, MqClose, MqUnlink, MqSend, MqReceive) with blocking
+- Futex (FUTEX_WAIT/FUTEX_WAKE) for userspace synchronization
+- Epoll (EpollCreate, EpollCtl, EpollWait) with EPOLLIN/EPOLLOUT/EPOLLRDHUP
+- Scheduler class framework (SCHED_NORMAL, SCHED_BATCH, SCHED_FIFO, SCHED_RR, SCHED_IDLE)
+- CFS-style virtual runtime (vruntime) tracking for fair scheduling
+- cgroups v2 hierarchy with CPU, memory, and PIDs controllers
+- Slab allocator for kernel object caching (pipe buffers)
+- SMP per-CPU scheduling with Application Processor bring-up
+- Ftruncate syscall (ID 59) for file truncation
+- Mmap2 syscall (ID 60) with 6-argument signature
+- SchedSetScheduler/SchedGetScheduler syscalls (IDs 72-73)
+- CgroupCreate/CgroupAddProcess/CgroupSetCpuMax/CgroupSetMemoryMax/CgroupSetPidsMax syscalls (IDs 74-78)
+- Global epoll notification from pipe/socket/mqueue state changes
+- cgroup CPU tick accounting and memory usage tracking
+- OOM killer integration with cgroup memory limits
 
 ### Changed
 - Updated all documentation to reflect current project state
 - Removed redundant docs (Improvements.md, architecture-diagram.md, gap-analysis-and-roadmap.md, roadmap-timeline.md, DOCS_BUILD_ON_WINDOWS.md)
 - TPM probe rejects invalid devices (VID=0)
 - LSM hook initialization message now includes MAC hooks
+- Extended SyscallArgs from 4 to 6 fields for mmap2 support
+- Pipe ring buffer now uses slab allocator for allocation
+- Scheduler timer_tick now calls cgroup_cpu_tick for quota enforcement
+- Demand paging checks cgroup memory limits before allocating
+- Epoll wait is now blocking (uses blocked_waiters list)
+- Message queue send/receive now triggers epoll notifications
+- CI boot-gate: sentinel check before QEMU exit check, 10 boot attempts
 
 ### Fixed
 - Packed struct field access in ext2 write tests
 - Package-manager compilation errors (verify_sha256, PackageFetcher, RepositoryClient)
 - Clippy warnings (div_ceil, repeat_n, unused vars, Safety docs)
+- OOM test race condition (consolidated into single lifecycle test)
+- Epoll blocking: added blocked_waiters, notify(), poll_events()
+- Mqueue blocking: added send/receive methods with epoll notification
+- cgroups enforcement: CPU tick preemption, OOM-kill on memory limit, memory accounting in demand paging
+- Slab allocator: large object support, alloc_size tracking for correct dealloc
+- CI exit code 35: sentinel check order fixed, 50% failure tolerance under TCG
 
 ## [v0.0.7] - 2026-06-21
 

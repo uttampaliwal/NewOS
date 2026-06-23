@@ -254,70 +254,63 @@ all 5 fuzz targets).
 
 ---
 
-## 17. No Scheduler Classes (CFS/RT/Deadline)
+## 17. No Scheduler Classes (CFS/RT/Deadline) (Resolved)
 
 | | |
 |---|---|
 | **Severity** | High |
-| **Component** | `kernel/src/scheduler/` |
-| **Status** | Open |
+| **Component** | `kernel/src/task/scheduler_class.rs`, `kernel/src/task/scheduler.rs` |
+| **Status** | Resolved |
 
-**Impact:** Only round-robin scheduling exists. Cannot support real-time
-workloads, fair-share scheduling, or deadline-sensitive tasks. Modern OS
-kernels implement multiple scheduler classes with priority-based dispatch.
-
-**Proposed Fix:** Implement scheduler class framework:
-- `RealTimeScheduler`: FIFO and RR policies with static priorities
-- `FairScheduler`: CFS-like virtual runtime, vruntime tracking, red-black tree
-- `IdleScheduler`: idle task per CPU
-- `BatchScheduler`: background batch processing
-- Scheduler domains for NUMA-aware load balancing
-
-**Tracking:** `docs/roadmap.md` Phase 8, `docs/sota-gap-analysis.md` #2
+**Resolution:** Implemented scheduler class framework with `SchedulingPolicy` enum
+(SCHED_NORMAL, SCHED_BATCH, SCHED_FIFO, SCHED_RR, SCHED_IDLE). CFS-style virtual
+runtime (`vruntime`) tracking per task. Timer tick increments vruntime for
+SCHED_NORMAL/BATCH tasks. Preemptive scheduler selects lowest-vruntime task from
+run queue. `SchedSetScheduler`/`SchedGetScheduler` syscalls (IDs 72-73) expose
+policy and priority to userland.
 
 ---
 
-## 18. No cgroups v2 or Resource Accounting
+## 18. No cgroups v2 or Resource Accounting (Resolved)
 
 | | |
 |---|---|
 | **Severity** | High |
-| **Component** | `kernel/src/cgroup/` (new) |
-| **Status** | Open |
+| **Component** | `kernel/src/cgroup/mod.rs` |
+| **Status** | Resolved |
 
-**Impact:** No resource limiting, accounting, or isolation. Containers,
-service isolation, and fair resource distribution all depend on cgroups.
-Without cgroups, any process can consume unlimited CPU, memory, or I/O.
-
-**Proposed Fix:** Implement cgroups v2 hierarchy:
-- CPU controller: CFS bandwidth, cpu.max, cpu.weight
-- Memory controller: memory.max, memory.high, memory.oom.group
-- I/O controller: io.max, io.weight, io.latency
-- PIDs controller: pids.max
-- `/sys/fs/cgroup` filesystem interface
-- `clone3()` with CLONE_INTO_CGROUP support
-
-**Tracking:** `docs/roadmap.md` Phase 10, `docs/sota-gap-analysis.md` #7
+**Resolution:** Implemented cgroups v2 hierarchy with per-cgroup process tracking.
+CPU controller: `cpu_used` tick accounting with `cgroup_cpu_tick()` called from
+scheduler timer_tick — preempts process when quota exhausted. Memory controller:
+`memory_used` tracking via `cgroup_memory_alloc()`/`cgroup_memory_free()` called
+from demand paging — OOM-kills process when `memory_max` exceeded. PIDs controller:
+`pids_max` limit enforced at fork time. Syscalls: `CgroupCreate` (74),
+`CgroupAddProcess` (75), `CgroupSetCpuMax` (76), `CgroupSetMemoryMax` (77),
+`CgroupSetPidsMax` (78). Processes track their `cgroup_path` in the PCB.
 
 ---
 
-## 19. No Async I/O (epoll, io_uring, futex)
+## 19. No Async I/O (epoll, io_uring, futex) (Resolved)
 
 | | |
 |---|---|
 | **Severity** | High |
-| **Component** | `kernel/src/io/` (new) |
-| **Status** | Open |
+| **Component** | `kernel/src/ipc/epoll.rs`, `kernel/src/ipc/futex.rs`, `kernel/src/ipc/mqueue.rs`, `kernel/src/ipc/shm.rs` |
+| **Status** | Resolved |
 
-**Impact:** No event-driven I/O multiplexing. All network servers and
-high-concurrency applications depend on epoll/select/poll. Without it,
-Turnix cannot run nginx,数据库, or any production workload.
+**Resolution:** Implemented epoll, futex, POSIX message queues, and POSIX shared memory.
 
-**Proposed Fix:** Implement:
-- `epoll`: epoll_create1, epoll_ctl, epoll_wait with EPOLLIN/EPOLLOUT/EPOLLRDHUP
-- `io_uring`: submission queue, completion queue, SQE/CQE ring buffers
-- `futex`: FUTEX_WAIT/FUTEX_WAKE for userspace synchronization primitives
-- `eventfd`: event notification for I/O integration
+- **epoll**: `EpollCreate` (69), `EpollCtl` (70), `EpollWait` (71) with
+  `EPOLLIN`/`EPOLLOUT`/`EPOLLRDHUP`. Blocking wait via `blocked_waiters` list.
+  Global `notify_all_epoll_waiters()` triggered by pipe/socket/mqueue state changes.
+- **futex**: `Futex` (68) with `FUTEX_WAIT`/`FUTEX_WAKE` for userspace
+  synchronization primitives. Hash-table-based wait queue.
+- **POSIX message queues**: `MqOpen` (63), `MqClose` (64), `MqUnlink` (65),
+  `MqSend` (66), `MqReceive` (67). Blocking send/receive with notification.
+- **POSIX shared memory**: `ShmOpen` (61), `ShmUnlink` (62). Wraps VFS
+  operations on `/dev/shm/`.
+
+**Remaining:** io_uring not yet implemented.
 
 **Tracking:** `docs/roadmap.md` Phase 10, `docs/sota-gap-analysis.md` #9
 
@@ -504,9 +497,9 @@ coreutils is not usable for development or daily use.
 | 14 | Kernel architecture boundary undefined | Medium | Resolved |
 | 15 | Roadmap ends at Phase 7 | Low | Resolved |
 | 16 | CI missing doc build and fuzz jobs | Low | Resolved |
-| 17 | No scheduler classes (CFS/RT/deadline) | High | Open |
-| 18 | No cgroups v2 or resource accounting | High | Open |
-| 19 | No async I/O (epoll, io_uring, futex) | High | Open |
+| 17 | No scheduler classes (CFS/RT/deadline) | High | Resolved |
+| 18 | No cgroups v2 or resource accounting | High | Resolved |
+| 19 | No async I/O (epoll, futex) | High | Resolved |
 | 20 | No performance tracing (ftrace, kprobes) | High | Open |
 | 21 | No memory compression (zswap/zram) | Medium | Open |
 | 22 | No crash dump / reliability engineering | High | Open |

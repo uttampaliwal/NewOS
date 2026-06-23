@@ -1,6 +1,6 @@
 # System Call Interface
 
-Turnix exposes 58 system calls through a ring 3 to ring 0 transition mechanism defined
+Turnix exposes 78 system calls through a ring 3 to ring 0 transition mechanism defined
 in `kernel/src/syscall/handler.rs` and the shared ABI crate (`shared/abi/`).
 
 ## Transition Mechanism
@@ -13,17 +13,20 @@ appropriate handler.
 ## Syscall Categories
 
 - **Process**: `fork`, `exec`, `clone`, `exit`, `wait`, `waitpid`, `getpid`, `getuid`,
-  `getgid`, `setuid`, `setgid`, `yielder`
-- **Memory**: `brk`, `mmap`, `munmap`, `mmap_framebuffer`
+  `getgid`, `setuid`, `setgid`, `yielder`, `prctl`, `capget`, `capset`
+- **Memory**: `brk`, `mmap`, `mmap2`, `munmap`, `mmap_framebuffer`, `ftruncate`
 - **File I/O**: `open`, `close`, `read`, `write`, `seek`, `stat`, `ls`, `write_file`,
-  `mkdir`, `unlink`
+  `mkdir`, `unlink`, `xattrget`, `xattrset`
 - **IPC**: `pipe`, `socket`, `bind`, `listen`, `accept`, `connect`, `sendto`, `recvfrom`,
-  `shutdown`
-- **Signals**: `kill`, `signal`
-- **System**: `uptime`, `reboot`, `shutdown`, `mount`, `umount`, `lsns`, `capset`,
-  `capget`, `seccomp`, `sethostname`
-- **GPU**: `drm_open`, `drm_get_properties`, `drm_set_mode`, `drm_add_framebuffer`,
-  `drm_page_flip`, `drm_handle_event`
+  `shutdown`, `epoll_create`, `epoll_ctl`, `epoll_wait`, `futex`
+- **POSIX IPC**: `shm_open`, `shm_unlink`, `mq_open`, `mq_close`, `mq_unlink`, `mq_send`, `mq_receive`
+- **Signals**: `kill`, `sigaction`, `sigprocmask`, `sigreturn`
+- **Scheduling**: `sched_set_scheduler`, `sched_get_scheduler`
+- **cgroups**: `cgroup_create`, `cgroup_add_process`, `cgroup_set_cpu_max`,
+  `cgroup_set_memory_max`, `cgroup_set_pids_max`
+- **System**: `uptime`, `dmesg`, `chdir`, `mount`, `umount`
+- **Network**: `net_set_addr`, `net_set_route`, `net_query`
+- **GPU**: `drm_page_flip`, `gbm_create`, `gbm_map`, `gbm_destroy`, `input_read`
 
 ## Argument Validation
 

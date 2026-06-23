@@ -10,19 +10,20 @@ The `kernel` crate is the core of Turnix OS — a no_std, higher-half, x86_64 mo
 | `arch` | Architecture-specific code (GDT, IDT, TSS, context switching) |
 | `block` | Block device I/O layer (`BlockDevice` trait, block cache) |
 | `boot` | Early boot initialization, driver probing, stage tracking |
+| `cgroup` | cgroups v2 hierarchy with CPU, memory, and PIDs controllers |
 | `drivers` | Device drivers: PCI/PCIe, VirtIO-Net, NVMe, XHCI USB, GPU/DRM, TPM |
 | `elf` | ELF binary loader for userspace processes |
 | `fs` | Virtual File System (VFS), tmpfs, ext4 (read-only), mount management |
-| `ipc` | Unix domain sockets and ring-buffered pipes |
+| `ipc` | Pipes, Unix domain sockets, epoll, futex, POSIX message queues, shared memory |
 | `log_ring` | Kernel log ring buffer with dmesg syscall |
-| `memory` | VMM, page tables, heap allocator, page cache, swap, OOM killer |
+| `memory` | VMM, page tables, heap allocator, page cache, swap, OOM killer, slab allocator |
 | `net` | smoltcp-based TCP/IP stack, socket syscalls, network interface config |
 | `process` | Process table, fork/exec/wait, signal handling, file descriptor tables |
 | `security` | Capabilities, namespaces, seccomp-BPF, LSM hooks, IMA/EVM |
 | `serial` | Serial port (COM1) output for kernel logging |
-| `smp` | Symmetric multiprocessing (AP bring-up) |
-| `syscall` | System call dispatch and handler |
-| `task` | Task structures, preemptive round-robin scheduler |
+| `smp` | Symmetric multiprocessing (AP bring-up, per-CPU scheduling) |
+| `syscall` | System call dispatch and handler (78 syscalls) |
+| `task` | Task structures, CFS vruntime scheduler, scheduler classes |
 | `time` | Monotonic clock (uptime in microseconds) |
 | `tty` | Terminal I/O |
 
@@ -37,5 +38,5 @@ cargo test -p turnix-kernel
 See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for all tracked issues. Key kernel-specific items:
 - **#1** ext4 writes are in-memory only (no block allocator, no journal)
 - **#3** GP fault during fork/clone (mitigated with RFLAGS sanitization)
-- **#17** No scheduler classes (CFS/RT/deadline) — only round-robin
 - **#20** No performance tracing (ftrace, kprobes)
+- **#22** No crash dump / reliability engineering

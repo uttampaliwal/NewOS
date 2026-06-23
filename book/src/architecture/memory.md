@@ -33,3 +33,12 @@ and terminates it to reclaim frames.
 
 The kernel heap uses a linked-list allocator (`linked_list_allocator` crate) initialized
 at boot. User-space processes obtain memory through `brk`, `mmap`, and `munmap` syscalls.
+
+## Slab Allocator
+
+The slab allocator (`kernel/src/memory/slab.rs`) provides efficient object caching for
+frequently allocated fixed-size kernel objects. It uses `SlabCache` instances that manage
+pages of objects. Currently used for pipe ring buffers (64 KiB objects). The allocator
+supports large objects (>= page size) by allocating multiple contiguous pages per slab.
+`slab_alloc` and `slab_dealloc` provide the allocation interface, with `alloc_size` tracked
+per slab for correct deallocation.

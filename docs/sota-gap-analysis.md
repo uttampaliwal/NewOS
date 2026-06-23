@@ -48,27 +48,31 @@ mindmap
 ## Current State Assessment
 
 Turnix is a **Rust-first, x86_64 microkernel/modular monolith hybrid** OS with
-a strong emphasis on safety and modern design. Phases 1-7 are complete.
+a strong emphasis on safety and modern design. Phases 1-7, 8, and 10 are complete.
 
 | Area                    | Current State            | SOTA Level |
 | ----------------------- | ------------------------ | ---------- |
 | Boot & Drivers          | Excellent hobby-OS level | 8/10       |
-| Memory Management       | Good                     | 7/10       |
-| POSIX Services          | Good                     | 7/10       |
+| Memory Management       | Good + slab allocator    | 7/10       |
+| POSIX Services          | Good + epoll/futex/mqueue| 8/10       |
 | Security                | Very ambitious           | 8/10       |
-| Scalability             | Limited                  | 4/10       |
-| Multiprocessor Support  | Not visible              | 2/10       |
+| Scalability             | CFS scheduler + cgroups  | 6/10       |
+| Multiprocessor Support  | Basic SMP (AP bring-up)  | 4/10       |
 | Networking              | Basic                    | 3/10       |
 | Storage                 | Basic                    | 4/10       |
 | Performance Engineering | Minimal                  | 3/10       |
 | Developer Ecosystem     | Good                     | 6/10       |
 | Production Readiness    | Experimental             | 3/10       |
 
-### Already Completed (Phases 1-7)
+### Already Completed (Phases 1-7, 8, 10)
 
 - **Boot & Drivers:** UEFI boot, ACPI, PCIe, VirtIO-Net, NVMe, XHCI USB, GPU DRM/KMS
-- **Memory Subsystem:** VMAs, demand paging, mmap/munmap, LRU page cache, swap, ASLR/KASLR
+- **Memory Subsystem:** VMAs, demand paging, mmap/munmap, LRU page cache, swap, ASLR/KASLR, slab allocator
 - **POSIX Services:** Process table, fork/exec/waitpid, VFS mounts (tmpfs/ext4), pipes, sockets, signals, init daemon
+- **IPC & Async I/O:** Epoll (I/O multiplexing), futex (userspace sync), POSIX message queues, POSIX shared memory
+- **Scheduling:** CFS vruntime scheduler, scheduler classes (NORMAL/BATCH/FIFO/RR/IDLE), per-CPU scheduling
+- **Resource Isolation:** cgroups v2 with CPU, memory, and PIDs controllers
+- **SMP:** Application Processor bring-up via SIPI sequence
 - **Security Hardening:** POSIX capabilities, namespaces, seccomp-BPF, LSM hooks, IMA/EVM, stack canaries
 - **Package Management:** SAT-based dependency solver, TUF repositories, rollback pipeline
 - **System Services:** IPC broker, structured logging, service unit manager
@@ -89,16 +93,16 @@ a strong emphasis on safety and modern design. Phases 1-7 are complete.
 
 #### 1a. Microkernel IPC Optimization
 
-**Current:** Pipes (ring-buffered), Unix domain sockets.
+**Current:** Pipes (ring-buffered, slab-allocated), Unix domain sockets, POSIX message queues, POSIX shared memory, epoll (I/O multiplexing), futex (userspace sync).
 
 **SOTA Requirements:**
 
-- Asynchronous message passing for non-blocking IPC
-- Shared memory channels for bulk data transfer (shmget/shmat or mmap MAP_SHARED)
-- POSIX message queues for structured message passing
+- ~~Asynchronous message passing for non-blocking IPC~~ (POSIX mqueues with blocking)
+- ~~Shared memory channels for bulk data transfer~~ (ShmOpen/ShmUnlink via /dev/shm/)
+- ~~POSIX message queues for structured message passing~~ (MqOpen/MqSend/MqReceive)
 - Copy-on-write optimizations for large payloads
-- futexes (fast userspace mutexes) for synchronization
-- epoll (event notification) for I/O multiplexing
+- ~~futexes (fast userspace mutexes) for synchronization~~ (FUTEX_WAIT/FUTEX_WAKE)
+- ~~epoll (event notification) for I/O multiplexing~~ (EpollCreate/EpollCtl/EpollWait)
 - io_uring-like async I/O interface
 - Benchmark against Linux `mmap` and `pipe` performance
 
@@ -106,29 +110,29 @@ a strong emphasis on safety and modern design. Phases 1-7 are complete.
 
 #### 1b. Scheduler Enhancements
 
-**Current:** Preemptive round-robin only.
+**Current:** CFS vruntime scheduler with scheduler classes (NORMAL/BATCH/FIFO/RR/IDLE), cgroups v2 integration.
 
 **SOTA Requirements:**
 
-- **CFS-like scheduler:** Virtual runtime tracking, red-black tree of runnable tasks
+- ~~CFS-like scheduler: Virtual runtime tracking, red-black tree of runnable tasks~~ (vruntime per task, lowest-first selection)
 - **EEVDF (Earliest Eligible Virtual Deadline First):** Better fairness and responsiveness
-- Scheduler classes: RealTime (FIFO/RR), Fair (CFS/EEVDF), Idle, Batch
+- ~~Scheduler classes: RealTime (FIFO/RR), Fair (CFS), Idle, Batch~~ (SchedulingPolicy enum)
 - Priority inheritance for priority inversion avoidance
 - CPU affinity and scheduler domains
-- cgroups v2 integration for resource control
+- ~~cgroups v2 integration for resource control~~ (CPU/memory/PIDs controllers)
 
 **Priority:** Critical
 
 #### 1c. Memory Management Optimizations
 
-**Current:** Demand paging, mmap, page cache, swap, ASLR/KASLR.
+**Current:** Demand paging, mmap, page cache, swap, ASLR/KASLR, slab allocator.
 
 **SOTA Requirements:**
 
 - **Memory Deduplication (KSM):** Same-page merging across processes/containers
 - **Swap Compression (zswap/zram):** Compress pages before disk write
 - **Transparent Huge Pages (THP):** 2MB/1GB pages to reduce TLB misses
-- **Slab/SLUB allocator:** Object caching for frequent allocations
+- ~~**Slab/SLUB allocator:** Object caching for frequent allocations~~ (slab_alloc/slab_dealloc with SlabCache)
 - **Per-CPU caches:** Reduce lock contention on allocator
 
 **Priority:** High
@@ -374,12 +378,12 @@ a strong emphasis on safety and modern design. Phases 1-7 are complete.
 
 #### 6b. Container Runtime
 
-**Current:** Namespaces (PID, mount, network, user).
+**Current:** Namespaces (PID, mount, network, user), cgroups v2 (CPU, memory, PIDs).
 
 **SOTA Requirements:**
 
 - **OCI-compatible container runtime**
-- cgroups v2 for resource limiting
+- ~~cgroups v2 for resource limiting~~ (CPU/memory/PIDs controllers implemented)
 - Container networking: veth pairs, bridge, overlay
 - `turnix run alpine` experience
 
@@ -430,9 +434,9 @@ a strong emphasis on safety and modern design. Phases 1-7 are complete.
 
 | Phase | Focus | Gaps Addressed | Priority |
 |---|---|---|---|
-| 8 | SMP & Scalable Scheduler | 1b, 1d, 5a partial | Critical |
+| 8 | SMP & Scalable Scheduler | 1b, 1c partial, 6b partial | Critical |
 | 9 | Networking Depth | (existing) | Critical |
-| 10 | Async I/O & Process Isolation | 1a, 3c partial | High |
+| 10 | Async I/O & Process Isolation | 1a, 6b partial | High |
 | 11 | Memory & Storage | 1c, filesystem gaps | High |
 | 12 | Security Hardening | 2a, 2b, 2c, 2d | High |
 | 13 | Performance & Observability | 4a, benchmarks | High |
@@ -448,9 +452,9 @@ a strong emphasis on safety and modern design. Phases 1-7 are complete.
 The five highest-impact areas for the next development cycle:
 
 1. **POSIX Compliance + Linux Compat Layer** — gateway to real software
-2. **SMP + CFS/EEVDF Scheduler** — foundational for all parallelism
+2. ~~**SMP + CFS/EEVDF Scheduler** — foundational for all parallelism~~ ✅ Done
 3. **Verified Boot + Kernel Hardening** — security is non-optional
-4. **IPC Optimization** — hybrid design performance must be competitive
+4. **IPC Optimization** — io_uring, CoW optimizations
 5. **ARM64/RISC-V Support** — essential for relevance beyond x86
 
 ---

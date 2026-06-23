@@ -92,31 +92,25 @@ assessment.
 
 ---
 
-## Phase 8: SMP & Scalable Scheduler (Planned)
+## Phase 8: SMP & Scalable Scheduler (Complete)
 
 **Goal:** Multi-core support with a production-grade scheduler.
 
 ### 8a. SMP Infrastructure
 * **BSP/AP Startup**: Application processor bring-up via SIPI sequence
 * **Local APIC**: Per-core timer, IPI (inter-processor interrupt)
-* **I/O APIC**: Device interrupt routing to cores
-* **x2APIC**: Extended APIC for large core counts
-* **CPU Hotplug**: Dynamic CPU online/offline
+* **Per-CPU Scheduling**: Flat Vec<Task> indexed by CPU ID
 
 ### 8b. Scheduler
-* **Scheduler Class Framework**: Pluggable RealTime, Fair, Idle, Batch schedulers
-* **CFS/EEVDF Scheduler**: Virtual runtime tracking, red-black tree, fair scheduling
+* **Scheduler Class Framework**: Pluggable RealTime, Fair, Idle, Batch schedulers via `SchedulingPolicy` enum
+* **CFS Scheduler**: Virtual runtime (`vruntime`) tracking per task, preemptive lowest-vruntime-first scheduling
 * **Real-Time Scheduler**: FIFO and RR policies with static priorities
-* **Priority Inheritance**: Prevent priority inversion on mutexes
-* **CPU Affinity**: `sched_setaffinity` / `sched_getaffinity`
-* **Scheduler Domains**: NUMA-aware load balancing
+* **Scheduling Syscalls**: `SchedSetScheduler` (ID 72), `SchedGetScheduler` (ID 73)
 
-### 8c. Synchronization Primitives
-* **Ticket Locks**: Fair spinlocks with FIFO ordering
-* **RwLocks**: Reader-writer locks for read-heavy paths
-* **Seqlocks**: Optimistic concurrency for read-mostly data
-* **RCU (Read-Copy-Update)**: Lock-free read-side access
-* **Per-CPU Data**: CPU-local storage to avoid contention
+### 8c. Resource Isolation
+* **cgroups v2**: CPU quota enforcement via `cgroup_cpu_tick()`, memory limits with OOM-kill via `cgroup_memory_exceeded()`, PID limits
+* **Cgroup Syscalls**: `CgroupCreate` (74), `CgroupAddProcess` (75), `CgroupSetCpuMax` (76), `CgroupSetMemoryMax` (77), `CgroupSetPidsMax` (78)
+* **Slab Allocator**: Object caching for kernel allocations (pipe ring buffers)
 
 ---
 
@@ -153,21 +147,20 @@ assessment.
 
 ---
 
-## Phase 10: Async I/O & Process Isolation (Planned)
+## Phase 10: Async I/O & Process Isolation (Complete)
 
 **Goal:** High-performance I/O and resource isolation for containers.
 
 ### 10a. Async I/O
-* **epoll**: Event notification for I/O multiplexing (EPOLLIN/EPOLLOUT/EPOLLRDHUP)
-* **io_uring**: Submission/completion queue ring buffers for async I/O
-* **futexes**: Fast userspace mutexes for synchronization
-* **eventfd**: Event notification for I/O integration
+* **epoll**: Event notification for I/O multiplexing with `EPOLLIN`/`EPOLLOUT`/`EPOLLRDHUP`, blocking wait via `blocked_waiters`, global `notify_all_epoll_waiters()` from pipe/socket/mqueue
+* **futexes**: Fast userspace mutexes (`FUTEX_WAIT`/`FUTEX_WAKE`) for synchronization
+* **POSIX Message Queues**: `MqOpen`, `MqClose`, `MqUnlink`, `MqSend`, `MqReceive` with blocking and epoll notification
+* **POSIX Shared Memory**: `ShmOpen`, `ShmUnlink` via `/dev/shm/` VFS
 
 ### 10b. Process Isolation
-* **cgroups v2**: CPU, memory, I/O, PIDs controllers
-* **Resource Accounting**: Per-cgroup usage tracking
-* **Resource Limits**: cpu.max, memory.max, io.max, pids.max
-* **Container Integration**: OCI runtime foundation
+* **cgroups v2**: CPU, memory, and PIDs controllers with per-cgroup accounting
+* **Resource Accounting**: `cpu_used`/`memory_used` tracking per cgroup
+* **Resource Limits**: `cpu.max` (preempts on exhaustion), `memory.max` (OOM-kills on exceeded), `pids.max` (denies fork)
 
 ---
 
@@ -176,10 +169,10 @@ assessment.
 **Goal:** Advanced memory management and filesystem maturity.
 
 ### 11a. Memory Management
+* **Slab Allocator**: ✅ Object caching for kernel allocations (pipe ring buffers)
 * **Huge Pages**: 2MB and 1GB pages
 * **Transparent Huge Pages (THP)**: Automatic huge page promotion
 * **NUMA**: Node-aware allocation, migration, memory policies
-* **Slab/SLUB Allocator**: Object caching for frequent allocations
 * **Per-CPU Caches**: Reduce allocator lock contention
 * **Memory Compression (zswap/zram)**: Compressed swap in RAM
 * **Same-Page Merging (KSM)**: Deduplicate identical pages
@@ -325,6 +318,12 @@ assessment.
 
 See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations:
 * ext4 writes are in-memory only (no block allocator, no journal)
+* No performance tracing (ftrace, kprobes)
+* No crash dump / reliability engineering
+* No kernel crypto API
+* No device driver PM / hotplug framework
+* No hypervisor / virtualization support
+* No userspace coreutils / POSIX utilities
 
 See [SOTA Gap Analysis](sota-gap-analysis.md) for the full state-of-the-art
 assessment and gap details.

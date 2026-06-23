@@ -1,6 +1,7 @@
 # --- Build & CI Artifacts ---
 target/
 fuzz/target/
+book/build/
 dist/
 out/
 turnix/
