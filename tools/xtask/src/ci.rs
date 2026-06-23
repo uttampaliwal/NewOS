@@ -352,7 +352,7 @@ pub fn ci_boot_gate_with_attempts(
     // GitHub Actions runners don't expose KVM, so QEMU falls back to TCG
     // which has intermittent boot failures (exit code 35 = isa-debug-exit
     // or QEMU crash during UEFI → kernel handoff).
-    let max_failures = ((attempts + 1) / 2).max(1);
+    let max_failures = attempts.div_ceil(2).max(1);
 
     for i in 1..=attempts {
         eprint!("  [{i}/{attempts}] Booting... ");
