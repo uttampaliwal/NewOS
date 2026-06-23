@@ -48,21 +48,24 @@ mindmap
 ## Current State Assessment
 
 Turnix is a **Rust-first, x86_64 microkernel/modular monolith hybrid** OS with
-a strong emphasis on safety and modern design. Phases 1-7, 8, and 10 are complete.
+a strong emphasis on safety and modern design. Phases 1-8 and 10 are complete.
 
-| Area                    | Current State            | SOTA Level |
-| ----------------------- | ------------------------ | ---------- |
-| Boot & Drivers          | Excellent hobby-OS level | 8/10       |
-| Memory Management       | Good + slab allocator    | 7/10       |
-| POSIX Services          | Good + epoll/futex/mqueue| 8/10       |
-| Security                | Very ambitious           | 8/10       |
-| Scalability             | CFS scheduler + cgroups  | 6/10       |
-| Multiprocessor Support  | Basic SMP (AP bring-up)  | 4/10       |
-| Networking              | Basic                    | 3/10       |
-| Storage                 | Basic                    | 4/10       |
-| Performance Engineering | Minimal                  | 3/10       |
-| Developer Ecosystem     | Good                     | 6/10       |
-| Production Readiness    | Experimental             | 3/10       |
+| Area                    | Current State            | Score |
+| ----------------------- | ------------------------ | ----- |
+| Architecture            | Mature hybrid kernel     | 9/10  |
+| Memory Management       | Good + slab, demand paging, swap | 7.5/10 |
+| Scheduling              | CFS + classes + cgroups  | 7.5/10 |
+| IPC                     | Pipes, sockets, epoll, futex, mqueue, shm | 8.5/10 |
+| Security                | Capabilities, namespaces, seccomp-BPF, LSM, IMA/EVM | 6.5/10 |
+| Networking              | Basic TCP/IP via smoltcp | 5/10  |
+| Observability           | dmesg, serial logging    | 4/10  |
+| Reliability             | Basic panic handler      | 4/10  |
+| Tooling                 | mdBook, CI, benchmarks   | 7/10  |
+| Scalability             | Basic SMP, CFS, cgroups  | 6/10  |
+| Storage                 | tmpfs, ext4 (in-memory)  | 4/10  |
+| Production Readiness    | Experimental             | 3/10  |
+
+**Overall maturity: ~7/10** — Exceptional for a hobby OS, approaching research OS level.
 
 ### Already Completed (Phases 1-7, 8, 10)
 
@@ -434,28 +437,30 @@ a strong emphasis on safety and modern design. Phases 1-7, 8, and 10 are complet
 
 | Phase | Focus | Gaps Addressed | Priority |
 |---|---|---|---|
-| 8 | SMP & Scalable Scheduler | 1b, 1c partial, 6b partial | Critical |
-| 9 | Networking Depth | (existing) | Critical |
-| 10 | Async I/O & Process Isolation | 1a, 6b partial | High |
-| 11 | Memory & Storage | 1c, filesystem gaps | High |
-| 12 | Security Hardening | 2a, 2b, 2c, 2d | High |
-| 13 | Performance & Observability | 4a, benchmarks | High |
-| 14 | Graphics & Desktop | 5c | Medium |
-| 15 | Self-Hosting & Ecosystem | 6a, POSIX compliance | High |
-| 16 | Virtualization & Reliability | 6b, 6c | Medium |
-| 17 | Distributed Systems | 6e | Low |
+| 9 | Networking Depth | networking gaps | Critical |
+| 11 | Memory & Storage | filesystem gaps | High |
+| 12 | Scalability & Concurrency | RCU, per-CPU, workqueues, softirqs | Critical |
+| 13 | Async I/O & Zero-Copy | io_uring, zero-copy, eventfd | Critical |
+| 14 | Observability & Tracing | ftrace, kprobes, perf | Critical |
+| 15 | Reliability Engineering | crash dumps, watchdogs, KASAN | Critical |
+| 16 | Advanced Memory | huge pages, NUMA, KSM, compression | High |
+| 17 | Security Hardening | CFI, KPTI, verified boot, Landlock | High |
+| 18 | Containers | OCI, OverlayFS, checkpoint/restore | High |
+| 19 | Self-Hosting & Ecosystem | POSIX compliance, coreutils | High |
+| 20 | Virtualization | KVM, EPT/NPT | Medium |
+| 21 | Distributed Systems | service discovery, consensus | Low |
 
 ---
 
 ## Priority Summary
 
-The five highest-impact areas for the next development cycle:
+The highest-return investments for the next development cycle:
 
-1. **POSIX Compliance + Linux Compat Layer** — gateway to real software
-2. ~~**SMP + CFS/EEVDF Scheduler** — foundational for all parallelism~~ ✅ Done
-3. **Verified Boot + Kernel Hardening** — security is non-optional
-4. **IPC Optimization** — io_uring, CoW optimizations
-5. **ARM64/RISC-V Support** — essential for relevance beyond x86
+1. **RCU + Scalability Primitives** — foundation for all concurrent data structures
+2. **io_uring + Zero-Copy** — highest-impact async I/O improvement
+3. **ftrace/kprobes/perf** — essential for debugging and performance tuning
+4. **Reliability Engineering** — crash dumps, watchdogs, KASAN for production use
+5. **Advanced Memory (Huge Pages, NUMA)** — critical for large-memory workloads
 
 ---
 

@@ -477,6 +477,162 @@ coreutils is not usable for development or daily use.
 
 ---
 
+## 27. No RCU or Per-CPU Infrastructure
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/sync/rcu.rs` (new), `kernel/src/sync/percpu.rs` (new) |
+| **Status** | Open |
+
+**Impact:** No lock-free read-side access for concurrent data structures.
+RCU is arguably the single biggest missing primitive for SOTA scalability.
+Without per-CPU infrastructure, all shared data requires global locks.
+
+**Proposed Fix:**
+- RCU core: grace-period tracking, `rcu_read_lock`/`rcu_read_unlock`, `synchronize_rcu`
+- RCU callbacks: deferred reclamation via `call_rcu`
+- Tree RCU: hierarchical RCU for large CPU counts
+- Per-CPU data: `DEFINE_PER_CPU` macro, `get_cpu_var`/`put_cpu_var`
+- Per-CPU slab caches: reduce allocator lock contention
+
+**Tracking:** `docs/roadmap.md` Phase 12
+
+---
+
+## 28. No io_uring or Zero-Copy Networking
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/io/uring.rs` (new) |
+| **Status** | Open |
+
+**Impact:** No high-performance async I/O interface. io_uring is the
+highest-impact missing subsystem for network servers and storage workloads.
+
+**Proposed Fix:**
+- io_uring: submission queue, completion queue, SQE/CQE ring buffers
+- Registered buffers and files for pinned memory
+- Linked operations for dependent syscalls
+- Zero-copy: sendfile, MSG_ZEROCOPY, splice
+- eventfd and timerfd for event notification
+
+**Tracking:** `docs/roadmap.md` Phase 13
+
+---
+
+## 29. No Huge Pages, THP, NUMA, or KSM
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/memory/` |
+| **Status** | Open |
+
+**Impact:** 4KB pages only. TLB pressure is high on large-memory workloads.
+No NUMA awareness means poor performance on multi-socket systems.
+
+**Proposed Fix:**
+- Huge pages: 2MB/1GB via hugetlbfs
+- Transparent Huge Pages: automatic promotion/demotion
+- NUMA: node-local allocation, memory policies, page migration
+- KSM: same-page merging for deduplication
+- Memory compression: zswap/zram
+- Memory compaction: defragmentation for contiguous allocations
+
+**Tracking:** `docs/roadmap.md` Phase 16
+
+---
+
+## 30. No Workqueues, Softirqs, or Tasklets
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/workqueue.rs` (new), `kernel/src/softirq.rs` (new) |
+| **Status** | Open |
+
+**Impact:** No deferred execution framework. All work must run in interrupt
+context or process context. Cannot handle high-frequency events (network
+RX/TX, block I/O completion) efficiently.
+
+**Proposed Fix:**
+- Workqueues: `queue_work`, `flush_work`, concurrency-managed workers
+- Softirqs: high-priority deferred processing for network/block I/O
+- Tasklets: softirq wrappers for simpler deferred work
+- Timer wheel: high-resolution kernel timers
+
+**Tracking:** `docs/roadmap.md` Phase 12
+
+---
+
+## 31. No KASAN/KFENCE Memory Safety Detection
+
+| | |
+|---|---|
+| **Severity** | High |
+| **Component** | `kernel/src/mm/kasan.rs` (new) |
+| **Status** | Open |
+
+**Impact:** No runtime memory error detection. Use-after-free, buffer
+overflows, and uninitialized memory reads go undetected. Critical for
+kernel development and CI.
+
+**Proposed Fix:**
+- KASAN: generic shadow memory for heap out-of-bounds and use-after-free
+- KFENCE: low-overhead sampling-based detector for production
+- Stack protector: canary-based stack overflow detection
+- Memory poisoning: detect uninitialized memory reads
+
+**Tracking:** `docs/roadmap.md` Phase 15
+
+---
+
+## 32. No Lockdep or Seqlocks
+
+| | |
+|---|---|
+| **Severity** | Medium |
+| **Component** | `kernel/src/sync/lockdep.rs` (new), `kernel/src/sync/seqlock.rs` (new) |
+| **Status** | Open |
+
+**Impact:** No deadlock detection or lock ordering validation. No
+optimistic concurrency for read-mostly data. Difficult to debug
+locking issues in multi-core code.
+
+**Proposed Fix:**
+- Lockdep: runtime lock dependency graph, deadlock detection, lock ordering validation
+- Seqlocks: optimistic read-side with writer priority
+- Completion variables: wait/signal for one-shot events
+
+**Tracking:** `docs/roadmap.md` Phase 12
+
+---
+
+## 33. No Container Runtime or OCI Support
+
+| | |
+|---|---|
+| **Severity** | Medium |
+| **Component** | `userland/containerd/` (new) |
+| **Status** | Open |
+
+**Impact:** Cannot run OCI containers. Namespaces and cgroups v2 exist
+but there is no container runtime to manage image layers, networking,
+and lifecycle.
+
+**Proposed Fix:**
+- OCI runtime: container creation, lifecycle, spec parsing
+- OverlayFS: union mount for image layers
+- Device cgroups: control device access per container
+- Checkpoint/restore: CRIU integration for live migration
+- Container networking: veth pairs, bridge, network namespaces
+
+**Tracking:** `docs/roadmap.md` Phase 18
+
+---
+
 ## Summary
 
 | # | Issue | Severity | Status |
@@ -507,3 +663,10 @@ coreutils is not usable for development or daily use.
 | 24 | No device driver PM / hotplug framework | Medium | Open |
 | 25 | No hypervisor / virtualization support | Medium | Open |
 | 26 | No userspace coreutils / POSIX utilities | Medium | Open |
+| 27 | No RCU or per-CPU infrastructure | High | Open |
+| 28 | No io_uring or zero-copy networking | High | Open |
+| 29 | No huge pages, THP, NUMA, or KSM | High | Open |
+| 30 | No workqueues, softirqs, or tasklets | High | Open |
+| 31 | No KASAN/KFENCE memory safety detection | High | Open |
+| 32 | No lockdep or seqlocks | Medium | Open |
+| 33 | No container runtime or OCI support | Medium | Open |

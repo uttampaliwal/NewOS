@@ -186,17 +186,156 @@ assessment.
 
 ---
 
-## Phase 12: Security Hardening (Planned)
+## Phase 12: Scalability & Concurrency (Planned)
+
+**Goal:** Production-grade concurrency primitives for multi-core scalability.
+
+### 12a. RCU (Read-Copy-Update)
+* **RCU Core**: Grace-period tracking, `rcu_read_lock`/`rcu_read_unlock`, `synchronize_rcu`
+* **RCU Callbacks**: Deferred reclamation via `call_rcu`, callback offloading
+* **Tree RCU**: Hierarchical RCU for large CPU counts
+* **SRCU**: Sleepable RCU for read-side critical sections that can block
+
+### 12b. Per-CPU Infrastructure
+* **Per-CPU Slab Caches**: Reduce allocator lock contention on hot paths
+* **Per-CPU Data**: `DEFINE_PER_CPU` macro, `get_cpu_var`/`put_cpu_var`
+* **Per-CPU Counters**: Batched counters for statistics (e.g., network stats, memory stats)
+
+### 12c. Workqueues
+* **Workqueue Framework**: `queue_work`, `flush_work`, `destroy_workqueue`
+* **Concurrency Managed Workqueues**: Auto-scaling worker threads
+* **Bound Workqueues**: Per-CPU affinity for latency-sensitive work
+* **Unbound Workqueues**: For offloadable, throughput-oriented work
+
+### 12d. Deferred Execution
+* **Softirqs**: High-priority deferred processing (network TX/RX, block I/O)
+* **Tasklets**: Softirq wrappers for simpler deferred work
+* **Timer Wheel**: High-resolution kernel timers
+
+### 12e. Locking Primitives
+* **Seqlocks**: Optimistic concurrency for read-mostly data
+* **Completion Variables**: Wait/signal for one-shot events
+* **Lockdep**: Runtime deadlock detection and lock ordering validation
+* **Priority Inheritance Futexes**: `FUTEX_LOCK_PI`/`FUTEX_UNLOCK_PI` for priority inversion avoidance
+
+---
+
+## Phase 13: Async I/O & Zero-Copy (Planned)
+
+**Goal:** High-performance async I/O with zero-copy data paths.
+
+### 13a. io_uring
+* **Submission Queue**: Ring buffer for batched syscall submission
+* **Completion Queue**: Ring buffer for async results
+* **Registered Buffers**: `IORING_REGISTER_BUFFERS` for pinned user memory
+* **Registered Files**: `IORING_REGISTER_FILES` for fd table caching
+* **Linked Operations**: Chain dependent operations
+* **Poll Integration**: `IORING_OP_POLL_ADD` for epoll-like efficiency
+
+### 13b. Zero-Copy Networking
+* **Sendfile**: Kernel-space file-to-socket transfer
+* **MSG_ZEROCOPY**: Zero-copy send with completion notification
+* **Splice / Tee**: Pipe-based zero-copy data movement
+* **Buffer Sharing**: Shared page references between subsystems
+
+### 13c. Event Notification
+* **eventfd**: Kernel-to-userspace event notification (pair with epoll/io_uring)
+* **timerfd**: Timer-based event notification
+
+---
+
+## Phase 14: Observability & Tracing (Planned)
+
+**Goal:** Full visibility into kernel behavior for debugging and performance analysis.
+
+### 14a. Tracing Framework
+* **ftrace**: Function tracing, function_graph, events via tracefs
+* **kprobes**: Dynamic kernel instrumentation at any function
+* **uprobes**: Dynamic user-space instrumentation
+* **tracefs**: Virtual filesystem for trace control and output
+
+### 14b. Performance Counters
+* **perf**: Hardware performance counter abstraction (PMU)
+* **NMI Watchdog**: Non-maskable interrupt-based sampling
+* **Callgraph Profiling**: Dwarf-based stack unwinding
+
+### 14c. Analysis Tools
+* **Lock Contention Analysis**: Spinlock/mutex wait tracking with owner identification
+* **Scheduler Tracing**: Context switch latency, run queue depth, wake-up chains
+* **Flamegraph Generation**: On-CPU and off-CPU flamegraphs from trace data
+* **Syscall Latency Histograms**: Per-syscall entry-to-exit distributions
+
+---
+
+## Phase 15: Reliability Engineering (Planned)
+
+**Goal:** Production-grade error detection, recovery, and debugging.
+
+### 15a. Crash Dumps
+* **Kdump-style Capture**: Reserved memory region for crash kernel
+* **Panic Reports**: Structured logs with register dump, backtrace, oops decoding
+* **Core Dump**: Full kernel memory dump for post-mortem analysis
+
+### 15b. Watchdog & Lockup Detection
+* **Hardware Watchdog**: HPET/LAPIC-based pre-panic countdown
+* **Soft Lockup Detector**: Detect tasks holding CPU for extended periods
+* **Hard Lockup Detector**: NMI-based detection of interrupts disabled too long
+* **Hung Task Detector**: Detect tasks stuck in D state (uninterruptible sleep)
+
+### 15c. Fault Injection
+* **SLUB Error Injection**: Configurable failure points for kmalloc/kfree
+* **I/O Error Injection**: Simulate disk/network failures
+* **Network Loss/Delay Injection**: Simulate packet loss and latency
+* **Failure Testing Framework**: Deterministic fault injection for CI
+
+### 15d. Memory Safety Detection
+* **KASAN (Kernel Address Sanitizer)**: Heap out-of-bounds, use-after-free detection
+* **KFENCE (Kernel Electric Fence)**: Low-overhead sampling-based memory error detector
+* **Stack Protector**: Canary-based stack overflow detection
+* **Memory Poisoning**: Detect uninitialized memory reads
+
+---
+
+## Phase 16: Advanced Memory Management (Planned)
+
+**Goal:** SOTA memory management with huge pages, NUMA, and compression.
+
+### 16a. Huge Pages
+* **Huge Pages (2MB/1GB)**: Explicit huge page allocation via `hugetlbfs`
+* **Transparent Huge Pages (THP)**: Automatic promotion/demotion of 4KB pages
+* **THP Defrag**: `khugepaged` for background compaction
+* **Multi-size THP**: 16KB, 32KB, 64KB intermediate sizes
+
+### 16b. NUMA
+* **NUMA-Aware Allocation**: Node-local allocation with fallback
+* **Memory Policies**: `set_mempolicy` (local, bind, interleave, preferred)
+* **Page Migration**: Move pages between NUMA nodes for balancing
+* **AutoNUMA**: Kernel-driven page placement based on access patterns
+
+### 16c. Memory Compression
+* **zswap**: Compressed write-back cache in front of swap device
+* **zram**: Compressed block device in RAM
+* **LZ4/ZSTD**: Configurable compression algorithms
+* **Same-Page Merging (KSM)**: Deduplicate identical pages across processes
+
+### 16d. Compaction & Fragmentation
+* **Memory Compaction**: Defragmentation by moving pages to create contiguous regions
+* **CMA (Contiguous Memory Allocator)**: Reserve contiguous regions for DMA
+* **Buddy System Tuning**: Adjustable watermark ratios
+
+---
+
+## Phase 17: Security Hardening (Planned)
 
 **Goal:** Production-grade security with hardware-backed protections.
 
-### 12a. Verified Boot
+### 17a. Verified Boot
 * **UEFI Secure Boot Chain**: Signed loader → verified kernel
 * **TPM PCR Extension**: Measure all boot components
 * **dm-verity**: Root filesystem integrity verification
 * **Secure Boot Policy**: Enforce signature requirements
 
-### 12b. Kernel Self-Protection
+### 17b. Kernel Self-Protection
 * **Control Flow Integrity (CFI)**: Prevent ROP/JOP on indirect calls
 * **KPTI (Kernel Page Table Isolation)**: Mitigate Meltdown
 * **Hardened Usercopy**: Bounds check on copy_to/from_user
@@ -204,105 +343,84 @@ assessment.
 * **Init-on-Alloc/Free**: Zero memory to prevent info leaks
 * **Kernel Lockdown**: Restrict /dev/mem, ACPI post-boot
 
-### 12c. Advanced Sandboxing
+### 17c. Advanced Sandboxing
 * **Seccomp Notify**: User-space notification for dynamic policies
 * **Landlock LSM**: Unprivileged sandboxing
 * **Capability Bounding**: Permanent capability dropping
 
-### 12d. Hardware Security
+### 17d. Hardware Security
 * **IOMMU**: DMA protection, device isolation for user-space drivers
 * **Kernel Crypto API**: AES-GCM, ChaCha20-Poly1305, SHA-256/SHA-3
 * **CET Shadow Stacks**: Hardware-backed control flow for user space
 
 ---
 
-## Phase 13: Performance & Observability (Planned)
+## Phase 18: Containers & Runtime Isolation (Planned)
 
-**Goal:** Full visibility into system behavior and performance.
+**Goal:** Full container runtime support with image layering and checkpoint/restore.
 
-### 13a. Tracing Framework
-* **ftrace**: Function tracing, function graph, events via tracefs
-* **kprobes**: Dynamic kernel instrumentation points
-* **uprobes**: Dynamic user-space instrumentation
-* **perf**: Hardware performance counters (PMU)
+### 18a. Container Runtime
+* **OCI Runtime**: Container creation, lifecycle management
+* **Overlay Filesystem**: Union mount for image layers
+* **Image Layering**: Copy-on-write image storage
+* **Device Cgroups**: Control device access per container
 
-### 13b. Analysis Tools
-* **Lock Contention Analysis**: Spinlock/mutex wait tracking
-* **Scheduler Tracing**: Context switch latency, run queue depth
-* **Flamegraph Generation**: On-CPU and off-CPU flamegraphs
-* **Syscall Latency**: Per-syscall entry-to-exit histograms
+### 18b. Container Networking
+* **veth Pairs**: Virtual ethernet pairs for container networking
+* **Bridge Networking**: Linux bridge for container interconnection
+* **Network Namespaces**: Full per-namespace routing and sockets
 
-### 13c. Benchmarks
-* **Context Switch Latency**: Voluntary/involuntary measurements
-* **IPC Throughput**: Pipe, socket, shared memory
-* **Filesystem Throughput**: Metadata, sequential, random I/O
-* **Memory Bandwidth**: Read/write/copy throughput
+### 18c. Checkpoint/Restore
+* **CRIU Integration**: Checkpoint/Restore In Userspace
+* **Process Freezing**: Suspend container for consistent checkpoint
+* **Memory Dump/Restore**: Serialize and restore process memory
 
----
-
-## Phase 14: Graphics & Desktop Polish (Planned)
-
-**Goal:** Hardware-accelerated graphics with Wayland protocol compatibility.
-
-* **OpenGL ES 3.0**: Mesa/Gallium renderer or VirtIO-GPU 3D
-* **Vulkan 1.0**: WSI for Wayland, command buffer submission
-* **GPU Memory Management**: GEM/TTM buffer objects
-* **Wayland Protocols**: xdg-shell, xdg-decoration, layer-shell
-* **Hardware Compositing**: DRM atomic modesetting, overlay planes
-* **VSync & Frame Pacing**: Presentation-time, adaptive sync
-* **Fractional Scaling**: Per-output scale factors
-* **Accessibility**: Screen reader protocol, keyboard navigation
+### 18d. Seccomp Integration
+* **Seccomp-BPF per Container**: Filter syscalls per container
+* **Seccomp Notify**: Delegate policy decisions to supervisor
 
 ---
 
-## Phase 15: Self-Hosting & Ecosystem (Planned)
+## Phase 19: Self-Hosting & Ecosystem (Planned)
 
 **Goal:** Run Turnix natively and port real software.
 
-### 15a. POSIX Compliance
+### 19a. POSIX Compliance
 * **LTP Integration**: Linux Test Project in CI
 * **Open POSIX Test Suite**: Systematic conformance testing
 * **Linux Syscall Layer**: Translate Linux syscalls to Turnix API
 * **Binary Compatibility**: Run unmodified Linux binaries
 
-### 15b. Core Utilities
+### 19b. Core Utilities
 * **coreutils Port**: cat, ls, cp, mv, rm, mkdir, chmod, chown, ps, top, df
 * **Shell Porting**: bash/dash compatibility for build scripts
 * **Text Processing**: grep, sed, awk, sort, uniq, wc
 
-### 15c. Toolchain
+### 19c. Toolchain
 * **clang/lld on Turnix**: Native C/C++ compiler
 * **rustc on Turnix**: Native Rust compiler
 * **make/cargo on Turnix**: Native build systems
 
-### 15d. Package Ecosystem
-* **Binary Repositories**: Pre-built packages for common tools
+### 19d. Package Ecosystem
+* **Binary Repositories**: Pre-built packages for common software
 * **Source Packages**: Build from source with patches
 * **Reproducible Builds**: Deterministic compilation
 
 ---
 
-## Phase 16: Virtualization & Reliability (Planned)
+## Phase 20: Virtualization (Planned)
 
-**Goal:** VM support and production reliability.
+**Goal:** Hardware-accelerated VM support.
 
-### 16a. Virtualization
 * **VT-x / AMD-V**: Hardware virtualization for guest VMs
 * **Nested Paging (EPT/NPT)**: Guest memory isolation
 * **Virtual Devices**: VirtIO net, block, console for guests
 * **/dev/kvm**: Userspace hypervisor interface
-* **OCI Container Runtime**: Container creation, namespaces, cgroups
-
-### 16b. Reliability Engineering
-* **Crash Dumps**: Kernel panic → coredump → post-mortem
-* **Watchdog Timer**: Hardware watchdog for hang detection
-* **Fault Injection**: Configurable failures for alloc, I/O, network
-* **Kernel Checkpoints**: Save/restore for live migration
-* **Panic Reports**: Structured logs with backtrace and oops decoding
+* **Live Migration**: Kernel state save/restore for VM migration
 
 ---
 
-## Phase 17: Distributed Systems (Planned)
+## Phase 21: Distributed Systems (Planned)
 
 **Goal:** Multi-node and network-transparent services.
 
@@ -318,12 +436,15 @@ assessment.
 
 See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations:
 * ext4 writes are in-memory only (no block allocator, no journal)
-* No performance tracing (ftrace, kprobes)
+* No RCU or per-CPU infrastructure
+* No io_uring or zero-copy networking
+* No ftrace/kprobes/perf observability
 * No crash dump / reliability engineering
+* No huge pages, NUMA, or memory compression
+* No seccomp notify, Landlock, or verified boot
+* No container runtime or OCI support
 * No kernel crypto API
 * No device driver PM / hotplug framework
-* No hypervisor / virtualization support
-* No userspace coreutils / POSIX utilities
 
 See [SOTA Gap Analysis](sota-gap-analysis.md) for the full state-of-the-art
 assessment and gap details.
