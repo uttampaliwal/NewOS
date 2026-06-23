@@ -77,6 +77,8 @@ pub mod process;
 pub mod security;
 pub mod log_ring;
 pub mod serial;
+pub mod sync;
+pub mod softirq;
 #[cfg(feature = "arch-x86_64")]
 pub mod time;
 #[cfg(feature = "arch-x86_64")]
