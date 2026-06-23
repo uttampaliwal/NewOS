@@ -2226,7 +2226,7 @@ fn handle_mq_send(args: SyscallArgs) -> SyscallResult {
     };
     drop(inner);
 
-    match mq.try_send(msg_slice, prio) {
+    match mq.send(msg_slice, prio) {
         Ok(()) => SyscallResult::Success(0),
         Err(e) => SyscallResult::Error(e as i64),
     }
@@ -2257,7 +2257,7 @@ fn handle_mq_receive(args: SyscallArgs) -> SyscallResult {
     drop(inner);
 
     let mut buf = alloc::vec![0u8; buf_len];
-    match mq.try_receive(&mut buf) {
+    match mq.receive(&mut buf) {
         Ok((n, _prio)) => {
             unsafe { core::ptr::copy_nonoverlapping(buf.as_ptr(), buf_ptr, n); }
             SyscallResult::Success(n as u64)
