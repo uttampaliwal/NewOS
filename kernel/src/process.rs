@@ -148,6 +148,8 @@ pub struct ProcessControlBlock {
     pub nsproxy: NsProxy,
     /// Per-process seccomp filter (None = disabled).
     pub seccomp_filter: Option<SeccompFilter>,
+    /// Cgroup path this process belongs to (None = root cgroup "/").
+    pub cgroup_path: Option<alloc::string::String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -276,6 +278,7 @@ impl Process {
                         sec_ctx: SecurityContext::root(),
                         nsproxy: NsProxy::new(),
                         seccomp_filter: None,
+                        cgroup_path: None,
                     }))
                 }
             };
@@ -324,6 +327,7 @@ impl Process {
             sec_ctx: SecurityContext::new(0, 0, CapabilitySet::basic()),
             nsproxy: NsProxy::new(),
             seccomp_filter: None,
+            cgroup_path: None,
         };
 
         crate::serial::println!("[STG: PROC_INNER_BUILT]");
@@ -520,6 +524,7 @@ impl Process {
                 sec_ctx: SecurityContext::new(0, 0, CapabilitySet::basic()),
                 nsproxy: NsProxy::new(),
                 seccomp_filter: None,
+                cgroup_path: None,
             })),
         };
 
@@ -780,6 +785,7 @@ impl Process {
             sec_ctx: parent.sec_ctx.clone(),
             nsproxy: NsProxy::from_flags(0, &parent.nsproxy),
             seccomp_filter: parent.seccomp_filter.clone().map(|f| f.inherit_on_fork()),
+            cgroup_path: parent.cgroup_path.clone(),
         };
 
         Self {
@@ -829,6 +835,7 @@ impl Process {
             sec_ctx: parent.sec_ctx.clone(),
             nsproxy,
             seccomp_filter: parent.seccomp_filter.clone().map(|f| f.inherit_on_fork()),
+            cgroup_path: parent.cgroup_path.clone(),
         };
 
         Self {
@@ -1109,6 +1116,7 @@ mod tests {
             sec_ctx: SecurityContext::root(),
             nsproxy: NsProxy::new(),
             seccomp_filter: None,
+            cgroup_path: None,
         }
     }
 

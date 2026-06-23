@@ -185,6 +185,11 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 if prev_task.time_slice == 0 {
                     should_preempt = true;
                 }
+                // Enforce cgroup cpu_max: if quota exceeded, force preempt.
+                let pid_val = prev_task.process.id().0 as u32;
+                if !crate::cgroup::cgroup_cpu_tick(pid_val) {
+                    should_preempt = true;
+                }
             }
 
             if prev_task.policy == super::scheduler_class::SchedulingPolicy::SCHED_FIFO {

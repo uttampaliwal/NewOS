@@ -36,6 +36,10 @@ fn map_fault_frame(
         match mapper.map_to(page, frame, flags, allocator) {
             Ok(flush) => {
                 flush.flush();
+                // Account memory for cgroup limits.
+                if let Some(pid) = crate::task::scheduler::get_current_process_id() {
+                    crate::cgroup::cgroup_memory_alloc(pid.0 as u32, Size4KiB::SIZE);
+                }
                 true
             }
             Err(_) => false,
@@ -79,6 +83,18 @@ pub fn handle_demand_fault() -> bool {
         Some(p) => p,
         None => return false,
     };
+
+    // Enforce cgroup memory_max: refuse to map new pages if the cgroup is over budget.
+    {
+        let pid = process.id().0 as u32;
+        if crate::cgroup::cgroup_memory_exceeded(pid) {
+            crate::serial::println!(
+                "[cgroup] pid {} OOM: memory_max exceeded, killing task",
+                pid
+            );
+            crate::task::scheduler::exit_current_task();
+        }
+    }
 
     let vma = match process.with_vma_set(|vmas| vmas.find(fault_addr).cloned()) {
         Some(v) => v,

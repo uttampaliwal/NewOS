@@ -2565,6 +2565,7 @@ mod tests {
                 sec_ctx: crate::security::SecurityContext::root(),
                 nsproxy: crate::security::namespaces::NsProxy::new(),
                 seccomp_filter: None,
+                cgroup_path: None,
             }))
         };
         let task = Task::new_test(TaskId::new(), process, TaskState::Running);
@@ -2690,6 +2691,7 @@ mod tests {
             sec_ctx: crate::security::SecurityContext::root(),
             nsproxy: crate::security::namespaces::NsProxy::new(),
             seccomp_filter: None,
+            cgroup_path: None,
         }))
     }
 
