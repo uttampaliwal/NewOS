@@ -1,3 +1,5 @@
+> For detailed reference documentation, see [docs/security/](../../../docs/security/)
+
 # Capabilities
 
 Turnix implements POSIX.1e capabilities for fine-grained privilege control.

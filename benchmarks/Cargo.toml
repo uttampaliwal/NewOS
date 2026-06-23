@@ -1,9 +1,13 @@
 [package]
 name = "host-benchmarks"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
 publish = false
 description = "Performance benchmarks for Turnix kernel components"
+
+[lints]
+workspace = true
 
 [[bin]]
 name = "run-benchmarks"

@@ -5,7 +5,7 @@ book/build/
 dist/
 out/
 turnix/
-extraa/
+extra/
 baseline_checksums.csv
 disassembly.txt
 prompts.odt

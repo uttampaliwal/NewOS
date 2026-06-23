@@ -1,3 +1,5 @@
+> For detailed reference documentation, see [docs/security/](../../../docs/security/)
+
 # Namespaces
 
 Namespaces provide process-level isolation of system resources.

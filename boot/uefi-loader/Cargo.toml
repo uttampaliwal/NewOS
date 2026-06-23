@@ -20,3 +20,6 @@ turnix-abi = { path = "../../shared/abi" }
 turnix-serial = { path = "../../shared/serial" }
 uefi = { version = "0.37.0", features = ["alloc", "global_allocator"] }
 x86_64 = "0.15.2"
+
+[lints]
+workspace = true

@@ -3,7 +3,11 @@ name = "turnix-error"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
+publish = false
 description = "Unified kernel error types for Turnix OS"
+
+[lints]
+workspace = true
 
 [lib]
 path = "src/lib.rs"

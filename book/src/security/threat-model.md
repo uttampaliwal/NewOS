@@ -1,3 +1,5 @@
+> For detailed reference documentation, see [docs/security/](../../../docs/security/)
+
 # Threat Model
 
 Turnix defines clear trust boundaries between kernel and user space.

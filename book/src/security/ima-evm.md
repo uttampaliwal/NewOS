@@ -1,3 +1,5 @@
+> For detailed reference documentation, see [docs/security/](../../../docs/security/)
+
 # IMA/EVM
 
 Integrity Measurement Architecture (IMA) and Extended Verification Module (EVM)

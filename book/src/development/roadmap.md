@@ -1,3 +1,5 @@
+> For the full detailed roadmap with implementation plans, see [docs/roadmap.md](../../../docs/roadmap.md)
+
 # Roadmap
 
 ## Completed Phases

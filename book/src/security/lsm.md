@@ -1,3 +1,5 @@
+> For detailed reference documentation, see [docs/security/](../../../docs/security/)
+
 # Linux Security Modules (LSM)
 
 The LSM framework provides pluggable security hooks throughout the kernel.

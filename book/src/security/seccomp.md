@@ -1,3 +1,5 @@
+> For detailed reference documentation, see [docs/security/](../../../docs/security/)
+
 # Seccomp-BPF
 
 Seccomp (Secure Computing Mode) filters system calls using BPF programs.
