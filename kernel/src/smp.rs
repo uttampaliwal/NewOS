@@ -204,6 +204,7 @@ pub extern "C" fn ap_entry(apic_id: u32) -> ! {
     signal_ap_ready();
 
     crate::serial::println!("[AP {}] Entering idle loop", apic_id);
+    x86_64::instructions::interrupts::enable();
     loop {
         x86_64::instructions::hlt();
     }
