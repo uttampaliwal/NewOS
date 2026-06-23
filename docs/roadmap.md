@@ -1,6 +1,9 @@
 # Turnix OS Development Roadmap
 
-This document outlines the development trajectory of Turnix OS from foundational setup to a modern, secure, desktop-ready operating system.
+This document outlines the development trajectory of Turnix OS from foundational
+setup to a modern, secure, desktop-ready operating system. See
+[SOTA Gap Analysis](sota-gap-analysis.md) for the full state-of-the-art
+assessment.
 
 ---
 
@@ -89,118 +92,232 @@ This document outlines the development trajectory of Turnix OS from foundational
 
 ---
 
-## Phase 8: SMP & Hardware Scaling (Planned)
+## Phase 8: SMP & Scalable Scheduler (Planned)
 
-* **SMP Support**: Multi-core boot with per-CPU scheduling.
-* **APIC (Advanced Programmable Interrupt Controller)**: Local APIC timer per core, I/O APIC for device interrupts.
-* **NUMA Awareness**: Memory allocation policies for NUMA topologies.
-* **Lock-Free Data Structures**: Per-CPU run queues, atomic counters for shared state.
-* **CPU Affinity**: Process-to-core binding via `sched_setaffinity`.
+**Goal:** Multi-core support with a production-grade scheduler.
 
----
+### 8a. SMP Infrastructure
+* **BSP/AP Startup**: Application processor bring-up via SIPI sequence
+* **Local APIC**: Per-core timer, IPI (inter-processor interrupt)
+* **I/O APIC**: Device interrupt routing to cores
+* **x2APIC**: Extended APIC for large core counts
+* **CPU Hotplug**: Dynamic CPU online/offline
 
-## Phase 9: Networking Stack Maturity (Planned)
+### 8b. Scheduler
+* **Scheduler Class Framework**: Pluggable RealTime, Fair, Idle, Batch schedulers
+* **CFS/EEVDF Scheduler**: Virtual runtime tracking, red-black tree, fair scheduling
+* **Real-Time Scheduler**: FIFO and RR policies with static priorities
+* **Priority Inheritance**: Prevent priority inversion on mutexes
+* **CPU Affinity**: `sched_setaffinity` / `sched_getaffinity`
+* **Scheduler Domains**: NUMA-aware load balancing
 
-* **TCP/IP Stack Polish**: Connection state machine, congestion control (CUBIC).
-* **DNS Resolver**: Recursive resolver with cache and TTL support.
-* **HTTP/1.1 Client**: GET/POST with chunked transfer encoding.
-* **TLS 1.3**: rustls-based TLS for encrypted connections.
-* **Socket Options**: SO_REUSEADDR, TCP_NODELAY, keepalive.
-* **Network Namespace Isolation**: Full per-namespace routing tables and socket bindings.
-
----
-
-## Phase 10: Desktop Environment Polish (Planned)
-
-* **Wayland Compositor Improvements**: Multi-monitor support, window decorations.
-* **GPU Acceleration**: VirtIO-GPU 3D, Vulkan compute shaders.
-* **Package Repository**: Public tpkg repository with signed packages.
-* **Font Rendering**: FreeType integration, subpixel antialiasing.
-* **Audio Stack**: ALSA-compatible audio via VirtIO-SND.
-* **Clipboard**: Wayland clipboard protocol implementation.
+### 8c. Synchronization Primitives
+* **Ticket Locks**: Fair spinlocks with FIFO ordering
+* **RwLocks**: Reader-writer locks for read-heavy paths
+* **Seqlocks**: Optimistic concurrency for read-mostly data
+* **RCU (Read-Copy-Update)**: Lock-free read-side access
+* **Per-CPU Data**: CPU-local storage to avoid contention
 
 ---
 
-## Phase 11: Self-Hosting & Ecosystem (Planned)
+## Phase 9: Networking Depth (Planned)
 
-* **Self-Hosting Toolchain**: GCC/Rust cross-compiler running on Turnix.
-* **Rust Compiler Port**: Build Rust crates natively on Turnix.
-* **Native Development Environment**: Text editor, debugger, build system.
-* **POSIX Compliance**: Expanded POSIX syscall coverage for software compatibility.
-* **Container Support**: OCI-compatible container runtime using namespaces.
-* **Virtualization**: KVM-style paravirtualization for running VMs.
+**Goal:** Full TCP/IP stack with modern networking features.
+
+### 9a. Layer 2
+* **ARP**: Address resolution protocol
+* **VLAN**: 802.1Q virtual LAN tagging
+* **Bridges**: Software network bridging
+* **Bonding**: Link aggregation for redundancy/throughput
+
+### 9b. Layer 3
+* **IPv6**: Full dual-stack support
+* **ICMPv6**: Neighbor discovery, path MTU
+* **Routing Table**: Longest-prefix match, static and dynamic routes
+
+### 9c. Layer 4
+* **TCP Congestion Control**: CUBIC, Reno, BBR
+* **SCTP**: Multi-homing transport (optional)
+
+### 9d. Layer 7 Utilities
+* **DNS Resolver**: Recursive resolver with cache and TTL
+* **DHCP Client**: Full DHCPv4/v6 with lease management
+* **HTTP/1.1 Client**: GET/POST with chunked transfer encoding
+* **TLS 1.3**: rustls-based encrypted connections
+
+### 9e. Advanced Networking
+* **eBPF Networking**: Packet filtering and monitoring
+* **Network Namespaces**: Full per-namespace routing and sockets
+* **nftables**: Packet filtering framework
+* **Zero-Copy Networking**: Sendfile, splice, MSG_ZEROCOPY
+
+---
+
+## Phase 10: Async I/O & Process Isolation (Planned)
+
+**Goal:** High-performance I/O and resource isolation for containers.
+
+### 10a. Async I/O
+* **epoll**: Event notification for I/O multiplexing (EPOLLIN/EPOLLOUT/EPOLLRDHUP)
+* **io_uring**: Submission/completion queue ring buffers for async I/O
+* **futexes**: Fast userspace mutexes for synchronization
+* **eventfd**: Event notification for I/O integration
+
+### 10b. Process Isolation
+* **cgroups v2**: CPU, memory, I/O, PIDs controllers
+* **Resource Accounting**: Per-cgroup usage tracking
+* **Resource Limits**: cpu.max, memory.max, io.max, pids.max
+* **Container Integration**: OCI runtime foundation
+
+---
+
+## Phase 11: Memory & Storage (Planned)
+
+**Goal:** Advanced memory management and filesystem maturity.
+
+### 11a. Memory Management
+* **Huge Pages**: 2MB and 1GB pages
+* **Transparent Huge Pages (THP)**: Automatic huge page promotion
+* **NUMA**: Node-aware allocation, migration, memory policies
+* **Slab/SLUB Allocator**: Object caching for frequent allocations
+* **Per-CPU Caches**: Reduce allocator lock contention
+* **Memory Compression (zswap/zram)**: Compressed swap in RAM
+* **Same-Page Merging (KSM)**: Deduplicate identical pages
+
+### 11b. Filesystem Improvements
+* **ext4 Journaling**: Write-ahead log, crash recovery
+* **ext4 Block Allocator**: Inode and block allocation
+* **FAT32**: Removable media support
+* **squashfs**: Read-only compressed filesystem for packages
+* **CoW Filesystem**: Copy-on-write with snapshots (future)
 
 ---
 
 ## Phase 12: Security Hardening (Planned)
 
-* **CET Shadow Stacks**: Hardware-backed control flow integrity for user space.
-* **Control Flow Integrity (CFI)**: Forward-edge CFI for indirect calls in kernel and user space.
-* **KPTI (Kernel Page Table Isolation)**: Separate user/kernel page tables to mitigate Meltdown-class attacks.
-* **Hardened Usercopy**: Bounds checking on all copy_to_user/copy_from_user operations.
-* **Guard Pages**: PROT_NONE guard pages between kernel stacks, heap, and mmap regions.
-* **Init-on-Alloc/Free**: Memory initialization on allocation and zeroing on free to prevent use-after-free info leaks.
-* **Landlock LSM**: Unprivileged sandboxing via BPF-like policy enforcement.
-* **Capability Bounding**: Drop capabilities permanently via prctl PR_CAPBSET_DROP.
-* **Kernel Crypto API**: AES-GCM, ChaCha20-Poly1305, SHA-256/SHA-3 for in-kernel cryptographic operations.
-* **Secure Boot Chain**: UEFI Secure Boot -> signed kernel -> dm-verity for root filesystem.
-* **Measured Boot**: TPM PCR extension for boot chain integrity measurement.
+**Goal:** Production-grade security with hardware-backed protections.
+
+### 12a. Verified Boot
+* **UEFI Secure Boot Chain**: Signed loader → verified kernel
+* **TPM PCR Extension**: Measure all boot components
+* **dm-verity**: Root filesystem integrity verification
+* **Secure Boot Policy**: Enforce signature requirements
+
+### 12b. Kernel Self-Protection
+* **Control Flow Integrity (CFI)**: Prevent ROP/JOP on indirect calls
+* **KPTI (Kernel Page Table Isolation)**: Mitigate Meltdown
+* **Hardened Usercopy**: Bounds check on copy_to/from_user
+* **Guard Pages**: PROT_NONE between kernel structures
+* **Init-on-Alloc/Free**: Zero memory to prevent info leaks
+* **Kernel Lockdown**: Restrict /dev/mem, ACPI post-boot
+
+### 12c. Advanced Sandboxing
+* **Seccomp Notify**: User-space notification for dynamic policies
+* **Landlock LSM**: Unprivileged sandboxing
+* **Capability Bounding**: Permanent capability dropping
+
+### 12d. Hardware Security
+* **IOMMU**: DMA protection, device isolation for user-space drivers
+* **Kernel Crypto API**: AES-GCM, ChaCha20-Poly1305, SHA-256/SHA-3
+* **CET Shadow Stacks**: Hardware-backed control flow for user space
 
 ---
 
 ## Phase 13: Performance & Observability (Planned)
 
-* **ftrace Framework**: Function tracing, function graph tracing, event tracing via tracefs.
-* **kprobes & uprobes**: Dynamic instrumentation points in kernel and user space.
-* **perf Integration**: Hardware performance counter access, PMU abstraction.
-* **Lock Contention Analysis**: Spinlock/mutex wait time tracking, contention histograms.
-* **Scheduler Tracing**: Context switch latency, run queue depth, wakeup-to-running time.
-* **Flamegraph Generation**: Off-CPU and on-CPU flamegraph support from trace data.
-* **Syscall Latency Tracing**: Per-syscall histogram of entry-to-exit time.
-* **Context Switch Benchmarks**: Quantified measurements of voluntary/involuntary context switches.
-* **IPC Throughput Benchmarks**: Pipe, socket, and shared memory throughput and latency.
-* **Filesystem Benchmarks**: Metadata-heavy, sequential, and random I/O benchmarks.
-* **Memory Bandwidth Benchmarks**: Sequential read/write/copy throughput measurements.
+**Goal:** Full visibility into system behavior and performance.
+
+### 13a. Tracing Framework
+* **ftrace**: Function tracing, function graph, events via tracefs
+* **kprobes**: Dynamic kernel instrumentation points
+* **uprobes**: Dynamic user-space instrumentation
+* **perf**: Hardware performance counters (PMU)
+
+### 13b. Analysis Tools
+* **Lock Contention Analysis**: Spinlock/mutex wait tracking
+* **Scheduler Tracing**: Context switch latency, run queue depth
+* **Flamegraph Generation**: On-CPU and off-CPU flamegraphs
+* **Syscall Latency**: Per-syscall entry-to-exit histograms
+
+### 13c. Benchmarks
+* **Context Switch Latency**: Voluntary/involuntary measurements
+* **IPC Throughput**: Pipe, socket, shared memory
+* **Filesystem Throughput**: Metadata, sequential, random I/O
+* **Memory Bandwidth**: Read/write/copy throughput
 
 ---
 
 ## Phase 14: Graphics & Desktop Polish (Planned)
 
-* **OpenGL ES 3.0**: Mesa/Gallium software renderer or VirtIO-GPU 3D passthrough.
-* **Vulkan 1.0**: WSI (Window System Integration) for Wayland, command buffer submission.
-* **GPU Memory Management**: GEM/TTM-style buffer object management, GPU page tables.
-* **Wayland Protocol Compatibility**: xdg-shell, xdg-decoration, layer-shell, presentation-time.
-* **Hardware Compositing**: DRM atomic modesetting, overlay planes, cursor planes.
-* **VSync & Frame Pacing**: Presentation-time feedback, adaptive sync, triple buffering.
-* **Fractional Scaling**: Per-output scale factors, viewport transforms.
-* **Accessibility**: High contrast, screen reader protocol, keyboard navigation.
+**Goal:** Hardware-accelerated graphics with Wayland protocol compatibility.
+
+* **OpenGL ES 3.0**: Mesa/Gallium renderer or VirtIO-GPU 3D
+* **Vulkan 1.0**: WSI for Wayland, command buffer submission
+* **GPU Memory Management**: GEM/TTM buffer objects
+* **Wayland Protocols**: xdg-shell, xdg-decoration, layer-shell
+* **Hardware Compositing**: DRM atomic modesetting, overlay planes
+* **VSync & Frame Pacing**: Presentation-time, adaptive sync
+* **Fractional Scaling**: Per-output scale factors
+* **Accessibility**: Screen reader protocol, keyboard navigation
 
 ---
 
 ## Phase 15: Self-Hosting & Ecosystem (Planned)
 
-* **coreutils Port**: cat, ls, cp, mv, rm, mkdir, chmod, chown, ps, top, df, du, etc.
-* **Shell Porting**: bash or dash compatibility layer for build scripts.
-* **Toolchain on Turnix**: clang, lld, rustc running natively.
-* **Native Build System**: make, cmake, or cargo running on Turnix.
-* **Package Repositories**: Public tpkg package server with signed metadata.
-* **Reproducible Builds**: Deterministic compilation, buildID verification.
-* **Binary Repositories**: Pre-built packages for common development tools.
-* **POSIX Compliance Expansion**: Additional syscalls for software compatibility (semaphores, message queues, shared memory).
+**Goal:** Run Turnix natively and port real software.
+
+### 15a. POSIX Compliance
+* **LTP Integration**: Linux Test Project in CI
+* **Open POSIX Test Suite**: Systematic conformance testing
+* **Linux Syscall Layer**: Translate Linux syscalls to Turnix API
+* **Binary Compatibility**: Run unmodified Linux binaries
+
+### 15b. Core Utilities
+* **coreutils Port**: cat, ls, cp, mv, rm, mkdir, chmod, chown, ps, top, df
+* **Shell Porting**: bash/dash compatibility for build scripts
+* **Text Processing**: grep, sed, awk, sort, uniq, wc
+
+### 15c. Toolchain
+* **clang/lld on Turnix**: Native C/C++ compiler
+* **rustc on Turnix**: Native Rust compiler
+* **make/cargo on Turnix**: Native build systems
+
+### 15d. Package Ecosystem
+* **Binary Repositories**: Pre-built packages for common tools
+* **Source Packages**: Build from source with patches
+* **Reproducible Builds**: Deterministic compilation
 
 ---
 
 ## Phase 16: Virtualization & Reliability (Planned)
 
-* **VT-x / AMD-V Support**: Hardware virtualization for running guest VMs.
-* **Nested Paging**: EPT/NPT for guest memory isolation.
-* **Virtual Devices**: VirtIO paravirtual devices for guests (net, block, console, input).
-* **OCI Container Runtime**: Container creation, namespaces, cgroups, rootfs management.
-* **Crash Dumps**: Kernel panic → coredump pipeline, post-mortem analysis.
-* **Watchdog Timer**: Hardware watchdog for automatic reset on hang detection.
-* **Fault Injection Framework**: Configurable fault injection for allocations, I/O, and network.
-* **Kernel Checkpoints**: Save/restore kernel state for live migration or rollback.
-* **Panic Reports**: Structured panic logs with register state, backtrace, and oops decoding.
+**Goal:** VM support and production reliability.
+
+### 16a. Virtualization
+* **VT-x / AMD-V**: Hardware virtualization for guest VMs
+* **Nested Paging (EPT/NPT)**: Guest memory isolation
+* **Virtual Devices**: VirtIO net, block, console for guests
+* **/dev/kvm**: Userspace hypervisor interface
+* **OCI Container Runtime**: Container creation, namespaces, cgroups
+
+### 16b. Reliability Engineering
+* **Crash Dumps**: Kernel panic → coredump → post-mortem
+* **Watchdog Timer**: Hardware watchdog for hang detection
+* **Fault Injection**: Configurable failures for alloc, I/O, network
+* **Kernel Checkpoints**: Save/restore for live migration
+* **Panic Reports**: Structured logs with backtrace and oops decoding
+
+---
+
+## Phase 17: Distributed Systems (Planned)
+
+**Goal:** Multi-node and network-transparent services.
+
+* **Service Discovery**: Dynamic service registration and lookup
+* **Distributed Filesystems**: Network-transparent file access
+* **Cluster Scheduler**: Multi-node workload distribution
+* **Remote Execution**: Execute tasks across network nodes
+* **Consensus Protocols**: Raft/Paxos for coordination (future)
 
 ---
 

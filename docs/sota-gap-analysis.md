@@ -1,13 +1,54 @@
 # SOTA Gap Analysis
 
-This document records the state-of-the-art (SOTA) operating system assessment
-performed on the `development` branch. It serves as the authoritative reference
-for what must be built to compete conceptually with Linux, FreeBSD, Redox, and
-Fuchsia.
+Comprehensive state-of-the-art (SOTA) operating system assessment of Turnix OS
+on the `development` branch (June 22, 2026). This is the authoritative reference
+for what must be built to compete with Linux, FreeBSD, Redox, and Fuchsia.
+
+---
+
+## Mindmap
+
+```mermaid
+mindmap
+  root((Turnix SOTA Roadmap))
+    Performance & Scalability
+      Microkernel IPC Optimization
+      Scheduler Enhancements CFS-like
+      Memory Management Dedup Compression
+      Lock-free Data Structures
+    Security & Isolation
+      Verified Boot & Secure Boot
+      Kernel Self-Protection
+      Advanced Sandboxing Seccomp Notify
+      Hardware Security TPM IOMMU
+    POSIX Compliance & Compatibility
+      Full POSIX.1-2024 Conformance
+      Linux Syscall Compatibility Layer
+      Binary Compatibility
+      Standard Test Suite LTP
+    Developer Experience & Tooling
+      Enhanced Debugging KGDB DTrace
+      Formal Verification
+      IDE Integration & Language Server
+      Improved Documentation & Search
+    Hardware & Architecture Support
+      ARM64 & RISC-V Support
+      Modern Driver Framework User-space
+      GPU & Acceleration Vulkan
+      Power Management ACPI 5.1+
+    Ecosystem & Community
+      Package Manager Enhancements
+      Container Runtime OCI
+      Cloud & Hypervisor Integration
+      Contribution Workflow Improvements
+```
 
 ---
 
 ## Current State Assessment
+
+Turnix is a **Rust-first, x86_64 microkernel/modular monolith hybrid** OS with
+a strong emphasis on safety and modern design. Phases 1-7 are complete.
 
 | Area                    | Current State            | SOTA Level |
 | ----------------------- | ------------------------ | ---------- |
@@ -23,260 +64,401 @@ Fuchsia.
 | Developer Ecosystem     | Good                     | 6/10       |
 | Production Readiness    | Experimental             | 3/10       |
 
+### Already Completed (Phases 1-7)
+
+- **Boot & Drivers:** UEFI boot, ACPI, PCIe, VirtIO-Net, NVMe, XHCI USB, GPU DRM/KMS
+- **Memory Subsystem:** VMAs, demand paging, mmap/munmap, LRU page cache, swap, ASLR/KASLR
+- **POSIX Services:** Process table, fork/exec/waitpid, VFS mounts (tmpfs/ext4), pipes, sockets, signals, init daemon
+- **Security Hardening:** POSIX capabilities, namespaces, seccomp-BPF, LSM hooks, IMA/EVM, stack canaries
+- **Package Management:** SAT-based dependency solver, TUF repositories, rollback pipeline
+- **System Services:** IPC broker, structured logging, service unit manager
+- **Desktop Environment:** Wayland-like compositor, input routing, session management
+
+### Key Strengths
+
+- **Memory Safety:** Rust eliminates entire classes of memory safety vulnerabilities
+- **Modular Design:** Hybrid kernel allows flexibility and maintainability
+- **Modern Security Model:** Capabilities, namespaces, seccomp are state-of-the-art
+- **Comprehensive Documentation:** Detailed docs, roadmap, known issues tracking
+
 ---
 
 ## Gap Details
 
-### 1. SMP (Symmetric Multiprocessing)
+### 1. Performance & Scalability
 
-**Current:** Phase 8 plans basic SMP with per-CPU scheduling and Local APIC.
-
-**SOTA Requirements:**
-
-- BSP/AP startup, Local APIC, IOAPIC, x2APIC, CPU hotplug
-- Per-CPU run queues, CPU affinity, work stealing, load balancing
-- NUMA-aware allocation, scheduler domains
-- Synchronization: spinlocks, ticket locks, RwLocks, Seqlocks, RCU, lock-free structures
-
-**Priority:** Critical
-
----
-
-### 2. Preemptive Scheduler Improvements
-
-**Current:** Preemptive round-robin scheduler only.
-
-**SOTA Requirements:**
-
-- Scheduler classes: RealTimeScheduler, FairScheduler (CFS-like), IdleScheduler, BatchScheduler
-- CFS virtual runtime, priority inheritance, deadline scheduling
-- CPU groups, scheduler domains
-
-**Priority:** Critical
-
----
-
-### 3. Networking Stack
-
-**Current:** VirtIO-Net driver with basic TCP/IP via smoltcp (Phase 9 plans TCP/UDP).
-
-**SOTA Requirements:**
-
-- Layer 2: ARP, VLAN, bridges, bonding
-- Layer 3: IPv4, IPv6, ICMP, routing tables
-- Layer 4: TCP (CUBIC congestion), UDP, SCTP
-- Layer 7: DNS resolver, DHCP client, HTTP stack
-- Advanced: eBPF networking, net namespaces, nftables, zero-copy networking
-
-**Priority:** Critical
-
----
-
-### 4. Filesystems
-
-**Current:** tmpfs, ext4 (read-only, in-memory only).
-
-**SOTA Requirements:**
-
-- Journaling: write-ahead log, recovery mode, crash consistency
-- Additional FS: FAT32, exFAT, ISO9660, squashfs
-- Advanced: CoW filesystem, snapshots, checksums, compression, encryption
-
-**Priority:** High
-
----
-
-### 5. Memory Management
-
-**Current:** Demand paging, mmap, page cache, swap, ASLR/KASLR (Phase 8 plans NUMA).
-
-**SOTA Requirements:**
-
-- Huge pages: 2MB, 1GB, THP (Transparent Huge Pages)
-- NUMA: node allocator, node migration, memory policies
-- Advanced allocators: slab, SLUB, per-CPU caches, object caches
-- Memory compression: zswap, zram
-
-**Priority:** High
-
----
-
-### 6. Security Hardening
-
-**Current:** Namespaces, seccomp, capabilities, LSM, IMA/EVM, KASLR, stack canaries.
-
-**SOTA Requirements:**
-
-- Memory safety: CET shadow stacks, Control Flow Integrity, Pointer Authentication, SafeStack
-- Kernel protection: KPTI, hardened usercopy, guard pages, init-on-alloc/free
-- Sandboxing: Landlock, capability bounding, container runtime
-- Cryptography: kernel crypto API, TPM integration, secure boot, measured boot
-
-**Priority:** High
-
----
-
-### 7. Process Isolation and Containers
-
-**Current:** Namespaces (PID, mount, network, user). Phase 11 plans OCI runtime.
-
-**SOTA Requirements:**
-
-- cgroups v2: resource accounting, quotas, CPU/memory/IO controllers
-- Container runtime: OCI images, `turnix run alpine`
-- Container networking: veth pairs, bridge, overlay
-
-**Priority:** High
-
----
-
-### 8. Device Driver Model
-
-**Current:** VirtIO, NVMe, USB, DRM/KMS as standalone drivers.
-
-**SOTA Requirements:**
-
-- Driver framework: Bus, Device, Driver, Probe, Remove, Suspend, Resume abstractions
-- Power management: runtime PM, sleep states, hibernation
-- Hotplug: USB hotplug, PCI hotplug
-
-**Priority:** High
-
----
-
-### 9. IPC System
+#### 1a. Microkernel IPC Optimization
 
 **Current:** Pipes (ring-buffered), Unix domain sockets.
 
 **SOTA Requirements:**
 
-- Shared memory (shmget/shmat or mmap MAP_SHARED)
-- POSIX message queues
-- futexes (fast userspace mutexes)
-- epoll (event notification)
+- Asynchronous message passing for non-blocking IPC
+- Shared memory channels for bulk data transfer (shmget/shmat or mmap MAP_SHARED)
+- POSIX message queues for structured message passing
+- Copy-on-write optimizations for large payloads
+- futexes (fast userspace mutexes) for synchronization
+- epoll (event notification) for I/O multiplexing
 - io_uring-like async I/O interface
-
-**Priority:** High
-
----
-
-### 10. Performance Engineering
-
-**Current:** `dmesg`-based logging, 12 host-side benchmarks.
-
-**SOTA Requirements:**
-
-- Tracing: ftrace, ktrace, uprobes, kprobes, perf
-- Profiling: flamegraphs, syscall tracing, scheduler tracing, lock contention analysis
-- Benchmarks: context switch latency, IPC throughput, filesystem throughput, memory bandwidth
+- Benchmark against Linux `mmap` and `pipe` performance
 
 **Priority:** Critical
 
----
+#### 1b. Scheduler Enhancements
 
-### 11. Graphics Stack
-
-**Current:** DRM/KMS, Wayland compositor basics, double-buffering.
+**Current:** Preemptive round-robin only.
 
 **SOTA Requirements:**
 
-- GPU: OpenGL, Vulkan, GPU memory management, command submission
-- Window system: Wayland protocol compatibility, hardware compositing, vsync, fractional scaling, accessibility
+- **CFS-like scheduler:** Virtual runtime tracking, red-black tree of runnable tasks
+- **EEVDF (Earliest Eligible Virtual Deadline First):** Better fairness and responsiveness
+- Scheduler classes: RealTime (FIFO/RR), Fair (CFS/EEVDF), Idle, Batch
+- Priority inheritance for priority inversion avoidance
+- CPU affinity and scheduler domains
+- cgroups v2 integration for resource control
 
-**Priority:** Medium
+**Priority:** Critical
 
----
+#### 1c. Memory Management Optimizations
 
-### 12. Userspace Ecosystem
-
-**Current:** Package manager (tpkg), system services (init, shell, compositor).
+**Current:** Demand paging, mmap, page cache, swap, ASLR/KASLR.
 
 **SOTA Requirements:**
 
-- Core utilities: coreutils, grep, sed, awk, tar, ssh, curl
-- Toolchain: clang, rustc, lld, gdb
-- Package repos: binary repositories, signed packages, dependency visualization, reproducible builds
+- **Memory Deduplication (KSM):** Same-page merging across processes/containers
+- **Swap Compression (zswap/zram):** Compress pages before disk write
+- **Transparent Huge Pages (THP):** 2MB/1GB pages to reduce TLB misses
+- **Slab/SLUB allocator:** Object caching for frequent allocations
+- **Per-CPU caches:** Reduce lock contention on allocator
+
+**Priority:** High
+
+#### 1d. Lock-free Data Structures
+
+**Current:** Spinlocks and mutexes in hot paths.
+
+**SOTA Requirements:**
+
+- Lock-free VFS path lookup
+- Wait-free scheduler run queue operations
+- Atomic counters for shared statistics
+- RCU (Read-Copy-Update) for read-heavy data structures
 
 **Priority:** High
 
 ---
 
-### 13. Self Hosting
+### 2. Security & Isolation
 
-**Current:** Phase 11 plans self-hosting toolchain.
+#### 2a. Verified Boot & Secure Boot
 
-**SOTA Requirements:**
-
-- Phase A: Build kernel on Linux
-- Phase B: Compile userspace on Turnix
-- Phase C: Build Turnix on Turnix
-- Phase D: Develop applications natively
-
-**Priority:** Very High
-
----
-
-### 14. Virtualization
-
-**Current:** Phase 11 mentions KVM-style paravirtualization.
+**Current:** TPM 2.0 TIS driver (seal/unseal).
 
 **SOTA Requirements:**
 
-- Hypervisor: VT-x, AMD-V, nested paging, virtual devices
-- Containers: OCI runtime, namespaces, cgroups
+- Full verified boot chain: UEFI Secure Boot → signed loader → verified kernel
+- TPM PCR extension for measuring all boot components
+- dm-verity for root filesystem integrity
+- Secure boot policy enforcement
+
+**Priority:** High
+
+#### 2b. Kernel Self-Protection
+
+**Current:** KASLR, stack canaries, W^X.
+
+**SOTA Requirements:**
+
+- **Control Flow Integrity (CFI):** Prevent ROP/JOP attacks on indirect calls
+- **KPTI (Kernel Page Table Isolation):** Mitigate Meltdown-class attacks
+- **Hardened Usercopy:** Bounds checking on all copy_to/from_user
+- **Guard Pages:** PROT_NONE between kernel stacks, heap, mmap regions
+- **Init-on-Alloc/Free:** Zero memory on allocation, zero on free
+- **Kernel Lockdown:** Restrict /dev/mem, ACPI access post-boot
+- **Stack Clashing Prevention:** Randomized, properly sized guard pages
+
+**Priority:** High
+
+#### 2c. Advanced Sandboxing
+
+**Current:** Seccomp-BPF with basic actions.
+
+**SOTA Requirements:**
+
+- **Seccomp Notify:** User-space notification for dynamic policy decisions
+- **Landlock LSM:** Unprivileged sandboxing via BPF-like policy
+- **Capability Bounding:** Permanent capability dropping via prctl
+- **Container runtime integration:** Bubblewrap/Flatpak-style sandboxing
+
+**Priority:** High
+
+#### 2d. Hardware Security Features
+
+**Current:** TPM 2.0 basic integration.
+
+**SOTA Requirements:**
+
+- **IOMMU Support:** DMA protection and device isolation for user-space drivers
+- **Memory Tagging:** ARM MTE or equivalent for runtime memory safety
+- **Intel CET / AMD Shadow Stacks:** Hardware-backed control flow protection
+- **Kernel Crypto API:** AES-GCM, ChaCha20-Poly1305, SHA-256/SHA-3
 
 **Priority:** Medium
 
 ---
 
-### 15. Distributed System Features
+### 3. POSIX Compliance & Compatibility
 
-**Current:** No coverage.
+#### 3a. Full POSIX.1-2024 Conformance
+
+**Current:** Basic POSIX services (fork, exec, signals, pipes, sockets).
 
 **SOTA Requirements:**
 
-- Service discovery, distributed filesystems, cluster scheduler, remote execution
+- Systematic testing against **Open POSIX Test Suite**
+- Integration of **Linux Test Project (LTP)** into CI
+- Full POSIX.1-2024 conformance certification
+- Address all test failures
+
+**Priority:** Critical — this is the gateway to porting real-world software
+
+#### 3b. Linux Syscall Compatibility Layer
+
+**Current:** No Linux binary compatibility.
+
+**SOTA Requirements:**
+
+- **Linux syscall translation layer** (similar to WSLg or LxRun)
+- Translate Linux syscalls to Turnix native API
+- Handle path and behavior differences
+- Allow running unmodified Linux binaries
+
+**Priority:** Critical — single highest-impact feature for adoption
+
+#### 3c. Binary Compatibility
+
+**Current:** No binary compatibility layers.
+
+**SOTA Requirements:**
+
+- BSD compatibility layer for Unix software
+- Optional Windows compatibility layer (Wine-style)
+- Standard C library compliance (musl or glibc port)
+
+**Priority:** Medium
+
+---
+
+### 4. Developer Experience & Tooling
+
+#### 4a. Enhanced Debugging Tools
+
+**Current:** dmesg, basic serial logging.
+
+**SOTA Requirements:**
+
+- **KGDB:** Kernel debugging over serial/network
+- **DTrace-like Tracing:** Dynamic tracing for kernel and user-space
+- **Core Dump Improvements:** Compressed dumps with full thread state
+- **Crash Dump Pipeline:** panic → coredump → post-mortem analysis
+
+**Priority:** High
+
+#### 4b. Formal Verification
+
+**Current:** No formal verification.
+
+**SOTA Requirements:**
+
+- Explore **Verus** or **seL4's** framework for critical components
+- Target: VMM, scheduler, IPC paths
+- Mathematical proof of correctness for security-critical properties
+
+**Priority:** Low (long-term research)
+
+#### 4c. IDE Integration & Language Server
+
+**Current:** No IDE integration.
+
+**SOTA Requirements:**
+
+- **LSP implementation** for Turnix system programming
+- Autocompletion, go-to-definition for kernel APIs
+- Inline documentation for syscalls and kernel structures
+
+**Priority:** Medium
+
+#### 4d. Documentation Improvements
+
+**Current:** mdBook setup with chapters.
+
+**SOTA Requirements:**
+
+- Searchable documentation (mdbook search)
+- Architecture Decision Records (ADRs) consolidated
+- Interactive tutorials for OS development
+- API reference with examples
+
+**Priority:** Medium
+
+---
+
+### 5. Hardware & Architecture Support
+
+#### 5a. Multi-Architecture Support
+
+**Current:** x86_64 only.
+
+**SOTA Requirements:**
+
+- **ARM64 (AArch64):** Full port with device tree, GIC, PE
+- **RISC-V:** Full port with PLIC, SBI
+- Architecture abstraction layer for portable code
+
+**Priority:** High — essential for servers and embedded
+
+#### 5b. Modern Driver Framework
+
+**Current:** In-kernel standalone drivers.
+
+**SOTA Requirements:**
+
+- **User-space drivers:** GPU, network in user space for stability
+- **Driver API Stability:** Freeze stable ABI for out-of-tree drivers
+- **Driver model:** Bus, Device, Driver, Probe, Remove, Suspend, Resume
+
+**Priority:** High
+
+#### 5c. GPU & Acceleration
+
+**Current:** DRM/KMS framebuffer, basic Wayland compositor.
+
+**SOTA Requirements:**
+
+- **Vulkan 1.0:** WSI for Wayland, command buffer submission
+- **GPU Memory Management:** GEM/TTM buffer objects, GPU page tables
+- **Hardware Compositing:** DRM atomic modesetting, overlay planes
+
+**Priority:** Medium
+
+#### 5d. Power Management
+
+**Current:** Basic ACPI.
+
+**SOTA Requirements:**
+
+- **ACPI 5.1+:** Full table parsing, AML interpreter expansion
+- **S-states:** Sleep, hibernate, shutdown
+- **C-states:** CPU idle power management
+- **P-states:** Dynamic frequency scaling
+- **Runtime PM:** Device autosuspend
+
+**Priority:** Medium — essential for laptops
+
+---
+
+### 6. Ecosystem & Community
+
+#### 6a. Package Manager Enhancements
+
+**Current:** SAT-based solver, TUF repos, rollback.
+
+**SOTA Requirements:**
+
+- **Binary repositories:** Pre-compiled packages for common software
+- **Source-based packages:** Build from source with patch management
+- **Repository mirroring:** Community mirrors for availability
+- **Reproducible builds:** Deterministic compilation, buildID verification
+
+**Priority:** High
+
+#### 6b. Container Runtime
+
+**Current:** Namespaces (PID, mount, network, user).
+
+**SOTA Requirements:**
+
+- **OCI-compatible container runtime**
+- cgroups v2 for resource limiting
+- Container networking: veth pairs, bridge, overlay
+- `turnix run alpine` experience
+
+**Priority:** High
+
+#### 6c. Cloud & Hypervisor Integration
+
+**Current:** Runs on QEMU.
+
+**SOTA Requirements:**
+
+- **Guest OS optimization:** Run well on KVM, VMware, Hyper-V
+- **Paravirt drivers:** VirtIO for performance
+- **Cloud-init support:** Automated provisioning
+- **Live migration:** Kernel state save/restore
+
+**Priority:** Medium
+
+#### 6d. Contribution Workflow
+
+**Current:** Gitflow with master/development.
+
+**SOTA Requirements:**
+
+- Clear issue templates from KNOWN_ISSUES.md
+- Good-first-issue labels for newcomers
+- Regular release cadence with deprecation policies
+- CI/CD pipeline with automated testing
 
 **Priority:** Low
 
----
-
-### 16. Reliability Engineering
+#### 6e. Distributed System Features
 
 **Current:** No coverage.
 
 **SOTA Requirements:**
 
-- Recovery: panic reports, crash dumps, watchdog, kernel checkpoints
-- Fault injection: fail allocations, drop packets, inject I/O errors, simulate crashes
+- **Service discovery:** Dynamic service registration and lookup
+- **Distributed filesystems:** Network-transparent file access
+- **Cluster scheduler:** Multi-node workload distribution
+- **Remote execution:** Execute tasks across network nodes
 
-**Priority:** High
+**Priority:** Low (future-looking)
 
 ---
 
 ## Roadmap Mapping
 
-These gaps are tracked in the expanded roadmap (`docs/roadmap.md`) as Phases 8-16:
-
-| Phase | Focus | Gaps Addressed |
-|---|---|---|
-| 8 | SMP & Scalable Scheduler | #1, #2 |
-| 9 | Networking Depth | #3 |
-| 10 | Async I/O & Process Isolation | #7, #9 |
-| 11 | Memory & Storage | #4, #5 |
-| 12 | Security Hardening | #6 |
-| 13 | Performance & Observability | #10 |
-| 14 | Graphics & Desktop | #11 |
-| 15 | Self-Hosting & Ecosystem | #12, #13 |
-| 16 | Virtualization & Reliability | #14, #15, #16 |
+| Phase | Focus | Gaps Addressed | Priority |
+|---|---|---|---|
+| 8 | SMP & Scalable Scheduler | 1b, 1d, 5a partial | Critical |
+| 9 | Networking Depth | (existing) | Critical |
+| 10 | Async I/O & Process Isolation | 1a, 3c partial | High |
+| 11 | Memory & Storage | 1c, filesystem gaps | High |
+| 12 | Security Hardening | 2a, 2b, 2c, 2d | High |
+| 13 | Performance & Observability | 4a, benchmarks | High |
+| 14 | Graphics & Desktop | 5c | Medium |
+| 15 | Self-Hosting & Ecosystem | 6a, POSIX compliance | High |
+| 16 | Virtualization & Reliability | 6b, 6c | Medium |
+| 17 | Distributed Systems | 6e | Low |
 
 ---
 
 ## Priority Summary
 
-The highest-impact areas for the next development cycle:
+The five highest-impact areas for the next development cycle:
 
-1. **SMP + Scalable Scheduler** — foundational for all parallelism
-2. **cgroups v2 + Async I/O** — required for containers and production workloads
-3. **Performance Tracing** — observability is prerequisite for all optimization
-4. **Reliability Engineering** — crash dumps and fault injection for production use
+1. **POSIX Compliance + Linux Compat Layer** — gateway to real software
+2. **SMP + CFS/EEVDF Scheduler** — foundational for all parallelism
+3. **Verified Boot + Kernel Hardening** — security is non-optional
+4. **IPC Optimization** — hybrid design performance must be competitive
+5. **ARM64/RISC-V Support** — essential for relevance beyond x86
+
+---
+
+## Key Insights
+
+- **Roadmap as living document:** Continuously update based on real-world usage
+- **Security as foundation:** Layered, comprehensive hardening is standard for SOTA
+- **Microkernel performance:** Aggressively optimize IPC to dispel hybrid design myths
+- **Testing is non-negotiable:** Claiming POSIX compliance is insufficient; prove it with LTP
+- **Binary compat is king:** Linux syscall layer is the single highest-impact adoption feature
