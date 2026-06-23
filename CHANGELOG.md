@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mmap2 syscall (ID 60) with 6-argument signature
 - SchedSetScheduler/SchedGetScheduler syscalls (IDs 72-73)
 - CgroupCreate/CgroupAddProcess/CgroupSetCpuMax/CgroupSetMemoryMax/CgroupSetPidsMax syscalls (IDs 74-78)
+- Phase 12: Scalability primitives — SeqLock, RwLock, RCU, WorkQueue, Softirq, Per-CPU counters
+- Phase 13: eventfd (Syscalls 79-81) and timerfd (Syscalls 82-84) with epoll integration
+- uptime_ticks() helper for monotonic tick-based time
 - Global epoll notification from pipe/socket/mqueue state changes
 - cgroup CPU tick accounting and memory usage tracking
 - OOM killer integration with cgroup memory limits

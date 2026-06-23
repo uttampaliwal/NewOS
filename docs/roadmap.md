@@ -186,61 +186,62 @@ assessment.
 
 ---
 
-## Phase 12: Scalability & Concurrency (Planned)
+## Phase 12: Scalability & Concurrency (Complete)
 
 **Goal:** Production-grade concurrency primitives for multi-core scalability.
 
 ### 12a. RCU (Read-Copy-Update)
-* **RCU Core**: Grace-period tracking, `rcu_read_lock`/`rcu_read_unlock`, `synchronize_rcu`
-* **RCU Callbacks**: Deferred reclamation via `call_rcu`, callback offloading
-* **Tree RCU**: Hierarchical RCU for large CPU counts
-* **SRCU**: Sleepable RCU for read-side critical sections that can block
+* [x] **RCU Core**: Grace-period tracking, `rcu_read_lock`/`rcu_read_unlock`, `synchronize_rcu`
+* [x] **RCU Callbacks**: Deferred reclamation via `call_rcu`, callback offloading
+* [ ] **Tree RCU**: Hierarchical RCU for large CPU counts
+* [ ] **SRCU**: Sleepable RCU for read-side critical sections that can block
 
 ### 12b. Per-CPU Infrastructure
-* **Per-CPU Slab Caches**: Reduce allocator lock contention on hot paths
-* **Per-CPU Data**: `DEFINE_PER_CPU` macro, `get_cpu_var`/`put_cpu_var`
-* **Per-CPU Counters**: Batched counters for statistics (e.g., network stats, memory stats)
+* [ ] **Per-CPU Slab Caches**: Reduce allocator lock contention on hot paths
+* [x] **Per-CPU Counters**: `PerCpuCounter`, `PerCpuAtomicCounter`, `PerCpuBool`
+* [ ] **Per-CPU Data**: `DEFINE_PER_CPU` macro, `get_cpu_var`/`put_cpu_var`
 
 ### 12c. Workqueues
-* **Workqueue Framework**: `queue_work`, `flush_work`, `destroy_workqueue`
-* **Concurrency Managed Workqueues**: Auto-scaling worker threads
-* **Bound Workqueues**: Per-CPU affinity for latency-sensitive work
-* **Unbound Workqueues**: For offloadable, throughput-oriented work
+* [x] **Workqueue Framework**: Ring-buffer based function-pointer work queue with FIFO processing
+* [ ] **Concurrency Managed Workqueues**: Auto-scaling worker threads
+* [ ] **Bound Workqueues**: Per-CPU affinity for latency-sensitive work
+* [ ] **Unbound Workqueues**: For offloadable, throughput-oriented work
 
 ### 12d. Deferred Execution
-* **Softirqs**: High-priority deferred processing (network TX/RX, block I/O)
-* **Tasklets**: Softirq wrappers for simpler deferred work
-* **Timer Wheel**: High-resolution kernel timers
+* [x] **Softirqs**: 8-vector bitmask-based deferred processing (Timer, NetTx, NetRx, Block, Tasklet, Scheduler, Security, Unused)
+* [ ] **Tasklets**: Softirq wrappers for simpler deferred work
+* [ ] **Timer Wheel**: High-resolution kernel timers
 
 ### 12e. Locking Primitives
-* **Seqlocks**: Optimistic concurrency for read-mostly data
-* **Completion Variables**: Wait/signal for one-shot events
-* **Lockdep**: Runtime deadlock detection and lock ordering validation
-* **Priority Inheritance Futexes**: `FUTEX_LOCK_PI`/`FUTEX_UNLOCK_PI` for priority inversion avoidance
+* [x] **Seqlocks**: Optimistic concurrency for read-mostly data
+* [x] **RwLock**: Multiple-reader / single-writer lock with try_read/try_write
+* [ ] **Completion Variables**: Wait/signal for one-shot events
+* [ ] **Lockdep**: Runtime deadlock detection and lock ordering validation
+* [ ] **Priority Inheritance Futexes**: `FUTEX_LOCK_PI`/`FUTEX_UNLOCK_PI` for priority inversion avoidance
 
 ---
 
-## Phase 13: Async I/O & Zero-Copy (Planned)
+## Phase 13: Async I/O & Zero-Copy (Partial)
 
 **Goal:** High-performance async I/O with zero-copy data paths.
 
 ### 13a. io_uring
-* **Submission Queue**: Ring buffer for batched syscall submission
-* **Completion Queue**: Ring buffer for async results
-* **Registered Buffers**: `IORING_REGISTER_BUFFERS` for pinned user memory
-* **Registered Files**: `IORING_REGISTER_FILES` for fd table caching
-* **Linked Operations**: Chain dependent operations
-* **Poll Integration**: `IORING_OP_POLL_ADD` for epoll-like efficiency
+* [ ] **Submission Queue**: Ring buffer for batched syscall submission
+* [ ] **Completion Queue**: Ring buffer for async results
+* [ ] **Registered Buffers**: `IORING_REGISTER_BUFFERS` for pinned user memory
+* [ ] **Registered Files**: `IORING_REGISTER_FILES` for fd table caching
+* [ ] **Linked Operations**: Chain dependent operations
+* [ ] **Poll Integration**: `IORING_OP_POLL_ADD` for epoll-like efficiency
 
 ### 13b. Zero-Copy Networking
-* **Sendfile**: Kernel-space file-to-socket transfer
-* **MSG_ZEROCOPY**: Zero-copy send with completion notification
-* **Splice / Tee**: Pipe-based zero-copy data movement
-* **Buffer Sharing**: Shared page references between subsystems
+* [ ] **Sendfile**: Kernel-space file-to-socket transfer
+* [ ] **MSG_ZEROCOPY**: Zero-copy send with completion notification
+* [ ] **Splice / Tee**: Pipe-based zero-copy data movement
+* [ ] **Buffer Sharing**: Shared page references between subsystems
 
 ### 13c. Event Notification
-* **eventfd**: Kernel-to-userspace event notification (pair with epoll/io_uring)
-* **timerfd**: Timer-based event notification
+* [x] **eventfd**: Kernel-to-userspace event notification with epoll integration (Syscalls 79-81)
+* [x] **timerfd**: Timer-based event notification, one-shot and periodic modes (Syscalls 82-84)
 
 ---
 

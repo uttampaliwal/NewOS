@@ -482,21 +482,13 @@ coreutils is not usable for development or daily use.
 | | |
 |---|---|
 | **Severity** | High |
-| **Component** | `kernel/src/sync/rcu.rs` (new), `kernel/src/sync/percpu.rs` (new) |
-| **Status** | Open |
+| **Component** | `kernel/src/sync/rcu.rs`, `kernel/src/sync/percpu.rs` |
+| **Status** | **Resolved** |
 
-**Impact:** No lock-free read-side access for concurrent data structures.
-RCU is arguably the single biggest missing primitive for SOTA scalability.
-Without per-CPU infrastructure, all shared data requires global locks.
-
-**Proposed Fix:**
-- RCU core: grace-period tracking, `rcu_read_lock`/`rcu_read_unlock`, `synchronize_rcu`
-- RCU callbacks: deferred reclamation via `call_rcu`
-- Tree RCU: hierarchical RCU for large CPU counts
-- Per-CPU data: `DEFINE_PER_CPU` macro, `get_cpu_var`/`put_cpu_var`
-- Per-CPU slab caches: reduce allocator lock contention
-
-**Tracking:** `docs/roadmap.md` Phase 12
+**Resolution:** Implemented in Phase 12. RCU core with `rcu_read_lock`/`rcu_read_unlock`,
+`synchronize_rcu`, `call_rcu` for deferred cleanup. Per-CPU counters via `PerCpuCounter`,
+`PerCpuAtomicCounter`, and `PerCpuBool`. Tree RCU and per-CPU slab caches remain as
+future enhancements.
 
 ---
 
@@ -506,7 +498,10 @@ Without per-CPU infrastructure, all shared data requires global locks.
 |---|---|
 | **Severity** | High |
 | **Component** | `kernel/src/io/uring.rs` (new) |
-| **Status** | Open |
+| **Status** | **Partial** |
+
+**Resolution:** eventfd and timerfd implemented in Phase 13 (Syscalls 79-84).
+io_uring and zero-copy networking remain open.
 
 **Impact:** No high-performance async I/O interface. io_uring is the
 highest-impact missing subsystem for network servers and storage workloads.
@@ -550,20 +545,12 @@ No NUMA awareness means poor performance on multi-socket systems.
 | | |
 |---|---|
 | **Severity** | High |
-| **Component** | `kernel/src/workqueue.rs` (new), `kernel/src/softirq.rs` (new) |
-| **Status** | Open |
+| **Component** | `kernel/src/sync/workqueue.rs`, `kernel/src/softirq.rs` |
+| **Status** | **Partial** |
 
-**Impact:** No deferred execution framework. All work must run in interrupt
-context or process context. Cannot handle high-frequency events (network
-RX/TX, block I/O completion) efficiently.
-
-**Proposed Fix:**
-- Workqueues: `queue_work`, `flush_work`, concurrency-managed workers
-- Softirqs: high-priority deferred processing for network/block I/O
-- Tasklets: softirq wrappers for simpler deferred work
-- Timer wheel: high-resolution kernel timers
-
-**Tracking:** `docs/roadmap.md` Phase 12
+**Resolution:** Workqueue and softirq implemented in Phase 12. WorkQueue provides
+FIFO function-pointer dispatch. Softirq provides 8 named vectors with bitmask
+tracking. Tasklets remain as a future enhancement.
 
 ---
 
@@ -594,19 +581,12 @@ kernel development and CI.
 | | |
 |---|---|
 | **Severity** | Medium |
-| **Component** | `kernel/src/sync/lockdep.rs` (new), `kernel/src/sync/seqlock.rs` (new) |
-| **Status** | Open |
+| **Component** | `kernel/src/sync/lockdep.rs`, `kernel/src/sync/seqlock.rs` |
+| **Status** | **Partial** |
 
-**Impact:** No deadlock detection or lock ordering validation. No
-optimistic concurrency for read-mostly data. Difficult to debug
-locking issues in multi-core code.
-
-**Proposed Fix:**
-- Lockdep: runtime lock dependency graph, deadlock detection, lock ordering validation
-- Seqlocks: optimistic read-side with writer priority
-- Completion variables: wait/signal for one-shot events
-
-**Tracking:** `docs/roadmap.md` Phase 12
+**Resolution:** SeqLock and RwLock implemented in Phase 12. SeqLock provides
+optimistic reader / exclusive writer. RwLock provides multiple-reader /
+single-writer. Lockdep and completion variables remain as future enhancements.
 
 ---
 
