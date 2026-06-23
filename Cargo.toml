@@ -44,7 +44,7 @@ exclude = ["fuzz"]
 
 [workspace.package]
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 authors = ["Uttam", "Codex", "Antigravity"]
 repository = "https://github.com/uttampaliwal/Turnix"
 

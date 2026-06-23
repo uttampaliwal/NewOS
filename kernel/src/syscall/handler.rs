@@ -2742,6 +2742,7 @@ mod tests {
 
     #[test]
     fn test_exec_nonexistent_path_returns_enoent() {
+        let _guard = crate::test_serial::acquire();
         setup_dummy_process();
 
         // Ensure VFS has a mounted root but no such file
@@ -2777,6 +2778,7 @@ mod tests {
 
     #[test]
     fn test_exec_invalid_elf_magic_returns_enoexec() {
+        let _guard = crate::test_serial::acquire();
         setup_dummy_process();
 
         // Set up frame allocator and phys mem offset
@@ -3004,6 +3006,7 @@ mod tests {
     /// child's exit code and reaps only that child.
     #[test]
     fn test_waitpid_reaps_specific_child() {
+        let _guard = crate::test_serial::acquire();
         use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
 
         let _parent_pid  = ProcessId(400);
@@ -3082,6 +3085,7 @@ mod tests {
 
     #[test]
     fn dup_returns_new_fd() {
+        let _guard = crate::test_serial::acquire();
         let mut vfs = crate::vfs::VFS.lock();
         let fd = make_test_fd(&mut vfs, "test");
         let newfd = vfs.dup_fd(fd).expect("dup should succeed");
@@ -3092,6 +3096,7 @@ mod tests {
 
     #[test]
     fn dup2_uses_specified_fd() {
+        let _guard = crate::test_serial::acquire();
         let mut vfs = crate::vfs::VFS.lock();
         let fd = make_test_fd(&mut vfs, "test");
         let target = 99usize;
@@ -3104,6 +3109,7 @@ mod tests {
 
     #[test]
     fn dup2_closes_existing_target() {
+        let _guard = crate::test_serial::acquire();
         let mut vfs = crate::vfs::VFS.lock();
         let fd_a = make_test_fd(&mut vfs, "a");
         let fd_b = make_test_fd(&mut vfs, "b");
@@ -3114,6 +3120,7 @@ mod tests {
 
     #[test]
     fn dup2_same_fd_is_noop() {
+        let _guard = crate::test_serial::acquire();
         let mut vfs = crate::vfs::VFS.lock();
         let fd = make_test_fd(&mut vfs, "test");
         let result = vfs.dup2_fd(fd, fd).expect("dup2(oldfd, oldfd) should succeed");
@@ -3123,12 +3130,14 @@ mod tests {
 
     #[test]
     fn dup_bad_fd_returns_none() {
+        let _guard = crate::test_serial::acquire();
         let mut vfs = crate::vfs::VFS.lock();
         assert!(vfs.dup_fd(9999).is_none(), "dup of invalid fd must return None");
     }
 
     #[test]
     fn dup2_bad_fd_returns_none() {
+        let _guard = crate::test_serial::acquire();
         let mut vfs = crate::vfs::VFS.lock();
         assert!(vfs.dup2_fd(9999, 100).is_none(), "dup2 of invalid oldfd must return None");
     }

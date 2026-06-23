@@ -1,197 +1,159 @@
 # Contributing to turnix
 
-Thank you for your interest in contributing to turnix! This document outlines how to set up your development environment, coding standards, and the contribution workflow.
+Thank you for your interest in contributing to turnix! This document covers setup, standards, and workflow.
 
-## Getting Started
+## Quick Start
 
-1. Fork the repository
-2. Clone your fork: `git clone https://github.com/<your-username>/turnix.git`
-3. Add the upstream remote: `git remote add upstream https://github.com/uttampaliwal/turnix.git`
-4. Create a feature branch: `git checkout -b feature/my-feature`
+```bash
+git clone https://github.com/uttampaliwal/turnix.git
+cd turnix
+cargo xtask doctor          # verify environment
+```
 
-## Development Environment
+## Development Setup
 
 ### Prerequisites
 
-- Rust nightly (via rustup)
-- QEMU (x86_64 with OVMF)
-- Platform-specific requirements below
+- **Rust nightly** (via rustup)
+- **QEMU** with OVMF UEFI firmware
+- **Git**
 
-### Windows Setup
+### Platform-Specific
 
-1. Install [Rust nightly](https://rustup.rs):
+<details>
+<summary><b>Linux (Ubuntu/Debian)</b></summary>
 
-```powershell
-rustup install nightly
-rustup default nightly
-rustup target add x86_64-unknown-uefi --toolchain nightly
-rustup target add x86_64-unknown-none --toolchain nightly
+```bash
+sudo apt-get install qemu-system-x86 edk2-ovmf
 ```
+</details>
 
-2. Install QEMU and OVMF:
+<details>
+<summary><b>Linux (Arch)</b></summary>
+
+```bash
+sudo pacman -S qemu-full edk2-ovmf
+```
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+```bash
+brew install qemu
+```
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
 
 ```powershell
 choco install qemu
 ```
+</details>
 
-### Linux Setup (Ubuntu/Debian)
-
-```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-rustup install nightly
-rustup default nightly
-rustup target add x86_64-unknown-uefi --toolchain nightly
-rustup target add x86_64-unknown-none --toolchain nightly
-
-# Install QEMU and OVMF
-sudo apt-get update
-sudo apt-get install qemu-system-x86 edk2-ovmf
-```
-
-### macOS Setup
+### Toolchain Setup
 
 ```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
 rustup install nightly
 rustup default nightly
-rustup target add x86_64-unknown-uefi --toolchain nightly
-rustup target add x86_64-unknown-none --toolchain nightly
-
-# Install QEMU (via Homebrew)
-brew install qemu
+rustup target add x86_64-unknown-uefi x86_64-unknown-none --toolchain nightly
 ```
 
-### Verify Setup
+### Verify
 
-```powershell
+```bash
 cargo xtask doctor
 ```
 
-This checks:
-- Rust toolchain and targets (`x86_64-unknown-uefi`, `x86_64-unknown-none`)
-- QEMU installation
-- Required Cargo commands
+## Build & Run
 
-### Build Commands
-
-```powershell
-# Build the UEFI loader
-cargo xtask build-uefi
-
-# Build the freestanding kernel
-cargo xtask build-kernel
-
-# Run in QEMU
-cargo xtask run-uefi
+```bash
+cargo xtask build-uefi       # UEFI loader
+cargo xtask build-kernel     # freestanding kernel
+cargo xtask run-uefi         # run in QEMU
 ```
 
-## Coding Style
+## Before Submitting a PR
 
-### General Principles
+Run this checklist locally:
 
-- Write clear, readable code over clever code
-- Document **why**, not just **what**
-- Keep functions small and focused
-- Use meaningful names for types, functions, and variables
+```bash
+cargo fmt --check                          # formatting
+RUSTFLAGS="-D warnings" cargo clippy      # zero warnings
+cargo test --workspace                     # ~974 tests pass
+cargo xtask build-uefi && cargo xtask build-kernel  # builds succeed
+```
 
-### Rust-Specific
+## Coding Standards
 
-- Follow the standard Rust fmt style (run `cargo fmt` before committing)
-- Use `clippy` to catch common mistakes: `cargo clippy -- -D warnings`
-- Prefer explicit type annotations in public APIs
-- Use `#[must_use]` for functions that return important values
-- Handle errors explicitly; avoid `.unwrap()` in kernel code
+### Rust Style
 
-### No Std
-
-- Kernel code uses `no_std`; do not import `std`
-- Use `alloc` for heap-allocated types
-- Use `core` for primitive operations
-- Test host-buildable crates separately: `cargo test -p turnix-abi`
+- **Formatting**: `cargo fmt` (rustfmt, nightly)
+- **Linting**: `clippy` with `-D warnings` — zero tolerance
+- **no_std**: Kernel code uses `no_std` + `alloc`; never import `std`
+- **Errors**: No `.unwrap()` in kernel code — use `match`, `ok_or`, or `expect` with context
+- **Naming**: Follow Rust conventions (`snake_case` functions, `CamelCase` types)
+- **Documentation**: Public items must have `///` doc comments
 
 ### Commit Messages
 
-- Use imperative mood: "Add feature" not "Added feature" or "Adds feature"
-- Keep the subject line under 72 characters
-- Reference issues: "Fixes #123" or "Closes #456"
-
-Example:
-```
-Add physical frame allocator
-
-Implements a bump-style allocator over conventional memory
-as described in ADR-0003. Skips low memory for early safety.
-
-Fixes #42
-```
-
-### Pull Request Workflow
-
-1. **Before submitting:**
-   - Run `cargo xtask doctor` to verify your setup
-   - Build locally: `cargo xtask build-uefi && cargo xtask build-kernel`
-   - Run tests: `cargo test --workspace`
-   - Format: `cargo fmt --check`
-   - Lint: `cargo clippy -- -D warnings`
-
-2. **Submit a PR:**
-   - Push your branch: `git push origin feature/my-feature`
-   - Open a pull request against `development`
-   - Fill in the PR template
-   - Link any related issues
-
-3. **After review:**
-   - Address feedback
-   - Squash commits if requested
-   - Merge once CI passes
-
-## Areas Where Help Is Needed
-
-### Good First Issues
-
-- Documentation improvements
-- Test coverage for shared/abi crate
-- Code cleanup and documentation comments
-
-### Medium-Effort Issues
-
-- Kernel logging framework
-- Error handling / panic strategy
-- Virtual memory and page tables
-
-### Advanced Issues
-
-- User/kernel ABI boundaries
-- ELF loader
-- Syscall implementation
-
-## Project Structure
+Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-docs/          - ADRs, phase docs, architecture notes
-boot/          - UEFI loader entry point
-kernel/        - no_std kernel core
-shared/abi/    - types shared between kernel and userland
-shared/serial/ - serial port abstraction
-shared/ipc-proto/ - IPC protocol definitions
-shared/tpkg-format/ - package manifest format
-userland/      - userspace services and applications
-tools/xtask/   - build automation
-.github/       - CI workflows and templates
+<type>(<scope>): <description>
+
+[optional body]
 ```
 
-See [docs/architecture.md](docs/architecture.md) for details.
+**Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `ci`
 
-## Communication
+**Examples**:
+```
+feat(kernel): add eventfd system call
+fix(scheduler): resolve CFS vruntime underflow
+docs: update README with phases 12-13
+chore: run cargo fmt
+```
 
-- Open an issue for bugs or feature requests
-- Use GitHub Discussions for questions
-- Be respectful and constructive
+### Project Structure
+
+```
+kernel/         - no_std kernel core (ring 0)
+boot/           - UEFI loader entry point
+shared/         - crates shared between kernel and userland
+  abi/          - syscall ABI types
+  serial/       - serial port abstraction
+  turnix-ipc-proto/  - IPC protocol definitions
+  turnix-tpkg-format/ - package manifest format
+userland/       - userspace services and applications
+tools/xtask/    - build automation
+fuzz/           - fuzz testing targets
+docs/           - ADRs, architecture notes, phase documentation
+.github/        - CI workflows and templates
+```
+
+## Fuzz Testing
+
+Fuzz targets live in `fuzz/`. Run locally:
+
+```bash
+cd fuzz && cargo build --release
+for target in fuzz_elf_parser fuzz_seccomp_bpf fuzz_ipc_message fuzz_vfs_path fuzz_syscall_args; do
+    timeout 60 ./target/release/$target < /dev/urandom 2>/dev/null || true
+done
+```
+
+Fuzz tests run automatically on `master` merges via CI.
+
+## Security
+
+If you discover a security vulnerability, see [SECURITY.md](SECURITY.md) for responsible disclosure instructions. **Do not** open a public issue for security vulnerabilities.
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold its standards.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the project's license (MIT or Apache-2.0).
+By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).

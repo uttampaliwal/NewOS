@@ -1,9 +1,9 @@
 # Turnix
 
 ![CI](https://github.com/uttampaliwal/turnix/actions/workflows/ci.yml/badge.svg)
-![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Rust](https://img.shields.io/badge/rust-nightly-orange)
-![Tests](https://img.shields.io/badge/tests-1026%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-974%20passing-brightgreen)
 
 **A SOTA, Rust-first operating system built for learning, performance, and long-term daily usability.**
 
@@ -11,49 +11,25 @@
 
 ---
 
-## 🎯 Key Subsystems & Accomplishments
+## Key Subsystems
 
-Turnix features a highly mature kernel and userland stack:
-
-*   **Virtual Memory Management (VMM)**: Support for Higher-Half Direct Mapping (HHDM) paging, dynamic kernel/user heap layout, thread stack isolation, strict **W^X (Write XOR Execute)** memory enforcement, demand paging, `mmap`/`munmap`/`mmap2` system calls, and slab allocator for kernel object caching.
-*   **Security & Hardening**:
-    *   **POSIX Capabilities**: Implements standard 64-bit capability sets (`permitted`, `effective`, `inheritable`, `bounding`, `ambient`) to enforce least-privilege.
-    *   **Namespaces**: Process isolation using PID, Mount, Network, and User namespaces.
-    *   **Seccomp-BPF**: System call restriction using custom classical BPF filters inherited across process boundaries.
-    *   **Linux Security Modules (LSM)**: Pluggable LSM hooks (`file_open`, `process_create`, `ipc_send`, etc.) with a default Unix Discretionary Access Control (DAC) hook.
-    *   **Integrity Measurement (IMA/EVM)**: SHA-256 binary measurements and extended attributes verification (EVM) for files.
-    *   **Kernel Canaries**: Stack corruption detection at the base of task stacks.
-    *   **ASLR & KASLR**: User-space load/stack base randomization and Kernel Address Space Layout Randomization (KASLR) at boot.
-*   **POSIX System Services**:
-    *   Full process table support (`ppid`, `ProcessState`, standard signals).
-    *   `fork`, `exec`, and `wait`/`waitpid` process lifecycle management.
-    *   Virtual File System (VFS) with mounts (`/` on `tmpfs` and `/mnt` on `ext4` read-write).
-    *   Inter-Process Communication (IPC) via ring-buffered pipes, Unix domain sockets, POSIX message queues, POSIX shared memory, and futex synchronization.
-    *   **Epoll**: Event-driven I/O multiplexing with `EPOLLIN`/`EPOLLOUT`/`EPOLLRDHUP` and blocking wait.
-    *   File descriptor tables (up to 1024 open files) with standard `stdin`/`stdout`/`stderr` inheritance and `dup`/`dup2` redirection.
-*   **Scheduling & Resource Management**:
-    *   **CFS Scheduler**: Virtual runtime (`vruntime`) tracking with preemptive lowest-vruntime-first scheduling.
-    *   **Scheduler Classes**: SCHED_NORMAL, SCHED_BATCH, SCHED_FIFO, SCHED_RR, SCHED_IDLE policies.
-    *   **cgroups v2**: CPU quota enforcement, memory limits with OOM-kill, and PID limits.
-    *   **SMP**: Application Processor bring-up via SIPI sequence with per-CPU scheduling.
-*   **Device Driver Framework**:
-    *   **ACPI**: Superblock parsing (RSDP, XSDT, MCFG, DSDT/SSDT) and AML interpreter evaluation with S0/S5 power states.
-    *   **PCI/PCIe**: MMIO walks via PCIe ECAM mapping.
-    *   **VirtIO-Net**: Feature negotiation and MAC extraction for virtual networking.
-    *   **NVMe**: Block device driver supporting submission/completion queues and PRP-based data transfers.
-    *   **XHCI USB**: Controller initialization, USB 2.0/3.x enumeration, and USB Keyboard input handlers.
-    *   **DRM/KMS Graphics**: bochs-display framebuffers mapping for composites/compositors.
+*   **Virtual Memory Management**: Higher-Half Direct Mapping (HHDM) paging, dynamic kernel/user heap layout, thread stack isolation, strict **W^X** memory enforcement, demand paging, `mmap`/`munmap`/`mmap2`/`mprotect` system calls, and slab allocator for kernel object caching.
+*   **Security & Hardening**: POSIX Capabilities, PID/Mount/Network/User namespaces, Seccomp-BPF filters, Linux Security Module (LSM) hooks with DAC, IMA/EVM integrity measurement, stack canaries, ASLR & KASLR.
+*   **POSIX Services**: Full process table, `fork`/`exec`/`waitpid`, VFS mounts (tmpfs + ext4 read-write), pipes, Unix domain sockets, POSIX message queues, POSIX shared memory, futex synchronization, epoll event-driven I/O multiplexing, `eventfd`/`timerfd`, and file descriptor tables with `dup`/`dup2`.
+*   **Scheduling & Resource Management**: CFS vruntime scheduler, scheduler classes (SCHED_NORMAL/BATCH/FIFO/RR/IDLE), cgroups v2 (CPU quota, memory limits, OOM-kill, PID limits), SMP with per-CPU scheduling.
+*   **Concurrency Primitives**: SeqLock, RwLock, RCU (read-copy-update), work queues, softirq (8 vectors), per-CPU counters.
+*   **Device Drivers**: ACPI (RSDP/XSDT/MCFG/DSDT/SSDT + AML interpreter), PCI/PCIe ECAM, VirtIO-Net, NVMe, XHCI USB keyboard, DRM/KMS graphics.
 
 ---
 
-## 🏗️ High-Level Architecture
+## Architecture
 
 ```mermaid
 graph TD
     subgraph Userland [User Space - Ring 3]
-        Init[init daemon - service manifests]
+        Init[init daemon]
         Shell[interactive shell]
-        Tester[fault-tester / user apps]
+        Tester[fault-tester]
         Libturnix[libturnix - syscall shims]
     end
 
@@ -89,7 +65,7 @@ graph TD
             Virtio[VirtIO Net]
             Nvme[NVMe Block]
             Xhci[XHCI USB Keyboard]
-            Gpu[DRM/KMS Graphics Framebuffer]
+            Gpu[DRM/KMS Graphics]
         end
     end
 
@@ -114,72 +90,77 @@ graph TD
 
 ---
 
-## 🗺️ Milestone Roadmap
+## Roadmap
 
 | Phase | Milestone | Features | Status |
 | :--- | :--- | :--- | :--- |
-| **Phase 1** | **Boot & Drivers** | UEFI Boot, ACPI Table Parser, PCIe ECAM, VirtIO-Net, NVMe, XHCI USB, GPU DRM/KMS | ✅ Complete |
-| **Phase 2** | **Memory Subsystem** | VMAs, Demand Paging, mmap/munmap, LRU Page Cache, Swap, ASLR/KASLR, OOM Killer | ✅ Complete |
-| **Phase 3** | **POSIX Services** | Process table, `fork`/`exec`/`waitpid`, VFS mounts (tmpfs/ext4), Pipes, Sockets, Signals, Stdio, Init manifest daemon | ✅ Complete |
-| **Phase 4** | **Security Hardening** | POSIX Capabilities, Isolation Namespaces, Seccomp-BPF filters, LSM hooks, IMA/EVM, Stack Canaries | ✅ Complete |
-| **Phase 5** | **Package Management** | Dependency Solver (SAT CDCL), manifest parsing, TUF repositories, package staging, rollback pipeline | ✅ Complete |
-| **Phase 6** | **System Services** | IPC Broker daemon, structured log framework (HMAC-SHA256), service unit manager (socket activation) | ✅ Complete |
-| **Phase 7** | **Desktop Environment** | Window Compositor (Wayland-like), input event routing, desktop session management | ✅ Complete |
-| **Phase 8** | **SMP & Scheduler** | CFS vruntime scheduler, scheduler classes, cgroups v2, SMP AP bring-up, slab allocator | ✅ Complete |
-| **Phase 10** | **Async I/O** | epoll, futex, POSIX message queues, POSIX shared memory | ✅ Complete |
+| **1** | **Boot & Drivers** | UEFI Boot, ACPI, PCIe ECAM, VirtIO-Net, NVMe, XHCI USB, DRM/KMS | Done |
+| **2** | **Memory Subsystem** | VMAs, Demand Paging, mmap/munmap, LRU Page Cache, Swap, ASLR/KASLR, OOM Killer | Done |
+| **3** | **POSIX Services** | Process table, fork/exec/waitpid, VFS (tmpfs/ext4), Pipes, Sockets, Signals, Init daemon | Done |
+| **4** | **Security Hardening** | Capabilities, Namespaces, Seccomp-BPF, LSM hooks, IMA/EVM, Stack Canaries | Done |
+| **5** | **Package Management** | SAT CDCL dependency solver, TUF repositories, package staging, rollback | Done |
+| **6** | **System Services** | IPC Broker, structured logging (HMAC-SHA256), service unit manager | Done |
+| **7** | **Desktop Environment** | Window compositor, input routing, desktop session management | Done |
+| **8** | **SMP & Scheduler** | CFS vruntime, scheduler classes, cgroups v2, SMP AP bring-up, slab allocator | Done |
+| **10** | **Async I/O** | epoll, futex, POSIX message queues, POSIX shared memory, eventfd, timerfd | Done |
+| **12** | **Scalability** | SeqLock, RwLock, RCU, work queues, softirq, per-CPU counters | Done |
+| **13** | **Advanced I/O** | eventfd, timerfd, VFS read/write, epoll integration | Done |
 
-> See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for known limitations and future work.
+See [ROADMAP.md](ROADMAP.md) for the full 22-phase roadmap. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for known limitations.
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
-### 1. Prerequisites
-You need the nightly Rust toolchain, QEMU, and EDK2 UEFI firmware images.
-To verify your environment is ready, run:
+### Prerequisites
+
+- Rust nightly toolchain
+- QEMU (x86_64 with OVMF UEFI firmware)
+
 ```bash
-cargo fmt --check
-cargo xtask doctor
+cargo xtask doctor    # verify environment
 ```
 
-### 2. Configure OVMF Firmware Paths
-On some distributions (e.g. Arch Linux), the UEFI firmware path varies. You can specify the paths manually in your shell environment:
+### Configure OVMF Paths (if needed)
+
 ```bash
 export TURNIX_OVMF_CODE="/usr/share/edk2/x64/OVMF_CODE.4m.fd"
 export TURNIX_OVMF_VARS="/usr/share/edk2/x64/OVMF_VARS.4m.fd"
 ```
 
-### 3. Run QEMU Interactive Mode
-Build the UEFI image and run the OS in QEMU:
+### Run in QEMU
+
 ```bash
-cargo xtask run-uefi
+cargo xtask run-uefi              # interactive
+TURNIX_QEMU_DISPLAY=none cargo xtask test-qemu   # headless / CI
 ```
 
-### 4. Run Headless / Non-Interactive (useful for CI/tests)
-To run the boot sequence in headless mode, specify:
+### Build
+
 ```bash
-TURNIX_QEMU_DISPLAY=none cargo xtask test-qemu
+cargo xtask build-uefi            # UEFI loader
+cargo xtask build-kernel          # freestanding kernel
 ```
 
 ---
 
-## 🧪 Testing & Verification Suite
+## Testing
 
-Turnix contains a comprehensive test suite covering all layers of the kernel and userland:
-
-*   **Host Workspace Tests**: Runs host unit tests on shared utilities, init configurations, and system ABI encoders:
-    ```bash
-    cargo test --all-targets
-    ```
-*   **Kernel Unit and Property Tests**: Runs target-specific memory management and security model verification tests:
-    ```bash
-    cargo test -p turnix-kernel
-    ```
-*   **Boot & Userland Smoke Tests**: Tests UEFI loaders, kernel initialization, VFS mounts, and userland execution in QEMU:
-    ```bash
-    TURNIX_QEMU_DISPLAY=none cargo xtask test-qemu
-    ```
+```bash
+cargo test --workspace            # all host + kernel tests (~974)
+cargo test -p turnix-kernel       # kernel-specific tests
+cargo clippy -- -D warnings       # lint (zero warnings)
+cargo fmt --check                 # format check
+```
 
 ---
 
-**Principles**: *Type safety first. Document every decision. Clean separation of mechanism and policy.*
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, coding standards, and PR workflow.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

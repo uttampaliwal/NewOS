@@ -8,29 +8,66 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please send an email to **uttampaliwal@gmail.com** with the subject line: `[turnix Security]`.
+If you discover a security vulnerability in turnix, please report it responsibly.
 
-Please include the following in your report:
+**Email**: [uttam232002@gmail.com](mailto:uttam232002@gmail.com)
+**Subject**: `[turnix Security] <brief description>`
 
-- Type of vulnerability
-- Full paths of source file(s) related to the vulnerability
-- Step-by-step instructions to reproduce the issue
-- Proof-of-concept or exploit code (if possible)
-- Impact assessment
+### What to Include
 
-## Response Timeline
+- Type of vulnerability (e.g., buffer overflow, privilege escalation, race condition)
+- Affected component and file paths
+- Step-by-step reproduction instructions
+- Proof-of-concept or exploit code (if applicable)
+- Impact assessment (e.g., "allows arbitrary code execution in kernel mode")
 
-We aim to acknowledge security reports within **48 hours** and provide a more detailed response within **7 days** with:
+### What to Expect
 
-- Confirmation of the vulnerability
+| Stage | Timeline |
+| ----- | -------- |
+| Acknowledgement | Within **48 hours** |
+| Triage & initial assessment | Within **7 days** |
+| Fix or mitigation | Depends on severity, typically **14-30 days** |
+
+We will provide:
+
+- Confirmation of the vulnerability (or clarification if not reproducible)
 - Expected timeline for a fix
-- Any interim mitigations
+- Any interim mitigations or workarounds
 
 ## Disclosure Policy
 
-- **Coordinated Disclosure**: We request that you give us reasonable time to address the issue before public disclosure.
-- **Credit**: We will credit reporters in the security advisory (unless requested otherwise).
+- **Coordinated Disclosure**: We request reasonable time to address the issue before public disclosure. We aim for a **90-day disclosure window**.
+- **Credit**: Reporters will be credited in the security advisory and release notes (unless anonymity is requested).
+- **Safe Harbour**: We will not pursue legal action against researchers who follow this policy and act in good faith.
+
+## Scope
+
+**In scope**:
+
+- Kernel code (`kernel/`)
+- Shared libraries (`shared/`)
+- Userland binaries (`userland/`)
+- Build tooling (`tools/`)
+- CI/CD pipelines (`.github/`)
+
+**Out of scope**:
+
+- Denial-of-service attacks against public instances
+- Social engineering of maintainers
+- Issues in third-party dependencies (report upstream)
 
 ## Security Considerations
 
-As an early-stage OS project, turnix is not yet suitable for security-sensitive environments. This project is under active development and has not undergone security audits.
+As an early-stage OS project, turnix is **not yet suitable for production or security-sensitive environments**. The project is under active development and has not undergone formal security audits.
+
+Key security features implemented:
+
+- POSIX capabilities (64-bit capability sets)
+- Seccomp-BPF system call filtering
+- Linux Security Module (LSM) hooks with DAC
+- IMA/EVM integrity measurement
+- Stack canaries for corruption detection
+- ASLR and KASLR randomization
+
+These are best-effort implementations and may contain vulnerabilities.
