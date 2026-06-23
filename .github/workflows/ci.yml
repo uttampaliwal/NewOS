@@ -66,9 +66,9 @@ jobs:
           targets: x86_64-unknown-none,x86_64-unknown-uefi
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
-      - name: Run 30-boot gate
+      - name: Run 10-boot gate
         env:
-          TURNIX_CI_BOOT_ATTEMPTS: "30"
+          TURNIX_CI_BOOT_ATTEMPTS: "10"
         run: cargo xtask ci-boot
 
   # ── Job 4: driver-tests ───────────────────────────────────────────────

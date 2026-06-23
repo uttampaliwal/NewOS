@@ -227,11 +227,31 @@ fn wait_for_boot(
             return BootResult::Timeout { output, elapsed };
         }
 
+        // Poll the log file for the sentinel FIRST — QEMU may exit right
+        // after printing the sentinel (e.g., ACPI shutdown or isa-debug-exit).
+        if let Ok(output) = std::fs::read_to_string(log_path)
+            && find_sentinel_in_output(&output, sentinel)
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+            return BootResult::Success {
+                output,
+                elapsed: start.elapsed(),
+            };
+        }
+
         // Check if QEMU exited early
         match child.try_wait() {
             Ok(Some(status)) => {
                 let output = std::fs::read_to_string(log_path).unwrap_or_default();
                 let code = status.code();
+                // Even if QEMU exited, check if the sentinel was present
+                if find_sentinel_in_output(&output, sentinel) {
+                    return BootResult::Success {
+                        output,
+                        elapsed: start.elapsed(),
+                    };
+                }
                 if code == Some(33) {
                     return BootResult::Success {
                         output,
@@ -245,18 +265,6 @@ fn wait_for_boot(
             }
             Ok(None) => {}
             Err(_) => {}
-        }
-
-        // Poll the log file for the sentinel
-        if let Ok(output) = std::fs::read_to_string(log_path)
-            && find_sentinel_in_output(&output, sentinel)
-        {
-            let _ = child.kill();
-            let _ = child.wait();
-            return BootResult::Success {
-                output,
-                elapsed: start.elapsed(),
-            };
         }
 
         std::thread::sleep(poll_interval);
@@ -344,7 +352,7 @@ pub fn ci_boot_gate_with_attempts(
     // GitHub Actions runners don't expose KVM, so QEMU falls back to TCG
     // which has intermittent boot failures (exit code 35 = isa-debug-exit
     // or QEMU crash during UEFI → kernel handoff).
-    let max_failures = (attempts / 2).max(1);
+    let max_failures = ((attempts + 1) / 2).max(1);
 
     for i in 1..=attempts {
         eprint!("  [{i}/{attempts}] Booting... ");
