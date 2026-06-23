@@ -63,8 +63,17 @@ fn build_driver_test_qemu_command(workspace_root: &Path) -> ProcessCommand {
     cmd.arg("-display").arg("none");
 
     // Acceleration
-    cmd.arg("-accel").arg("kvm");
-    cmd.arg("-accel").arg("tcg");
+    if let Ok(accel) = std::env::var("TURNIX_QEMU_ACCEL") {
+        cmd.arg("-accel").arg(accel);
+    } else if cfg!(target_os = "linux") {
+        cmd.arg("-accel").arg("kvm");
+        cmd.arg("-accel").arg("tcg");
+    } else if cfg!(target_os = "macos") {
+        cmd.arg("-accel").arg("hvf");
+        cmd.arg("-accel").arg("tcg");
+    } else {
+        cmd.arg("-accel").arg("tcg");
+    }
 
     // Firmware
     if let Some(code) = staged_code {

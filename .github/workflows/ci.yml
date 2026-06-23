@@ -78,6 +78,7 @@ jobs:
       - name: Run 10-boot gate
         env:
           TURNIX_CI_BOOT_ATTEMPTS: "10"
+          TURNIX_QEMU_ACCEL: "tcg"
         run: cargo xtask ci-boot
 
   # ── Job 4: driver-tests ───────────────────────────────────────────────
@@ -100,6 +101,8 @@ jobs:
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
       - name: Run driver test suite
+        env:
+          TURNIX_QEMU_ACCEL: "tcg"
         run: cargo xtask ci-driver-tests
 
   # ── Job 5: security-regression ────────────────────────────────────────
@@ -122,6 +125,8 @@ jobs:
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
       - name: Run security regression tests
+        env:
+          TURNIX_QEMU_ACCEL: "tcg"
         run: cargo xtask ci-security
 
   # ── Job 6: performance-benchmarks ─────────────────────────────────────
@@ -144,6 +149,8 @@ jobs:
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
       - name: Run performance benchmarks
+        env:
+          TURNIX_QEMU_ACCEL: "tcg"
         run: cargo xtask ci-bench
 
   # ── Job 7: lint (clippy) ───────────────────────────────────────────────
