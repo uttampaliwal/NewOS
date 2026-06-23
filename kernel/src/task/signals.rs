@@ -758,8 +758,8 @@ mod tests {
         {
             let mut inner = env.process.inner.lock();
             // Register handlers for both signals
-            inner.signal_handlers[5 as usize] = SignalAction::Handler(handler_addr);
-            inner.signal_handlers[15 as usize] = SignalAction::Handler(handler_addr + 0x100);
+            inner.signal_handlers[5] = SignalAction::Handler(handler_addr);
+            inner.signal_handlers[15] = SignalAction::Handler(handler_addr + 0x100);
             // Pending both, with higher-numbered first
             inner.pending_signals.insert(15);
             inner.pending_signals.insert(5);
@@ -782,7 +782,7 @@ mod tests {
         let handler_addr = 0x3_0000_0000u64;
         {
             let mut inner = env.process.inner.lock();
-            inner.signal_handlers[10 as usize] = SignalAction::Handler(handler_addr);
+            inner.signal_handlers[10] = SignalAction::Handler(handler_addr);
             inner.pending_signals.insert(10);
         }
         let mut frame = make_frame(&env);
@@ -806,7 +806,7 @@ mod tests {
         let handler_addr = 0x4_0000_0000u64;
         {
             let mut inner = env.process.inner.lock();
-            inner.signal_handlers[7 as usize] = SignalAction::Handler(handler_addr);
+            inner.signal_handlers[7] = SignalAction::Handler(handler_addr);
             inner.pending_signals.insert(7);
         }
         let mut frame = make_frame(&env);
@@ -853,7 +853,7 @@ mod tests {
         let handler_addr = 0x5_0000_0000u64;
         {
             let mut inner = env.process.inner.lock();
-            inner.signal_handlers[3 as usize] = SignalAction::Handler(handler_addr);
+            inner.signal_handlers[3] = SignalAction::Handler(handler_addr);
             inner.pending_signals.insert(3);
             inner.signal_mask.insert(3);
         }
