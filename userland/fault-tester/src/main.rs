@@ -3,7 +3,7 @@
 
 use libturnix::{exit, print};
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     print("Fault Tester: Attempting to read from kernel memory (0xFFFF_FFFF_8000_0000)...\n");
 
@@ -19,7 +19,7 @@ fn main() {}
 
 // Minimal host main for MSVC linker on Windows hosts.
 #[cfg(target_os = "windows")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn mainCRTStartup() {}
 
 #[cfg(not(test))]

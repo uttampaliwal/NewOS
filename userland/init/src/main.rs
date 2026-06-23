@@ -206,5 +206,5 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 
 #[cfg(target_os = "windows")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn mainCRTStartup() {}

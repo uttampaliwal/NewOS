@@ -3,7 +3,7 @@
 
 use libturnix::{exit, print, uptime, getpid, getuid, getgid, yielder, fork};
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     print("{\"benchmarks\":[");
 
