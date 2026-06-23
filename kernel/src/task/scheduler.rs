@@ -426,3 +426,168 @@ pub fn test_reset() {
     }
     sched.task_count = 0;
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::process::{Process, ProcessControlBlock, ProcessId, ProcessState, SignalAction, SignalSet};
+    use crate::task::{Task, TaskState};
+    use alloc::sync::Arc;
+    use spin::Mutex;
+
+    fn make_test_process(pid: usize) -> Process {
+        let pcb = ProcessControlBlock {
+            id: ProcessId(pid),
+            ppid: ProcessId(0),
+            state: ProcessState::Ready,
+            pml4_frame: x86_64::structures::paging::PhysFrame::containing_address(
+                x86_64::PhysAddr::new(0),
+            ),
+            entry_point: x86_64::VirtAddr::zero(),
+            stack_top: x86_64::VirtAddr::zero(),
+            threads: alloc::vec![],
+            vma_set: crate::memory::vma::VmaSet::new(),
+            mmap_next_addr: x86_64::VirtAddr::zero(),
+            aslr_base: x86_64::VirtAddr::zero(),
+            fd_table: alloc::vec![None; 1024],
+            signal_mask: SignalSet::empty(),
+            signal_handlers: [SignalAction::Default; 64],
+            pending_signals: SignalSet::empty(),
+            pending_signal_frame: None,
+            sec_ctx: crate::security::SecurityContext::root(),
+            nsproxy: crate::security::namespaces::NsProxy::new(),
+            seccomp_filter: None,
+            cgroup_path: None,
+        };
+        Process {
+            inner: Arc::new(Mutex::new(pcb)),
+        }
+    }
+
+    fn make_test_task(pid: usize) -> Task {
+        Task::new_test(TaskId::new(), make_test_process(pid), TaskState::Running)
+    }
+
+    // -- Query function tests (no without_interrupts, safe in test mode) --
+
+    #[test]
+    fn test_get_task_count_initial_zero() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        assert_eq!(get_task_count(), 0);
+    }
+
+    #[test]
+    fn test_get_current_task_id_none_when_empty() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        assert!(get_current_task_id().is_none());
+    }
+
+    #[test]
+    fn test_set_current_task_then_get_id() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let task = make_test_task(42);
+        let expected_id = task.id;
+        set_current_task_for_test(task);
+        assert_eq!(get_current_task_id(), Some(expected_id));
+    }
+
+    #[test]
+    fn test_get_current_process_after_set() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let task = make_test_task(77);
+        let pid = task.process.id();
+        set_current_task_for_test(task);
+        let proc = get_current_process();
+        assert!(proc.is_some());
+        assert_eq!(proc.unwrap().id(), pid);
+    }
+
+    #[test]
+    fn test_get_current_process_none_when_empty() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        assert!(get_current_process().is_none());
+    }
+
+    #[test]
+    fn test_get_current_process_id() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let task = make_test_task(55);
+        set_current_task_for_test(task);
+        assert_eq!(get_current_process_id(), Some(ProcessId(55)));
+    }
+
+    #[test]
+    fn test_get_current_process_id_none_when_empty() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        assert!(get_current_process_id().is_none());
+    }
+
+    // Note: tests for get_current_kernel_stack_top are omitted because
+    // the function uses without_interrupts (cli/sti) which SIGSEGVs in
+    // userspace test mode.
+
+    #[test]
+    fn test_get_uptime_ticks_initial() {
+        let _guard = crate::test_serial::acquire();
+        let _ticks = get_uptime_ticks();
+    }
+
+    #[test]
+    fn test_test_reset_clears_current() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let task = make_test_task(1);
+        set_current_task_for_test(task);
+        assert!(get_current_task_id().is_some());
+        test_reset();
+        assert!(get_current_task_id().is_none());
+    }
+
+    #[test]
+    fn test_test_reset_clears_task_count() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        // task_count is manipulated by blocked_tasks and queues;
+        // after test_reset it must be 0.
+        assert_eq!(get_task_count(), 0);
+    }
+
+    #[test]
+    fn test_set_current_task_replaces_previous() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let task1 = make_test_task(10);
+        let id1 = task1.id;
+        set_current_task_for_test(task1);
+        let task2 = make_test_task(20);
+        let id2 = task2.id;
+        set_current_task_for_test(task2);
+        assert_eq!(get_current_task_id(), Some(id2));
+        assert_ne!(get_current_task_id(), Some(id1));
+    }
+
+    #[test]
+    fn test_process_id_matches_after_set() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let task = make_test_task(123);
+        set_current_task_for_test(task);
+        assert_eq!(get_current_process_id(), Some(ProcessId(123)));
+        assert_eq!(get_current_task_count(), 0);
+    }
+
+    fn get_current_task_count() -> usize {
+        get_task_count()
+    }
+}

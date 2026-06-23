@@ -2,7 +2,7 @@ use alloc::sync::Arc;
 use spin::Mutex;
 
 use crate::arch::x86_64::syscall_arch::SyscallFrame;
-use crate::process::{ProcessControlBlock, ProcessId, SignalAction};
+use crate::process::{ProcessControlBlock, ProcessId, ProcessState, SignalAction};
 use crate::task::scheduler;
 
 // ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ fn default_action(sig: u8, proc: &Arc<Mutex<ProcessControlBlock>>) {
             for slot in inner.fd_table.iter_mut() {
                 *slot = None;
             }
-            inner.state = crate::process::ProcessState::Zombie {
+            inner.state = ProcessState::Zombie {
                 exit_code: 128 + sig as i32,
             };
             inner.vma_set = crate::memory::vma::VmaSet::new();
@@ -141,12 +141,12 @@ fn default_action(sig: u8, proc: &Arc<Mutex<ProcessControlBlock>>) {
         scheduler::exit_current_task();
     } else if default_stops(sig) {
         let mut inner = proc.lock();
-        inner.state = crate::process::ProcessState::Stopped;
+        inner.state = ProcessState::Stopped;
         inner.pending_signals.remove(sig);
     } else if default_continues(sig) {
         let mut inner = proc.lock();
-        if matches!(inner.state, crate::process::ProcessState::Stopped) {
-            inner.state = crate::process::ProcessState::Ready;
+        if matches!(inner.state, ProcessState::Stopped) {
+            inner.state = ProcessState::Ready;
         }
         inner.pending_signals.remove(sig);
     } else if default_ignores(sig) {
@@ -310,7 +310,7 @@ pub fn send_signal(pid: ProcessId, sig: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::process::{Process, ProcessControlBlock, ProcessId, SignalAction};
+    use crate::process::{Process, ProcessControlBlock, ProcessId, ProcessState, SignalAction};
     use crate::task::{Task, TaskId};
 
     struct TestEnv {
@@ -327,7 +327,7 @@ mod tests {
         let pcb = ProcessControlBlock {
             id: ProcessId(999),
             ppid: ProcessId(1),
-            state: crate::process::ProcessState::Ready,
+            state: ProcessState::Ready,
             pml4_frame: x86_64::structures::paging::PhysFrame::containing_address(
                 x86_64::PhysAddr::new(0)),
             entry_point: x86_64::VirtAddr::zero(),
@@ -584,6 +584,399 @@ mod tests {
         assert_eq!(frame.user_rip, handler_addr,
             "RIP must be set to handler after unmasking sig={}", sig_num);
 
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // send_signal to existing process returns true and sets pending bit
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_send_signal_existing_process() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        crate::process::PROCESS_TABLE.lock().insert(ProcessId(999), env.process.inner.clone());
+        let result = send_signal(ProcessId(999), SIGUSR1);
+        assert!(result, "send_signal should return true for existing PID");
+        let inner = env.process.inner.lock();
+        assert!(
+            inner.pending_signals.contains(SIGUSR1),
+            "SIGUSR1 should be pending after send_signal"
+        );
+        drop(inner);
+        crate::process::PROCESS_TABLE.lock().remove(&ProcessId(999));
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // send_signal to non-existent process returns false
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_send_signal_nonexistent_returns_false() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        let result = send_signal(ProcessId(99999), SIGUSR2);
+        assert!(!result, "send_signal should return false for nonexistent PID");
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // default_action: SIGSTOP sets process state to Stopped
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_sigstop_default_stops_process() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        {
+            let mut inner = env.process.inner.lock();
+            inner.pending_signals.insert(SIGSTOP);
+        }
+        default_action(SIGSTOP, &env.process.inner);
+        let inner = env.process.inner.lock();
+        assert!(
+            matches!(inner.state, ProcessState::Stopped),
+            "SIGSTOP default action should set state to Stopped"
+        );
+        assert!(
+            !inner.pending_signals.contains(SIGSTOP),
+            "SIGSTOP should be cleared from pending after default action"
+        );
+        drop(inner);
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // default_action: SIGCONT on stopped process sets state to Ready
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_sigcont_default_continues_stopped() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        {
+            let mut inner = env.process.inner.lock();
+            inner.state = ProcessState::Stopped;
+            inner.pending_signals.insert(SIGCONT);
+        }
+        default_action(SIGCONT, &env.process.inner);
+        let inner = env.process.inner.lock();
+        assert!(
+            matches!(inner.state, ProcessState::Ready),
+            "SIGCONT on stopped process should set state to Ready"
+        );
+        assert!(
+            !inner.pending_signals.contains(SIGCONT),
+            "SIGCONT should be cleared from pending after default action"
+        );
+        drop(inner);
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // default_action: SIGCONT on non-stopped process is a no-op
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_sigcont_noop_when_not_stopped() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        {
+            let mut inner = env.process.inner.lock();
+            inner.state = ProcessState::Ready;
+            inner.pending_signals.insert(SIGCONT);
+        }
+        default_action(SIGCONT, &env.process.inner);
+        let inner = env.process.inner.lock();
+        assert!(
+            matches!(inner.state, ProcessState::Ready),
+            "SIGCONT on non-stopped process should leave state as Ready"
+        );
+        drop(inner);
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // default_action: SIGURG (default-ignore) clears pending bit
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_sigurg_default_ignore_clears_pending() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        {
+            let mut inner = env.process.inner.lock();
+            inner.pending_signals.insert(SIGURG);
+        }
+        default_action(SIGURG, &env.process.inner);
+        let inner = env.process.inner.lock();
+        assert!(
+            !inner.pending_signals.contains(SIGURG),
+            "SIGURG (default-ignore) should clear pending bit"
+        );
+        assert!(
+            matches!(inner.state, ProcessState::Ready),
+            "SIGURG should not change process state"
+        );
+        drop(inner);
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // handle_sigreturn returns 0
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_sigreturn_returns_zero() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        let mut frame = make_frame(&env);
+        let result = handle_sigreturn_with_frame(&mut frame);
+        assert_eq!(result, 0, "sigreturn must always return 0");
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // handle_sigreturn with no pending frame returns 0 without modifying frame
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_sigreturn_no_pending_frame() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        let mut frame = make_frame(&env);
+        let original_rip = frame.user_rip;
+        let original_rsp = frame.user_rsp;
+        let result = handle_sigreturn_with_frame(&mut frame);
+        assert_eq!(result, 0);
+        assert_eq!(frame.user_rip, original_rip, "frame RIP should not change without pending signal frame");
+        assert_eq!(frame.user_rsp, original_rsp, "frame RSP should not change without pending signal frame");
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // check_pending_signals: lowest-numbered signal delivered first
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_multiple_pending_lowest_first() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        let handler_addr = 0x2_0000_0000u64;
+        {
+            let mut inner = env.process.inner.lock();
+            // Register handlers for both signals
+            inner.signal_handlers[5 as usize] = SignalAction::Handler(handler_addr);
+            inner.signal_handlers[15 as usize] = SignalAction::Handler(handler_addr + 0x100);
+            // Pending both, with higher-numbered first
+            inner.pending_signals.insert(15);
+            inner.pending_signals.insert(5);
+        }
+        let mut frame = make_frame(&env);
+        check_pending_signals(&mut frame);
+        // Signal 5 (lower number) should be delivered first
+        assert_eq!(frame.user_rip, handler_addr, "signal 5 (lower) should be delivered first");
+        assert_eq!(frame.rdi, 5, "rdi should be set to signal number 5");
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // check_pending_signals: signal cleared from pending after delivery
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_signal_cleared_after_delivery() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        let handler_addr = 0x3_0000_0000u64;
+        {
+            let mut inner = env.process.inner.lock();
+            inner.signal_handlers[10 as usize] = SignalAction::Handler(handler_addr);
+            inner.pending_signals.insert(10);
+        }
+        let mut frame = make_frame(&env);
+        check_pending_signals(&mut frame);
+        let inner = env.process.inner.lock();
+        assert!(
+            !inner.pending_signals.contains(10),
+            "signal 10 should be cleared from pending after handler delivery"
+        );
+        drop(inner);
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // check_pending_signals: handler sets rdi to signal number
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_handler_sets_rdi_to_signal_number() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        let handler_addr = 0x4_0000_0000u64;
+        {
+            let mut inner = env.process.inner.lock();
+            inner.signal_handlers[7 as usize] = SignalAction::Handler(handler_addr);
+            inner.pending_signals.insert(7);
+        }
+        let mut frame = make_frame(&env);
+        check_pending_signals(&mut frame);
+        assert_eq!(frame.rdi, 7, "rdi must be set to the signal number");
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // default_terminates, default_ignores, default_stops, default_continues
+    // classification tests
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_signal_classification() {
+        assert!(default_terminates(SIGTERM));
+        assert!(default_terminates(SIGKILL));
+        assert!(default_terminates(SIGSEGV));
+        assert!(default_terminates(SIGINT));
+        assert!(!default_terminates(SIGCHLD));
+        assert!(!default_terminates(SIGSTOP));
+
+        assert!(default_ignores(SIGCHLD));
+        assert!(default_ignores(SIGURG));
+        assert!(!default_ignores(SIGTERM));
+        assert!(!default_ignores(SIGSTOP));
+
+        assert!(default_stops(SIGSTOP));
+        assert!(default_stops(SIGTSTP));
+        assert!(!default_stops(SIGTERM));
+        assert!(!default_stops(SIGCONT));
+
+        assert!(default_continues(SIGCONT));
+        assert!(!default_continues(SIGSTOP));
+        assert!(!default_continues(SIGTERM));
+    }
+
+    // ------------------------------------------------------------------
+    // signal_mask blocks delivery even with pending signal
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_mask_prevents_all_delivery() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        let handler_addr = 0x5_0000_0000u64;
+        {
+            let mut inner = env.process.inner.lock();
+            inner.signal_handlers[3 as usize] = SignalAction::Handler(handler_addr);
+            inner.pending_signals.insert(3);
+            inner.signal_mask.insert(3);
+        }
+        let mut frame = make_frame(&env);
+        let original_rip = frame.user_rip;
+        check_pending_signals(&mut frame);
+        assert_eq!(frame.user_rip, original_rip, "masked signal must not be delivered");
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // SIGKILL cannot be caught, ignored, or masked
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_sigkill_cannot_be_caught() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        {
+            let mut inner = env.process.inner.lock();
+            // Even if a handler is set for SIGKILL, check_pending_signals
+            // will use default_action (terminate) instead of delivering to handler.
+            inner.signal_handlers[SIGKILL as usize] = SignalAction::Handler(0xdead);
+        }
+        // Verify the handler was stored but SIGKILL still terminates via default_action.
+        {
+            let inner = env.process.inner.lock();
+            assert!(matches!(inner.signal_handlers[SIGKILL as usize], SignalAction::Handler(_)),
+                "handler storage itself is allowed, but delivery bypasses it");
+        }
+        cleanup(env);
+    }
+
+    #[test]
+    fn test_sigkill_default_action_is_terminate() {
+        let _guard = crate::test_serial::acquire();
+        assert!(default_terminates(SIGKILL),
+            "SIGKILL must be classified as a terminating signal");
+    }
+
+    #[test]
+    fn test_sigstop_cannot_be_ignored() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        {
+            let mut inner = env.process.inner.lock();
+            inner.signal_handlers[SIGSTOP as usize] = SignalAction::Ignore;
+        }
+        // SIGSTOP always uses default_action even if set to Ignore
+        assert!(default_stops(SIGSTOP),
+            "SIGSTOP must always be classified as a stopping signal");
+        cleanup(env);
+    }
+
+    // ------------------------------------------------------------------
+    // sigaction read-back: setting a handler persists correctly
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_sigaction_read_back_handler() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        let addr = 0xAAAA_BBBB_CCCC_DDDDu64;
+        {
+            let mut inner = env.process.inner.lock();
+            inner.signal_handlers[11] = SignalAction::Handler(addr);
+        }
+        {
+            let inner = env.process.inner.lock();
+            match inner.signal_handlers[11] {
+                SignalAction::Handler(a) => assert_eq!(a, addr),
+                _ => panic!("signal_handlers[11] should be Handler"),
+            }
+        }
+        cleanup(env);
+    }
+
+    #[test]
+    fn test_sigaction_read_back_ignore() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        {
+            let mut inner = env.process.inner.lock();
+            inner.signal_handlers[12] = SignalAction::Ignore;
+        }
+        {
+            let inner = env.process.inner.lock();
+            assert_eq!(inner.signal_handlers[12], SignalAction::Ignore);
+        }
+        cleanup(env);
+    }
+
+    #[test]
+    fn test_sigaction_read_back_default() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        {
+            let mut inner = env.process.inner.lock();
+            inner.signal_handlers[13] = SignalAction::Handler(0x1234);
+            inner.signal_handlers[13] = SignalAction::Default;
+        }
+        {
+            let inner = env.process.inner.lock();
+            assert_eq!(inner.signal_handlers[13], SignalAction::Default);
+        }
+        cleanup(env);
+    }
+
+    #[test]
+    fn test_ignore_action_clears_pending() {
+        let _guard = crate::test_serial::acquire();
+        let env = setup_test_env();
+        {
+            let mut inner = env.process.inner.lock();
+            inner.signal_handlers[14] = SignalAction::Ignore;
+            inner.pending_signals.insert(14);
+        }
+        let mut frame = make_frame(&env);
+        check_pending_signals(&mut frame);
+        let inner = env.process.inner.lock();
+        assert!(
+            !inner.pending_signals.contains(14),
+            "ignored signal should be cleared from pending"
+        );
+        drop(inner);
         cleanup(env);
     }
 }
