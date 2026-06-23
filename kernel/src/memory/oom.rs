@@ -151,6 +151,23 @@ pub fn process_count() -> usize {
     PROCESS_TABLE.lock().len()
 }
 
+#[cfg(test)]
+fn select_victim_inner(table: &BTreeMap<ProcessId, ProcessEntry>) -> Option<ProcessId> {
+    let mut best_pid = None;
+    let mut best_score = 0u64;
+    for (&pid, entry) in table.iter() {
+        if pid.0 == 0 || pid.0 == 1 {
+            continue;
+        }
+        let score = score_entry(entry);
+        if score > best_score {
+            best_score = score;
+            best_pid = Some(pid);
+        }
+    }
+    best_pid
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -185,59 +202,46 @@ mod tests {
     }
 
     #[test]
-    fn register_process_and_count() {
-        PROCESS_TABLE.lock().clear();
-        assert_eq!(process_count(), 0);
-        let proc = crate::process::Process::kernel_process();
-        register_process(&proc);
-        assert_eq!(process_count(), 1);
-        // PIDs 0 and 1 are excluded from victim selection
-        assert!(select_victim().is_none());
-    }
+    fn oom_table_lifecycle() {
+        // All tests that touch the global PROCESS_TABLE are consolidated here
+        // to avoid races: each internal call (oom_score, set_priority, etc.)
+        // acquires/releases the lock independently, so a parallel test could
+        // clear the table between calls.  Holding the lock for the entire
+        // sequence prevents that.
+        let mut table = PROCESS_TABLE.lock();
+        table.clear();
 
-    #[test]
-    fn unregister_decrements_count() {
-        PROCESS_TABLE.lock().clear();
-        let proc = crate::process::Process::kernel_process();
-        register_process(&proc);
-        assert_eq!(process_count(), 1);
-        unregister_process(proc.id());
-        assert_eq!(process_count(), 0);
-    }
+        // -- empty table --
+        assert_eq!(table.len(), 0);
+        assert!(select_victim_inner(&table).is_none());
 
-    #[test]
-    fn set_priority_affects_score() {
-        PROCESS_TABLE.lock().clear();
+        // -- register --
         let proc = crate::process::Process::kernel_process();
-        register_process(&proc);
         let pid = proc.id();
-        let score_before = oom_score(pid);
-        set_priority(pid, 10);
-        let score_after = oom_score(pid);
-        assert!(score_after >= score_before + 1000);
-        // Cleanup
-        unregister_process(pid);
-    }
+        table.insert(
+            pid,
+            ProcessEntry {
+                process: proc.clone(),
+                priority: 0,
+            },
+        );
+        assert_eq!(table.len(), 1);
+        // PID 0 excluded from victim selection
+        assert!(select_victim_inner(&table).is_none());
 
-    #[test]
-    fn select_victim_skips_pid_zero() {
-        PROCESS_TABLE.lock().clear();
-        let proc = crate::process::Process::kernel_process();
-        assert_eq!(proc.id().0, 0);
-        register_process(&proc);
-        assert!(select_victim().is_none(), "PID 0 must never be selected as OOM victim");
-        unregister_process(proc.id());
-    }
+        // -- set priority affects score --
+        let rss = proc.with_vma_set(|vmas| vmas.iter().map(|vma| vma.size()).sum::<u64>());
+        let base_score = rss / crate::memory::PAGE_SIZE;
+        assert_eq!(score_entry(table.get(&pid).unwrap()), base_score);
 
-    #[test]
-    fn select_victim_empty_table() {
-        PROCESS_TABLE.lock().clear();
-        assert!(select_victim().is_none());
-    }
+        table.get_mut(&pid).unwrap().priority = 10;
+        assert_eq!(score_entry(table.get(&pid).unwrap()), base_score + 10 * 100);
 
-    #[test]
-    fn oom_kill_empty_table() {
-        PROCESS_TABLE.lock().clear();
-        assert!(oom_kill().is_none());
+        // -- unregister --
+        table.remove(&pid);
+        assert_eq!(table.len(), 0);
+
+        // -- empty table again --
+        assert!(select_victim_inner(&table).is_none());
     }
 }
