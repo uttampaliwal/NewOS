@@ -126,7 +126,10 @@ pub fn start_scheduling() -> ! {
             next_task.state = super::TaskState::Running;
             sched.cpu_current[cpu] = Some(next_task);
             sched.cpu_current_id[cpu] = sched.cpu_current[cpu].as_ref().map(|t| t.id);
-            let next_ptr = sched.cpu_current[cpu].as_ref().unwrap().stack_ptr;
+            let next_ptr = match sched.cpu_current[cpu].as_ref() {
+                Some(t) => t.stack_ptr,
+                None => unreachable!("scheduler: cpu_current was just set to Some"),
+            };
             drop(sched);
 
             unsafe {
