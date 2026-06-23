@@ -57,6 +57,7 @@ pub struct Task {
     pub policy: scheduler_class::SchedulingPolicy,
     pub priority: u8,
     pub time_slice: u32,
+    pub vruntime: u64,
 }
 
 impl Task {
@@ -71,6 +72,7 @@ impl Task {
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
+            vruntime: 0,
         }
     }
 }
@@ -195,6 +197,7 @@ impl Task {
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
+            vruntime: 0,
         };
         process.add_thread(id);
         task
@@ -306,6 +309,7 @@ impl Task {
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
+            vruntime: 0,
         }
     }
 
@@ -477,6 +481,7 @@ impl Task {
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
+            vruntime: 0,
         }
     }
 
@@ -589,6 +594,7 @@ impl Task {
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
+            vruntime: 0,
         }
     }
 

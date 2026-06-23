@@ -179,6 +179,18 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
             let was_running = prev_task.state == super::TaskState::Running;
             let is_zombie = prev_task.state == super::TaskState::Zombie;
 
+            // CFS vruntime: increment for NORMAL/BATCH tasks by (1024 / nice_weight).
+            // Nice 0 weight = 1024, so vruntime += 1 per tick.
+            if was_running {
+                match prev_task.policy {
+                    super::scheduler_class::SchedulingPolicy::SCHED_NORMAL
+                    | super::scheduler_class::SchedulingPolicy::SCHED_BATCH => {
+                        prev_task.vruntime = prev_task.vruntime.saturating_add(1);
+                    }
+                    _ => {}
+                }
+            }
+
             let mut should_preempt = false;
             if was_running && prev_task.time_slice > 0 && prev_task.time_slice != u32::MAX {
                 prev_task.time_slice -= 1;
@@ -194,6 +206,22 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
 
             if prev_task.policy == super::scheduler_class::SchedulingPolicy::SCHED_FIFO {
                 should_preempt = false;
+            }
+
+            // CFS: for SCHED_NORMAL, preempt if any queued task has lower vruntime.
+            if was_running
+                && matches!(
+                    prev_task.policy,
+                    super::scheduler_class::SchedulingPolicy::SCHED_NORMAL
+                        | super::scheduler_class::SchedulingPolicy::SCHED_BATCH
+                )
+                && let Some(min_vr) = sched.cpu_queues[cpu]
+                    .iter()
+                    .map(|t| t.vruntime)
+                    .min()
+                && min_vr < prev_task.vruntime
+            {
+                should_preempt = true;
             }
 
             // Try local queue first, then steal from busiest CPU.
