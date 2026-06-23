@@ -71,6 +71,10 @@ pub enum Syscall {
     NetSetAddr = 56,
     NetSetRoute = 57,
     NetQuery = 58,
+    Ftruncate = 59,
+    Mmap2 = 60,
+    ShmOpen = 61,
+    ShmUnlink = 62,
 }
 
 impl Syscall {
@@ -134,6 +138,10 @@ impl Syscall {
             56 => Some(Self::NetSetAddr),
             57 => Some(Self::NetSetRoute),
             58 => Some(Self::NetQuery),
+            59 => Some(Self::Ftruncate),
+            60 => Some(Self::Mmap2),
+            61 => Some(Self::ShmOpen),
+            62 => Some(Self::ShmUnlink),
             _ => None,
         }
     }
@@ -188,6 +196,8 @@ pub struct SyscallArgs {
     pub arg1: u64,
     pub arg2: u64,
     pub arg3: u64,
+    pub arg4: u64,
+    pub arg5: u64,
 }
 
 impl SyscallArgs {
@@ -197,6 +207,19 @@ impl SyscallArgs {
             arg1,
             arg2,
             arg3,
+            arg4: 0,
+            arg5: 0,
+        }
+    }
+
+    pub const fn with_ext(arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> Self {
+        Self {
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+            arg5,
         }
     }
 }
@@ -231,7 +254,7 @@ mod tests {
     #[test]
     fn syscall_args_size() {
         use core::mem::size_of;
-        assert_eq!(size_of::<SyscallArgs>(), 32);
+        assert_eq!(size_of::<SyscallArgs>(), 48);
     }
 
     #[test]

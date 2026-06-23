@@ -93,6 +93,10 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::NetSetAddr => handle_net_set_addr(args),
         Syscall::NetSetRoute => handle_net_set_route(args),
         Syscall::NetQuery => handle_net_query(args),
+        Syscall::Ftruncate => handle_ftruncate(args),
+        Syscall::Mmap2 => handle_mmap2(args),
+        Syscall::ShmOpen => handle_shm_open(args),
+        Syscall::ShmUnlink => handle_shm_unlink(args),
     }
 }
 
@@ -1885,6 +1889,203 @@ pub fn syscall_from_user(header: SyscallHeader, args: SyscallArgs) -> SyscallRes
     };
 
     handle_syscall(syscall, args)
+}
+
+// ---------------------------------------------------------------------------
+// POSIX Shared Memory syscalls
+// ---------------------------------------------------------------------------
+
+fn handle_ftruncate(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let size = args.arg1;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let (inode, backend) = {
+        let inner = process.inner.lock();
+        let fd_entry = match inner.fd_table.get(fd).and_then(|e| e.as_ref()) {
+            Some(e) => e.clone(),
+            None => return SyscallResult::Error(9), // EBADF
+        };
+        (fd_entry.inode, fd_entry.backend)
+    };
+
+    match backend.truncate(inode, size) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(_) => SyscallResult::Error(22), // EINVAL
+    }
+}
+
+fn handle_mmap2(args: SyscallArgs) -> SyscallResult {
+    let addr_hint = args.arg0;
+    let length = args.arg1;
+    let prot_bits = args.arg2 as u8;
+    let flags_bits = args.arg3 as u8;
+    let fd = args.arg4 as isize;
+    let offset = args.arg5;
+
+    if length == 0 || length > 0x1000_0000 {
+        return SyscallResult::Error(22);
+    }
+
+    let prot = VmaProt::from_bits_truncate(prot_bits);
+    if crate::memory::demand::check_wx(prot) {
+        return SyscallResult::Error(13);
+    }
+
+    let mut flags = VmaFlags::empty();
+    if flags_bits & 1 != 0 {
+        flags |= VmaFlags::MAP_PRIVATE;
+    }
+    if flags_bits & 2 != 0 {
+        flags |= VmaFlags::MAP_SHARED;
+    }
+    if flags_bits & 4 != 0 {
+        flags |= VmaFlags::MAP_FIXED;
+    }
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let addr = if flags.contains(VmaFlags::MAP_FIXED) {
+        Some(VirtAddr::new(addr_hint))
+    } else {
+        None
+    };
+
+    // Anonymous mapping (fd == -1)
+    if fd == -1 {
+        match process.mmap_anon(addr, length, prot, flags) {
+            Ok(start) => SyscallResult::Success(start.as_u64()),
+            Err(_) => SyscallResult::Error(12), // ENOMEM
+        }
+    } else {
+        // File-backed mapping
+        let fd_usize = fd as usize;
+        let (inode, _fd_offset) = {
+            let inner = process.inner.lock();
+            let fd_entry = match inner.fd_table.get(fd_usize).and_then(|e| e.as_ref()) {
+                Some(e) => e.clone(),
+                None => return SyscallResult::Error(9), // EBADF
+            };
+            (fd_entry.inode, fd_entry.offset.load(core::sync::atomic::Ordering::Relaxed))
+        };
+
+        let page_aligned_len = length.max(4096).next_multiple_of(4096);
+        let vma = crate::memory::vma::Vma {
+            start: match addr {
+                Some(a) => a,
+                None => {
+                    let mut inner = process.inner.lock();
+                    let a = inner.mmap_next_addr;
+                    inner.mmap_next_addr = VirtAddr::new(
+                        inner.mmap_next_addr.as_u64().saturating_add(page_aligned_len),
+                    );
+                    a
+                }
+            },
+            end: VirtAddr::new(0), // set below
+            prot,
+            backing: crate::memory::vma::VmaBacking::FileBacked { inode: crate::memory::vma::InodeId(inode.0), offset },
+            flags,
+        };
+        let start = vma.start;
+        let vma = crate::memory::vma::Vma {
+            end: VirtAddr::new(start.as_u64().saturating_add(page_aligned_len)),
+            ..vma
+        };
+
+        let mut inner = process.inner.lock();
+        match inner.vma_set.insert(vma) {
+            Ok(()) => SyscallResult::Success(start.as_u64()),
+            Err(_) => SyscallResult::Error(12), // ENOMEM
+        }
+    }
+}
+
+fn handle_shm_open(args: SyscallArgs) -> SyscallResult {
+    let name_ptr = args.arg0 as *const u8;
+    let name_len = args.arg1 as usize;
+    let flags = args.arg2 as i32;
+    let _mode = args.arg3;
+
+    if name_ptr.is_null() || name_len == 0 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
+    let name = match core::str::from_utf8(name_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    // Validate name doesn't contain slashes (POSIX requirement)
+    if name.contains('/') {
+        return SyscallResult::Error(22);
+    }
+
+    // Build the /dev/shm/ path
+    let mut path = alloc::string::String::from("/dev/shm/");
+    path.push_str(name);
+
+    // Map flags to OpenFlags
+    let mut open_flags = crate::vfs::OpenFlags::empty();
+    open_flags |= crate::vfs::OpenFlags::RDWR;
+    if flags & 0x40 != 0 {
+        // O_CREAT
+        open_flags |= crate::vfs::OpenFlags::CREAT;
+    }
+    if flags & 0x200 != 0 {
+        // O_EXCL
+        open_flags |= crate::vfs::OpenFlags::EXCL;
+    }
+    if flags & 0x400 != 0 {
+        // O_TRUNC
+        open_flags |= crate::vfs::OpenFlags::TRUNC;
+    }
+
+    let mut vfs = VFS.lock();
+    // Ensure /dev/shm/ directory exists.
+    vfs.mkdir_path("/dev/shm");
+
+    match vfs.open_with_creds(&path, open_flags, 0, 0) {
+        Ok(fd) => SyscallResult::Success(fd as u64),
+        Err(_) => SyscallResult::Error(2), // ENOENT
+    }
+}
+
+fn handle_shm_unlink(args: SyscallArgs) -> SyscallResult {
+    let name_ptr = args.arg0 as *const u8;
+    let name_len = args.arg1 as usize;
+
+    if name_ptr.is_null() || name_len == 0 {
+        return SyscallResult::Error(22);
+    }
+
+    let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
+    let name = match core::str::from_utf8(name_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    if name.contains('/') {
+        return SyscallResult::Error(22);
+    }
+
+    let mut path = alloc::string::String::from("/dev/shm/");
+    path.push_str(name);
+
+    let mut vfs = VFS.lock();
+    if vfs.unlink(&path) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(2)
+    }
 }
 
 #[cfg(test)]

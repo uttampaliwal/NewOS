@@ -380,6 +380,21 @@ impl FsBackend for TmpfsBackend {
         }
         Ok(new_id)
     }
+
+    fn truncate(&self, inode: InodeId, size: u64) -> Result<(), FsError> {
+        let mut inner = self.inner.lock();
+        let node = inner.inodes.get_mut(&inode).ok_or(FsError::NotFound)?;
+        if node.file_type == FileType::Directory {
+            return Err(FsError::IsADirectory);
+        }
+        let new_len = size as usize;
+        if new_len > node.data.len() {
+            node.data.resize(new_len, 0);
+        } else {
+            node.data.truncate(new_len);
+        }
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------

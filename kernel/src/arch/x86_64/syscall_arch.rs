@@ -144,6 +144,8 @@ pub extern "C" fn syscall_dispatch(frame: &mut SyscallFrame) -> u64 {
         arg1: frame.rsi,
         arg2: frame.rdx,
         arg3: frame.r10,
+        arg4: frame.r8,
+        arg5: frame.r9,
     };
 
     // Seccomp-BPF evaluation (checked before any syscall dispatch).

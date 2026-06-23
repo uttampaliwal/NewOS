@@ -128,10 +128,15 @@ impl OpenFlags {
     pub const WRONLY: OpenFlags = OpenFlags(1);
     pub const RDWR: OpenFlags = OpenFlags(2);
     pub const CREAT: OpenFlags = OpenFlags(0o100);
+    pub const EXCL: OpenFlags = OpenFlags(0o200);
     pub const TRUNC: OpenFlags = OpenFlags(0o1000);
     pub const APPEND: OpenFlags = OpenFlags(0o2000);
     pub const CLOEXEC: OpenFlags = OpenFlags(0o2000000);
     pub const DIRECTORY: OpenFlags = OpenFlags(0o200000);
+
+    pub fn empty() -> Self {
+        OpenFlags(0)
+    }
 
     pub fn readable(&self) -> bool {
         self.0 & 3 != 1 // not WRONLY
@@ -162,6 +167,12 @@ impl core::ops::BitOr for OpenFlags {
     type Output = Self;
     fn bitor(self, rhs: Self) -> Self {
         OpenFlags(self.0 | rhs.0)
+    }
+}
+
+impl core::ops::BitOrAssign for OpenFlags {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
     }
 }
 
@@ -387,6 +398,11 @@ pub trait FsBackend: Send + Sync {
     /// Create a new regular file named `name` inside `parent` with the given `mode`.
     /// Returns the `InodeId` of the newly created file.
     fn create(&self, _parent: InodeId, _name: &str, _mode: u32) -> Result<InodeId, FsError> {
+        Err(FsError::NotSupported)
+    }
+
+    /// Truncate `inode` to `size` bytes. Extends with zeros or truncates as needed.
+    fn truncate(&self, _inode: InodeId, _size: u64) -> Result<(), FsError> {
         Err(FsError::NotSupported)
     }
 }
