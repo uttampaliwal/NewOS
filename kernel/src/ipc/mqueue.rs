@@ -45,6 +45,7 @@ impl MessageQueue {
                 for tid in wakers {
                     crate::task::scheduler::wake_task_by_id(tid);
                 }
+                crate::ipc::epoll::notify_all_epoll_waiters();
                 return Ok(());
             }
             #[cfg(test)]
@@ -114,6 +115,7 @@ impl MessageQueue {
         for tid in wakers {
             crate::task::scheduler::wake_task_by_id(tid);
         }
+        crate::ipc::epoll::notify_all_epoll_waiters();
         Ok(())
     }
 
@@ -134,6 +136,7 @@ impl MessageQueue {
             for tid in wakers {
                 crate::task::scheduler::wake_task_by_id(tid);
             }
+            crate::ipc::epoll::notify_all_epoll_waiters();
             return Ok((n, prio));
         }
         Err(11) // EAGAIN

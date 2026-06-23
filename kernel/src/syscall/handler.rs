@@ -2335,7 +2335,7 @@ fn handle_epoll_ctl(args: SyscallArgs) -> SyscallResult {
 fn handle_epoll_wait(args: SyscallArgs) -> SyscallResult {
     let epfd = args.arg0 as usize;
     let max_events = args.arg1 as usize;
-    let _timeout_ms = args.arg2;
+    let _timeout_ms = args.arg2 as i32;
 
     let process = match crate::task::scheduler::get_current_process() {
         Some(p) => p,
@@ -2352,7 +2352,7 @@ fn handle_epoll_wait(args: SyscallArgs) -> SyscallResult {
     };
     drop(inner);
 
-    let ready = instance.wait(max_events);
+    let ready = instance.wait(max_events, _timeout_ms);
     SyscallResult::Success(ready.len() as u64)
 }
 

@@ -84,17 +84,21 @@ impl PipeBuffer {
             for tid in wakers {
                 crate::task::scheduler::wake_task_by_id(tid);
             }
+            crate::ipc::epoll::notify_all_epoll_waiters();
         }
         n
     }
 
     pub fn write(&self, buf: &[u8]) -> usize {
         if !self.is_read_end_open() {
-            // SIGPIPE would be delivered by the VFS layer; return 0 here.
             return 0;
         }
         let mut inner = self.inner.lock();
-        inner.write(buf)
+        let n = inner.write(buf);
+        if n > 0 {
+            crate::ipc::epoll::notify_all_epoll_waiters();
+        }
+        n
     }
 
     pub fn write_blocking(&self, buf: &[u8]) -> usize {

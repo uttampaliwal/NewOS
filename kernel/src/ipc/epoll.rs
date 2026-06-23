@@ -28,6 +28,7 @@ pub struct EpollReady {
 
 pub struct EpollInstance {
     interests: Mutex<BTreeMap<usize, EpollEntry>>,
+    blocked_waiters: Mutex<Vec<crate::task::TaskId>>,
 }
 
 impl Default for EpollInstance {
@@ -40,6 +41,7 @@ impl EpollInstance {
     pub fn new() -> Self {
         EpollInstance {
             interests: Mutex::new(BTreeMap::new()),
+            blocked_waiters: Mutex::new(Vec::new()),
         }
     }
 
@@ -73,16 +75,14 @@ impl EpollInstance {
         }
     }
 
-    pub fn wait(&self, max_events: usize) -> Vec<EpollReady> {
+    fn poll_events(&self, max_events: usize) -> Vec<EpollReady> {
         let interests = self.interests.lock().clone();
-
         let mut ready = Vec::new();
 
         for entry in interests.values() {
             let mut revents = 0u32;
 
-            let process = crate::task::scheduler::get_current_process();
-            if let Some(process) = process {
+            if let Some(process) = crate::task::scheduler::get_current_process() {
                 let inner = process.inner.lock();
                 if let Some(fd_entry) = inner.fd_table.get(entry.fd).and_then(|e| e.as_ref()) {
                     match &fd_entry.kind {
@@ -132,6 +132,40 @@ impl EpollInstance {
         ready.truncate(max_events);
         ready
     }
+
+    pub fn wait(&self, max_events: usize, timeout_ms: i32) -> Vec<EpollReady> {
+        // Non-blocking poll if timeout is 0.
+        if timeout_ms == 0 {
+            return self.poll_events(max_events);
+        }
+
+        // Try a non-blocking poll first.
+        let ready = self.poll_events(max_events);
+        if !ready.is_empty() {
+            return ready;
+        }
+
+        // No events ready — block until woken by notify().
+        if let Some(tid) = crate::task::scheduler::get_current_task_id() {
+            self.blocked_waiters.lock().push(tid);
+            crate::task::scheduler::block_current();
+            crate::task::scheduler::yield_task();
+        }
+
+        // Re-poll after being woken.
+        self.poll_events(max_events)
+    }
+
+    /// Wake all tasks blocked in wait() on this epoll instance.
+    pub fn notify(&self) {
+        let wakers: Vec<crate::task::TaskId> = {
+            let mut waiters = self.blocked_waiters.lock();
+            core::mem::take(&mut *waiters)
+        };
+        for tid in wakers {
+            crate::task::scheduler::wake_task_by_id(tid);
+        }
+    }
 }
 
 static EPOLL_INSTANCES: Mutex<BTreeMap<usize, alloc::sync::Arc<EpollInstance>>> =
@@ -157,10 +191,21 @@ pub fn epoll_ctl(epfd: usize, op: u32, fd: usize, events: u32, data: u64) -> Res
     }
 }
 
-pub fn epoll_wait(epfd: usize, max_events: usize) -> Vec<EpollReady> {
+pub fn epoll_wait(epfd: usize, max_events: usize, timeout_ms: i32) -> Vec<EpollReady> {
     let instances = EPOLL_INSTANCES.lock();
     match instances.get(&epfd) {
-        Some(inst) => inst.wait(max_events),
+        Some(inst) => inst.wait(max_events, timeout_ms),
         None => Vec::new(),
+    }
+}
+
+/// Wake all epoll instances that are monitoring any fd.
+/// Called from pipe/socket/mqueue after state changes.
+pub fn notify_all_epoll_waiters() {
+    let instances: Vec<alloc::sync::Arc<EpollInstance>> = {
+        EPOLL_INSTANCES.lock().values().cloned().collect()
+    };
+    for inst in instances {
+        inst.notify();
     }
 }
