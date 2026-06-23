@@ -149,5 +149,6 @@ pub fn init_for_cpu() {
     let mut lapic = unsafe { LocalApic::new(base) };
     unsafe {
         lapic.initialize();
+        lapic.start_timer(0x10000);
     }
 }

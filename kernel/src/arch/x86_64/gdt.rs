@@ -106,11 +106,26 @@ pub fn init_for_cpu(_cpu_id: u32) {
         SS::set_reg(SegmentSelector(0));
         load_tss(GDT.1.tss);
 
-        // Each CPU needs its own GS base for per-CPU data
-        // For now, use the same PER_CPU (will be updated later for true SMP)
-        let per_cpu_ptr = VirtAddr::from_ptr(&raw const PER_CPU);
+        // Allocate a per-CPU PerCpu struct for this CPU and set GS base.
+        let per_cpu = alloc_per_cpu_struct();
+        (*per_cpu).kernel_stack_ptr = 0;
+        (*per_cpu).user_rsp_temp = 0;
+        let per_cpu_ptr = VirtAddr::new(per_cpu as u64);
         GsBase::write(per_cpu_ptr);
         KernelGsBase::write(VirtAddr::zero());
+    }
+}
+
+fn alloc_per_cpu_struct() -> *mut PerCpu {
+    use core::alloc::Layout;
+    let layout = Layout::new::<PerCpu>();
+    unsafe {
+        let ptr = alloc::alloc::alloc(layout) as *mut PerCpu;
+        if ptr.is_null() {
+            panic!("failed to allocate PerCpu struct");
+        }
+        core::ptr::write_bytes(ptr as *mut u8, 0, core::mem::size_of::<PerCpu>());
+        ptr
     }
 }
 

@@ -12,22 +12,65 @@ lazy_static! {
 }
 
 struct Scheduler {
-    tasks: VecDeque<Task>,
-    /// Tasks that are blocked waiting for *any* child to exit.
+    cpu_queues: alloc::vec::Vec<VecDeque<Task>>,
+    cpu_current: alloc::vec::Vec<Option<Task>>,
+    cpu_current_id: alloc::vec::Vec<Option<TaskId>>,
     blocked_tasks: alloc::vec::Vec<Task>,
-    current_task: Option<Task>,
     task_count: usize,
-    current_task_id: Option<TaskId>,
 }
 
 impl Scheduler {
     fn new() -> Self {
+        let cpu_count = crate::smp::get_cpu_count() as usize;
+        let mut cpu_queues = alloc::vec::Vec::with_capacity(cpu_count);
+        let mut cpu_current = alloc::vec::Vec::with_capacity(cpu_count);
+        let mut cpu_current_id = alloc::vec::Vec::with_capacity(cpu_count);
+        for _ in 0..cpu_count {
+            cpu_queues.push(VecDeque::new());
+            cpu_current.push(None);
+            cpu_current_id.push(None);
+        }
         Self {
-            tasks: VecDeque::new(),
+            cpu_queues,
+            cpu_current,
+            cpu_current_id,
             blocked_tasks: alloc::vec![],
-            current_task: None,
             task_count: 0,
-            current_task_id: None,
+        }
+    }
+
+    fn current_cpu_id(&self) -> usize {
+        crate::smp::get_current_cpu_id() as usize
+    }
+
+    /// Find the CPU with the shortest run queue for load balancing.
+    fn least_loaded_cpu(&self) -> usize {
+        let mut min_len = usize::MAX;
+        let mut min_cpu = 0;
+        for (cpu, queue) in self.cpu_queues.iter().enumerate() {
+            if queue.len() < min_len {
+                min_len = queue.len();
+                min_cpu = cpu;
+            }
+        }
+        min_cpu
+    }
+
+    /// Steal a task from the busiest CPU.
+    fn steal_task(&mut self) -> Option<Task> {
+        let my_cpu = self.current_cpu_id();
+        let mut max_len = 0;
+        let mut max_cpu = 0;
+        for (cpu, queue) in self.cpu_queues.iter().enumerate() {
+            if cpu != my_cpu && queue.len() > max_len {
+                max_len = queue.len();
+                max_cpu = cpu;
+            }
+        }
+        if max_len > 1 {
+            self.cpu_queues[max_cpu].pop_back()
+        } else {
+            None
         }
     }
 }
@@ -35,8 +78,10 @@ impl Scheduler {
 pub fn add_task(task: Task) {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
-        let pos = sched.tasks.iter().position(|t| t.priority > task.priority).unwrap_or(sched.tasks.len());
-        sched.tasks.insert(pos, task);
+        let target = sched.least_loaded_cpu();
+        let queue = &mut sched.cpu_queues[target];
+        let pos = queue.iter().position(|t| t.priority > task.priority).unwrap_or(queue.len());
+        queue.insert(pos, task);
         sched.task_count += 1;
     });
 }
@@ -44,18 +89,22 @@ pub fn add_task(task: Task) {
 pub fn remove_task(task_id: TaskId) {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
-        if let Some(ref current) = sched.current_task
+        let cpu = sched.current_cpu_id();
+        if let Some(ref current) = sched.cpu_current[cpu]
             && current.id == task_id
         {
-            sched.current_task = None;
-            sched.current_task_id = None;
+            sched.cpu_current[cpu] = None;
+            sched.cpu_current_id[cpu] = None;
             sched.task_count -= 1;
             return;
         }
-        let len_before = sched.tasks.len();
-        sched.tasks.retain(|t| t.id != task_id);
-        if sched.tasks.len() < len_before {
-            sched.task_count -= 1;
+        for queue in &mut sched.cpu_queues {
+            let len_before = queue.len();
+            queue.retain(|t| t.id != task_id);
+            if queue.len() < len_before {
+                sched.task_count -= 1;
+                return;
+            }
         }
     });
 }
@@ -68,16 +117,16 @@ pub fn start_scheduling() -> ! {
 
     #[cfg(all(target_arch = "x86_64", target_os = "none"))]
     {
-        // Disable interrupts manually; they will be re-enabled by iretq.
         x86_64::instructions::interrupts::disable();
 
         let mut sched = SCHEDULER.lock();
-        if let Some(mut next_task) = sched.tasks.pop_front() {
+        let cpu = sched.current_cpu_id();
+        if let Some(mut next_task) = sched.cpu_queues[cpu].pop_front() {
             next_task.switch_to();
             next_task.state = super::TaskState::Running;
-            sched.current_task = Some(next_task);
-            sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
-            let next_ptr = sched.current_task.as_ref().unwrap().stack_ptr;
+            sched.cpu_current[cpu] = Some(next_task);
+            sched.cpu_current_id[cpu] = sched.cpu_current[cpu].as_ref().map(|t| t.id);
+            let next_ptr = sched.cpu_current[cpu].as_ref().unwrap().stack_ptr;
             drop(sched);
 
             unsafe {
@@ -86,8 +135,6 @@ pub fn start_scheduling() -> ! {
                     "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
                     "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
                     "pop rbp", "pop rdx", "pop rcx", "pop rbx", "pop rax",
-
-                    // Check if we are returning to user mode (CS is at [RSP + 8])
                     "test qword ptr [rsp + 8], 0x3",
                     "jz 2f",
                     "swapgs",
@@ -113,8 +160,8 @@ pub fn yield_task() {
 pub fn get_current_kernel_stack_top() -> usize {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let sched = SCHEDULER.lock();
-        sched
-            .current_task
+        let cpu = sched.current_cpu_id();
+        sched.cpu_current[cpu]
             .as_ref()
             .map(|t| t.kernel_stack_top)
             .unwrap_or(0)
@@ -122,68 +169,63 @@ pub fn get_current_kernel_stack_top() -> usize {
 }
 
 pub fn timer_tick(current_stack_ptr: usize) -> usize {
-    // Increment uptime counter (each tick represents ~10ms if LAPIC is configured that way)
     UPTIME_TICKS.fetch_add(1, Ordering::Relaxed);
 
-    if let Some(mut sched) = SCHEDULER.try_lock()
-        && let Some(mut prev_task) = sched.current_task.take()
-    {
-        // Save current stack pointer
-        prev_task.stack_ptr = current_stack_ptr;
+    if let Some(mut sched) = SCHEDULER.try_lock() {
+        let cpu = sched.current_cpu_id();
+        if let Some(mut prev_task) = sched.cpu_current[cpu].take() {
+            prev_task.stack_ptr = current_stack_ptr;
 
-        let was_running = prev_task.state == super::TaskState::Running;
-        let is_zombie = prev_task.state == super::TaskState::Zombie;
+            let was_running = prev_task.state == super::TaskState::Running;
+            let is_zombie = prev_task.state == super::TaskState::Zombie;
 
-        // Decrement time slice for running tasks.
-        let mut should_preempt = false;
-        if was_running && prev_task.time_slice > 0 && prev_task.time_slice != u32::MAX {
-            prev_task.time_slice -= 1;
-            if prev_task.time_slice == 0 {
-                should_preempt = true;
-            }
-        }
-
-        // SCHED_FIFO tasks run until they block/yield; don't preempt on time slice expiry.
-        if prev_task.policy == super::scheduler_class::SchedulingPolicy::SCHED_FIFO {
-            should_preempt = false;
-        }
-
-        if let Some(mut next_task) = sched.tasks.pop_front() {
-            // There is a next task to switch to.
-            // Only re-queue the previous task if it was preempted (time slice expired)
-            // or if a higher-priority task is available.
-            if was_running && (should_preempt || next_task.priority < prev_task.priority) {
-                prev_task.state = super::TaskState::Ready;
-                prev_task.time_slice = super::scheduler_class::default_timeslice(prev_task.policy);
-                // Insert in priority order (lower number = higher priority).
-                let pos = sched.tasks.iter().position(|t| t.priority > prev_task.priority).unwrap_or(sched.tasks.len());
-                sched.tasks.insert(pos, prev_task);
-            } else if was_running {
-                // Put back the previous task at front, and push next_task to back.
-                sched.tasks.push_back(next_task);
-                next_task = prev_task;
-            }
-
-            // Prepare hardware for the next task
-            next_task.switch_to();
-            next_task.state = super::TaskState::Running;
-            let next_ptr = next_task.stack_ptr;
-            sched.current_task = Some(next_task);
-            sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
-
-            return next_ptr;
-        } else {
-            // No other tasks - check if we should halt
-            if is_zombie {
-                // Last task exited - halt the system
-                crate::serial::println!("[scheduler] All tasks exited. Halting system.");
-                loop {
-                    x86_64::instructions::hlt();
+            let mut should_preempt = false;
+            if was_running && prev_task.time_slice > 0 && prev_task.time_slice != u32::MAX {
+                prev_task.time_slice -= 1;
+                if prev_task.time_slice == 0 {
+                    should_preempt = true;
                 }
             }
-            // No tasks to run, return to current context
-            sched.current_task = Some(prev_task);
-            sched.current_task_id = sched.current_task.as_ref().map(|t| t.id);
+
+            if prev_task.policy == super::scheduler_class::SchedulingPolicy::SCHED_FIFO {
+                should_preempt = false;
+            }
+
+            // Try local queue first, then steal from busiest CPU.
+            let mut next_task = sched.cpu_queues[cpu].pop_front();
+            if next_task.is_none() {
+                next_task = sched.steal_task();
+            }
+
+            if let Some(mut next_task) = next_task {
+                if was_running && (should_preempt || next_task.priority < prev_task.priority) {
+                    prev_task.state = super::TaskState::Ready;
+                    prev_task.time_slice = super::scheduler_class::default_timeslice(prev_task.policy);
+                    let queue = &mut sched.cpu_queues[cpu];
+                    let pos = queue.iter().position(|t| t.priority > prev_task.priority).unwrap_or(queue.len());
+                    queue.insert(pos, prev_task);
+                } else if was_running {
+                    sched.cpu_queues[cpu].push_back(next_task);
+                    next_task = prev_task;
+                }
+
+                next_task.switch_to();
+                next_task.state = super::TaskState::Running;
+                let next_ptr = next_task.stack_ptr;
+                sched.cpu_current[cpu] = Some(next_task);
+                sched.cpu_current_id[cpu] = sched.cpu_current[cpu].as_ref().map(|t| t.id);
+
+                return next_ptr;
+            } else {
+                if is_zombie && sched.task_count == 0 {
+                    crate::serial::println!("[scheduler] CPU {}: All tasks exited. Halting.", cpu);
+                    loop {
+                        x86_64::instructions::hlt();
+                    }
+                }
+                sched.cpu_current[cpu] = Some(prev_task);
+                sched.cpu_current_id[cpu] = sched.cpu_current[cpu].as_ref().map(|t| t.id);
+            }
         }
     }
     current_stack_ptr
@@ -192,8 +234,9 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
 pub fn exit_current_task() -> ! {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
-        if let Some(task) = &mut sched.current_task {
-            crate::serial::println!("[scheduler] Task {} exited/terminated.", task.id.0);
+        let cpu = sched.current_cpu_id();
+        if let Some(ref mut task) = sched.cpu_current[cpu] {
+            crate::serial::println!("[scheduler] CPU {} Task {} exited/terminated.", cpu, task.id.0);
             task.state = super::TaskState::Zombie;
         }
     });
@@ -214,12 +257,15 @@ pub fn get_task_count() -> usize {
 }
 
 pub fn get_current_task_id() -> Option<TaskId> {
-    SCHEDULER.lock().current_task_id
+    let sched = SCHEDULER.lock();
+    let cpu = sched.current_cpu_id();
+    sched.cpu_current_id[cpu]
 }
 
 pub fn get_current_process() -> Option<Process> {
     let sched = SCHEDULER.lock();
-    sched.current_task.as_ref().map(|task| task.process.clone())
+    let cpu = sched.current_cpu_id();
+    sched.cpu_current[cpu].as_ref().map(|task| task.process.clone())
 }
 
 pub fn with_current_task_mut<F, R>(f: F) -> Option<R>
@@ -228,14 +274,16 @@ where
 {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
-        sched.current_task.as_mut().map(f)
+        let cpu = sched.current_cpu_id();
+        sched.cpu_current[cpu].as_mut().map(f)
     })
 }
 
 pub fn set_current_policy(policy: super::scheduler_class::SchedulingPolicy, priority: u8) {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
-        if let Some(ref mut task) = sched.current_task {
+        let cpu = sched.current_cpu_id();
+        if let Some(ref mut task) = sched.cpu_current[cpu] {
             task.policy = policy;
             task.priority = priority;
             task.time_slice = super::scheduler_class::default_timeslice(policy);
@@ -246,29 +294,23 @@ pub fn set_current_policy(policy: super::scheduler_class::SchedulingPolicy, prio
 pub fn get_current_policy() -> Option<(super::scheduler_class::SchedulingPolicy, u8)> {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let sched = SCHEDULER.lock();
-        sched.current_task.as_ref().map(|t| (t.policy, t.priority))
+        let cpu = sched.current_cpu_id();
+        sched.cpu_current[cpu].as_ref().map(|t| (t.policy, t.priority))
     })
 }
 
 pub fn get_current_process_id() -> Option<ProcessId> {
-    SCHEDULER
-        .lock()
-        .current_task
-        .as_ref()
-        .map(|t| t.process.id())
+    let sched = SCHEDULER.lock();
+    let cpu = sched.current_cpu_id();
+    sched.cpu_current[cpu].as_ref().map(|t| t.process.id())
 }
 
-/// Block the current task unconditionally.
-///
-/// The task's state is set to `Blocked` and it is moved off the run queue
-/// into `blocked_tasks`.  The caller must immediately yield after this
-/// returns so the scheduler can switch to another task.
-/// The task will be woken by `wake_task_by_id`.
 pub fn block_current() {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
-        if let Some(mut task) = sched.current_task.take() {
-            sched.current_task_id = None;
+        let cpu = sched.current_cpu_id();
+        if let Some(mut task) = sched.cpu_current[cpu].take() {
+            sched.cpu_current_id[cpu] = None;
             task.state = super::TaskState::Blocked;
             sched.task_count -= 1;
             sched.blocked_tasks.push(task);
@@ -276,8 +318,6 @@ pub fn block_current() {
     });
 }
 
-/// Wake a specific task by its TaskId, moving it from `blocked_tasks` to the
-/// ready queue.
 pub fn wake_task_by_id(task_id: TaskId) {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
@@ -286,46 +326,43 @@ pub fn wake_task_by_id(task_id: TaskId) {
                 let mut task = sched.blocked_tasks.swap_remove(i);
                 task.state = super::TaskState::Ready;
                 sched.task_count += 1;
-                sched.tasks.push_back(task);
+                // Route to least-loaded CPU.
+                let target = sched.least_loaded_cpu();
+                let queue = &mut sched.cpu_queues[target];
+                let pos = queue.iter().position(|t| t.priority > task.priority).unwrap_or(queue.len());
+                queue.insert(pos, task);
                 return;
             }
         }
     });
 }
 
-/// Block the current task until *any* child process of `parent_pid` exits.
-///
-/// The task's state is set to `Blocked` and it is moved off the run queue
-/// into `blocked_tasks`.  The caller must immediately yield after this
-/// returns so the scheduler can switch to another task.
 pub fn block_current_waiting_for_child() {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
-        if let Some(mut task) = sched.current_task.take() {
-            sched.current_task_id = None;
+        let cpu = sched.current_cpu_id();
+        if let Some(mut task) = sched.cpu_current[cpu].take() {
+            sched.cpu_current_id[cpu] = None;
             task.state = super::TaskState::Blocked;
-            sched.task_count -= 1; // no longer in the runnable count
+            sched.task_count -= 1;
             sched.blocked_tasks.push(task);
         }
     });
 }
 
-/// Wake every task that is blocked waiting for children of `parent_pid`.
-///
-/// Called from `exit_current_task` / `handle_exit` after the process has
-/// transitioned to `Zombie`.
 pub fn wake_tasks_waiting_for_parent(parent_pid: ProcessId) {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
         let mut i = 0;
         while i < sched.blocked_tasks.len() {
-            // Wake any blocked task whose process is the parent of the zombie.
             if sched.blocked_tasks[i].process.id() == parent_pid {
                 let mut task = sched.blocked_tasks.swap_remove(i);
                 task.state = super::TaskState::Ready;
                 sched.task_count += 1;
-                sched.tasks.push_back(task);
-                // Don't advance i — the swap moved a different element here.
+                let target = sched.least_loaded_cpu();
+                let queue = &mut sched.cpu_queues[target];
+                let pos = queue.iter().position(|t| t.priority > task.priority).unwrap_or(queue.len());
+                queue.insert(pos, task);
             } else {
                 i += 1;
             }
@@ -336,17 +373,20 @@ pub fn wake_tasks_waiting_for_parent(parent_pid: ProcessId) {
 #[cfg(test)]
 pub fn set_current_task_for_test(task: Task) {
     let mut sched = SCHEDULER.lock();
-    sched.current_task_id = Some(task.id);
-    sched.current_task = Some(task);
+    let cpu = sched.current_cpu_id();
+    sched.cpu_current_id[cpu] = Some(task.id);
+    sched.cpu_current[cpu] = Some(task);
 }
 
-/// Reset scheduler state to clean between tests.
 #[cfg(test)]
 pub fn test_reset() {
     let mut sched = SCHEDULER.lock();
-    sched.current_task = None;
-    sched.current_task_id = None;
+    let cpu = sched.current_cpu_id();
+    sched.cpu_current[cpu] = None;
+    sched.cpu_current_id[cpu] = None;
     sched.blocked_tasks.clear();
-    sched.tasks.clear();
+    for queue in &mut sched.cpu_queues {
+        queue.clear();
+    }
     sched.task_count = 0;
 }
