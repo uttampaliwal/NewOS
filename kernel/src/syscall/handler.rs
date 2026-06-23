@@ -97,6 +97,11 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::Mmap2 => handle_mmap2(args),
         Syscall::ShmOpen => handle_shm_open(args),
         Syscall::ShmUnlink => handle_shm_unlink(args),
+        Syscall::MqOpen => handle_mq_open(args),
+        Syscall::MqClose => handle_mq_close(args),
+        Syscall::MqUnlink => handle_mq_unlink(args),
+        Syscall::MqSend => handle_mq_send(args),
+        Syscall::MqReceive => handle_mq_receive(args),
     }
 }
 
@@ -2085,6 +2090,168 @@ fn handle_shm_unlink(args: SyscallArgs) -> SyscallResult {
         SyscallResult::Success(0)
     } else {
         SyscallResult::Error(2)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// POSIX Message Queue syscalls
+// ---------------------------------------------------------------------------
+
+fn handle_mq_open(args: SyscallArgs) -> SyscallResult {
+    let name_ptr = args.arg0 as *const u8;
+    let name_len = args.arg1 as usize;
+    let flags = args.arg2 as i32;
+    let mode = args.arg3 as u32;
+    let max_msgs = args.arg4 as usize;
+    let max_msg_size = args.arg5 as usize;
+
+    if name_ptr.is_null() || name_len == 0 {
+        return SyscallResult::Error(22);
+    }
+
+    let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
+    let name = match core::str::from_utf8(name_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    if name.contains('/') {
+        return SyscallResult::Error(22);
+    }
+
+    let max_msgs = if max_msgs == 0 { crate::ipc::mqueue::MQ_MAX_MSG } else { max_msgs };
+    let max_msg_size = if max_msg_size == 0 { crate::ipc::mqueue::MQ_MSG_SIZE } else { max_msg_size };
+
+    let mq =     match crate::ipc::mqueue::mq_open(name, flags, mode, max_msgs, max_msg_size) {
+        Ok(q) => q,
+        Err(e) => return SyscallResult::Error(e as i64),
+    };
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let mut inner = process.inner.lock();
+    let fd = inner.fd_table.iter().position(|s| s.is_none()).unwrap_or(inner.fd_table.len());
+    if fd >= inner.fd_table.len() {
+        inner.fd_table.resize_with(fd + 1, || None);
+    }
+
+    inner.fd_table[fd] = Some(crate::vfs::FileDescriptor {
+        inode: crate::vfs::InodeId(0),
+        backend: Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+        offset: core::sync::atomic::AtomicU64::new(0),
+        flags: crate::vfs::OpenFlags::RDWR,
+        kind: crate::vfs::FdKind::MessageQueue(mq),
+        name: alloc::string::String::from(name),
+    });
+
+    SyscallResult::Success(fd as u64)
+}
+
+fn handle_mq_close(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let mut inner = process.inner.lock();
+    match inner.fd_table.get_mut(fd) {
+        Some(Some(_)) => {
+            inner.fd_table[fd] = None;
+            SyscallResult::Success(0)
+        }
+        _ => SyscallResult::Error(9), // EBADF
+    }
+}
+
+fn handle_mq_unlink(args: SyscallArgs) -> SyscallResult {
+    let name_ptr = args.arg0 as *const u8;
+    let name_len = args.arg1 as usize;
+
+    if name_ptr.is_null() || name_len == 0 {
+        return SyscallResult::Error(22);
+    }
+
+    let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
+    let name = match core::str::from_utf8(name_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    match crate::ipc::mqueue::mq_unlink(name) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(e) => SyscallResult::Error(e as i64),
+    }
+}
+
+fn handle_mq_send(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let msg_ptr = args.arg1 as *const u8;
+    let msg_len = args.arg2 as usize;
+    let prio = args.arg3 as u32;
+
+    if msg_ptr.is_null() {
+        return SyscallResult::Error(14); // EFAULT
+    }
+
+    let msg_slice = unsafe { core::slice::from_raw_parts(msg_ptr, msg_len) };
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let inner = process.inner.lock();
+    let mq = match inner.fd_table.get(fd).and_then(|e| e.as_ref()) {
+        Some(entry) => match &entry.kind {
+            crate::vfs::FdKind::MessageQueue(q) => Arc::clone(q),
+            _ => return SyscallResult::Error(9),
+        },
+        _ => return SyscallResult::Error(9),
+    };
+    drop(inner);
+
+    match mq.try_send(msg_slice, prio) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(e) => SyscallResult::Error(e as i64),
+    }
+}
+
+fn handle_mq_receive(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let buf_ptr = args.arg1 as *mut u8;
+    let buf_len = args.arg2 as usize;
+
+    if buf_ptr.is_null() {
+        return SyscallResult::Error(14); // EFAULT
+    }
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let inner = process.inner.lock();
+    let mq = match inner.fd_table.get(fd).and_then(|e| e.as_ref()) {
+        Some(entry) => match &entry.kind {
+            crate::vfs::FdKind::MessageQueue(q) => Arc::clone(q),
+            _ => return SyscallResult::Error(9),
+        },
+        _ => return SyscallResult::Error(9),
+    };
+    drop(inner);
+
+    let mut buf = alloc::vec![0u8; buf_len];
+    match mq.try_receive(&mut buf) {
+        Ok((n, _prio)) => {
+            unsafe { core::ptr::copy_nonoverlapping(buf.as_ptr(), buf_ptr, n); }
+            SyscallResult::Success(n as u64)
+        }
+        Err(e) => SyscallResult::Error(e as i64),
     }
 }
 

@@ -75,6 +75,11 @@ pub enum Syscall {
     Mmap2 = 60,
     ShmOpen = 61,
     ShmUnlink = 62,
+    MqOpen = 63,
+    MqClose = 64,
+    MqUnlink = 65,
+    MqSend = 66,
+    MqReceive = 67,
 }
 
 impl Syscall {
@@ -142,6 +147,11 @@ impl Syscall {
             60 => Some(Self::Mmap2),
             61 => Some(Self::ShmOpen),
             62 => Some(Self::ShmUnlink),
+            63 => Some(Self::MqOpen),
+            64 => Some(Self::MqClose),
+            65 => Some(Self::MqUnlink),
+            66 => Some(Self::MqSend),
+            67 => Some(Self::MqReceive),
             _ => None,
         }
     }
