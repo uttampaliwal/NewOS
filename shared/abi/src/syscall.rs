@@ -81,6 +81,9 @@ pub enum Syscall {
     MqSend = 66,
     MqReceive = 67,
     Futex = 68,
+    EpollCreate = 69,
+    EpollCtl = 70,
+    EpollWait = 71,
 }
 
 impl Syscall {
@@ -154,6 +157,9 @@ impl Syscall {
             66 => Some(Self::MqSend),
             67 => Some(Self::MqReceive),
             68 => Some(Self::Futex),
+            69 => Some(Self::EpollCreate),
+            70 => Some(Self::EpollCtl),
+            71 => Some(Self::EpollWait),
             _ => None,
         }
     }

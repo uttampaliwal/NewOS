@@ -103,6 +103,9 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::MqSend => handle_mq_send(args),
         Syscall::MqReceive => handle_mq_receive(args),
         Syscall::Futex => handle_futex(args),
+        Syscall::EpollCreate => handle_epoll_create(args),
+        Syscall::EpollCtl => handle_epoll_ctl(args),
+        Syscall::EpollWait => handle_epoll_wait(args),
     }
 }
 
@@ -2254,6 +2257,96 @@ fn handle_mq_receive(args: SyscallArgs) -> SyscallResult {
         }
         Err(e) => SyscallResult::Error(e as i64),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Epoll syscalls
+// ---------------------------------------------------------------------------
+
+fn handle_epoll_create(_args: SyscallArgs) -> SyscallResult {
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let epfd = match crate::ipc::epoll::epoll_create() {
+        Ok(id) => id,
+        Err(e) => return SyscallResult::Error(e as i64),
+    };
+
+    let instance = match crate::ipc::epoll::epoll_get(epfd) {
+        Some(inst) => inst,
+        None => return SyscallResult::Error(12),
+    };
+
+    let mut inner = process.inner.lock();
+    let fd = inner.fd_table.iter().position(|s| s.is_none()).unwrap_or(inner.fd_table.len());
+    if fd >= inner.fd_table.len() {
+        inner.fd_table.resize_with(fd + 1, || None);
+    }
+
+    inner.fd_table[fd] = Some(crate::vfs::FileDescriptor {
+        inode: crate::vfs::InodeId(0),
+        backend: Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+        offset: core::sync::atomic::AtomicU64::new(0),
+        flags: crate::vfs::OpenFlags::RDWR,
+        kind: crate::vfs::FdKind::Epoll(instance),
+        name: alloc::string::String::from("epoll"),
+    });
+
+    SyscallResult::Success(fd as u64)
+}
+
+fn handle_epoll_ctl(args: SyscallArgs) -> SyscallResult {
+    let epfd = args.arg0 as usize;
+    let op = args.arg1 as u32;
+    let fd = args.arg2 as usize;
+    let events = args.arg3 as u32;
+    let data = args.arg4;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let inner = process.inner.lock();
+    let instance = match inner.fd_table.get(epfd).and_then(|e| e.as_ref()) {
+        Some(entry) => match &entry.kind {
+            crate::vfs::FdKind::Epoll(inst) => Arc::clone(inst),
+            _ => return SyscallResult::Error(9),
+        },
+        _ => return SyscallResult::Error(9),
+    };
+    drop(inner);
+
+    match instance.ctl(op, fd, events, data) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(e) => SyscallResult::Error(e as i64),
+    }
+}
+
+fn handle_epoll_wait(args: SyscallArgs) -> SyscallResult {
+    let epfd = args.arg0 as usize;
+    let max_events = args.arg1 as usize;
+    let _timeout_ms = args.arg2;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let inner = process.inner.lock();
+    let instance = match inner.fd_table.get(epfd).and_then(|e| e.as_ref()) {
+        Some(entry) => match &entry.kind {
+            crate::vfs::FdKind::Epoll(inst) => Arc::clone(inst),
+            _ => return SyscallResult::Error(9),
+        },
+        _ => return SyscallResult::Error(9),
+    };
+    drop(inner);
+
+    let ready = instance.wait(max_events);
+    SyscallResult::Success(ready.len() as u64)
 }
 
 // ---------------------------------------------------------------------------

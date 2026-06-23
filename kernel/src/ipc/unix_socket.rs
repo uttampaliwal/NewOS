@@ -172,6 +172,21 @@ impl UnixSocketState {
         }
     }
 
+    /// Returns (rx_bytes_available, tx_space_available) for epoll-like polling.
+    /// Returns (0, 0) if not connected.
+    pub fn poll(&self) -> (usize, usize) {
+        let inner = self.inner.lock();
+        match &*inner {
+            SocketState::Connected(conn) => {
+                let rx = conn.rx();
+                let tx = conn.tx();
+                (rx.bytes_available(), tx.space_available())
+            }
+            SocketState::Listening { .. } => (1, 0),
+            SocketState::Idle => (0, 0),
+        }
+    }
+
     /// Bind this socket to `path` and start listening.
     #[allow(clippy::result_unit_err)]
     pub fn bind(this: &Arc<Self>, path: &str) -> Result<String, ()> {

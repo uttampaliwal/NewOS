@@ -425,7 +425,7 @@ pub enum FdKind {
     /// A character or block device identified by a [`DeviceKey`].
     Device(DeviceKey),
     /// An epoll file descriptor.
-    Epoll,
+    Epoll(Arc<crate::ipc::epoll::EpollInstance>),
     /// A POSIX message queue descriptor.
     MessageQueue(Arc<crate::ipc::mqueue::MessageQueue>),
 }
@@ -438,7 +438,7 @@ impl core::fmt::Debug for FdKind {
             FdKind::Pipe(_) => write!(f, "Pipe"),
             FdKind::UnixSocket(_) => write!(f, "UnixSocket"),
             FdKind::Device(k) => write!(f, "Device({:?})", k),
-            FdKind::Epoll => write!(f, "Epoll"),
+            FdKind::Epoll(_) => write!(f, "Epoll"),
             FdKind::MessageQueue(_) => write!(f, "MessageQueue"),
         }
     }
