@@ -1,0 +1,179 @@
+use super::SyscallResult;
+use turnix_abi::syscall::SyscallArgs;
+use crate::memory::vma::{VmaFlags, VmaProt};
+use x86_64::VirtAddr;
+
+pub fn handle_brk(_args: SyscallArgs) -> SyscallResult {
+    // Brk syscall for user space memory allocation
+    // arg0: new break address (0 to get current)
+    // Returns the new break address or 0 on error
+    // For now, return error as this requires proper memory management
+    SyscallResult::Error(1)
+}
+
+pub fn handle_mmap_framebuffer_syscall(_args: SyscallArgs) -> SyscallResult {
+    let caller_pid = crate::drivers::gpu::current_pid();
+    match crate::drivers::gpu::handle_mmap_framebuffer(caller_pid) {
+        Ok(addr) => SyscallResult::Success(addr),
+        Err(_) => SyscallResult::Error(-1),
+    }
+}
+
+pub fn handle_mmap(args: SyscallArgs) -> SyscallResult {
+    let addr_hint = args.arg0;
+    let length = args.arg1;
+    let prot_bits = args.arg2 as u8;
+    let flags_bits = args.arg3 as u8;
+
+    if length == 0 || length > 0x1000_0000 {
+        return SyscallResult::Error(22);
+    }
+
+    let prot = VmaProt::from_bits_truncate(prot_bits);
+    if crate::memory::demand::check_wx(prot) {
+        crate::serial::println!(
+            "[mmap] W^X violation: rejecting MAP_ANONYMOUS with PROT_WRITE|PROT_EXEC"
+        );
+        return SyscallResult::Error(13);
+    }
+
+    let mut flags = VmaFlags::empty();
+    if flags_bits & 1 != 0 {
+        flags |= VmaFlags::MAP_PRIVATE;
+    }
+    if flags_bits & 2 != 0 {
+        flags |= VmaFlags::MAP_SHARED;
+    }
+    if flags_bits & 4 != 0 {
+        flags |= VmaFlags::MAP_FIXED;
+    }
+
+    let is_anon = flags_bits & 8 != 0;
+    if !is_anon {
+        return SyscallResult::Error(22);
+    }
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let addr = if flags.contains(VmaFlags::MAP_FIXED) {
+        Some(VirtAddr::new(addr_hint))
+    } else {
+        None
+    };
+
+    match process.mmap_anon(addr, length, prot, flags) {
+        Ok(start) => SyscallResult::Success(start.as_u64()),
+        Err(_) => SyscallResult::Error(11),
+    }
+}
+
+pub fn handle_munmap(args: SyscallArgs) -> SyscallResult {
+    let addr = args.arg0;
+    let length = args.arg1;
+
+    if length == 0 {
+        return SyscallResult::Success(0);
+    }
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    match process.munmap_range(VirtAddr::new(addr), length) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(_) => SyscallResult::Error(1),
+    }
+}
+
+pub fn handle_mmap2(args: SyscallArgs) -> SyscallResult {
+    let addr_hint = args.arg0;
+    let length = args.arg1;
+    let prot_bits = args.arg2 as u8;
+    let flags_bits = args.arg3 as u8;
+    let fd = args.arg4 as isize;
+    let _offset = args.arg5;
+
+    if length == 0 || length > 0x1000_0000 {
+        return SyscallResult::Error(22);
+    }
+
+    let prot = VmaProt::from_bits_truncate(prot_bits);
+    if crate::memory::demand::check_wx(prot) {
+        return SyscallResult::Error(13);
+    }
+
+    let mut flags = VmaFlags::empty();
+    if flags_bits & 1 != 0 {
+        flags |= VmaFlags::MAP_PRIVATE;
+    }
+    if flags_bits & 2 != 0 {
+        flags |= VmaFlags::MAP_SHARED;
+    }
+    if flags_bits & 4 != 0 {
+        flags |= VmaFlags::MAP_FIXED;
+    }
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let addr = if flags.contains(VmaFlags::MAP_FIXED) {
+        Some(VirtAddr::new(addr_hint))
+    } else {
+        None
+    };
+
+    // Anonymous mapping (fd == -1)
+    if fd == -1 {
+        match process.mmap_anon(addr, length, prot, flags) {
+            Ok(start) => SyscallResult::Success(start.as_u64()),
+            Err(_) => SyscallResult::Error(12), // ENOMEM
+        }
+    } else {
+        // File-backed mapping
+        let fd_usize = fd as usize;
+        let (inode, fd_offset) = {
+            let inner = process.inner.lock();
+            let fd_entry = match inner.fd_table.get(fd_usize).and_then(|e| e.as_ref()) {
+                Some(e) => e.clone(),
+                None => return SyscallResult::Error(9), // EBADF
+            };
+            (fd_entry.inode, fd_entry.offset.load(core::sync::atomic::Ordering::Relaxed))
+        };
+
+        let page_aligned_len = length.max(4096).next_multiple_of(4096);
+        let vma = crate::memory::vma::Vma {
+            start: match addr {
+                Some(a) => a,
+                None => {
+                    let mut inner = process.inner.lock();
+                    let a = inner.mmap_next_addr;
+                    inner.mmap_next_addr = VirtAddr::new(
+                        inner.mmap_next_addr.as_u64().saturating_add(page_aligned_len),
+                    );
+                    a
+                }
+            },
+            end: VirtAddr::new(0), // set below
+            prot,
+            backing: crate::memory::vma::VmaBacking::FileBacked { inode: crate::memory::vma::InodeId(inode.0), offset: fd_offset },
+            flags,
+        };
+        let start = vma.start;
+        let vma = crate::memory::vma::Vma {
+            end: VirtAddr::new(start.as_u64().saturating_add(page_aligned_len)),
+            ..vma
+        };
+
+        let mut inner = process.inner.lock();
+        match inner.vma_set.insert(vma) {
+            Ok(()) => SyscallResult::Success(start.as_u64()),
+            Err(_) => SyscallResult::Error(12), // ENOMEM
+        }
+    }
+}
