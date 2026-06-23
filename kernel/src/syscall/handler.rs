@@ -108,6 +108,11 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::EpollWait => handle_epoll_wait(args),
         Syscall::SchedSetScheduler => handle_sched_set_scheduler(args),
         Syscall::SchedGetScheduler => handle_sched_get_scheduler(args),
+        Syscall::CgroupCreate => handle_cgroup_create(args),
+        Syscall::CgroupAddProcess => handle_cgroup_add_process(args),
+        Syscall::CgroupSetCpuMax => handle_cgroup_set_cpu_max(args),
+        Syscall::CgroupSetMemoryMax => handle_cgroup_set_memory_max(args),
+        Syscall::CgroupSetPidsMax => handle_cgroup_set_pids_max(args),
     }
 }
 
@@ -2349,6 +2354,121 @@ fn handle_epoll_wait(args: SyscallArgs) -> SyscallResult {
 
     let ready = instance.wait(max_events);
     SyscallResult::Success(ready.len() as u64)
+}
+
+// ---------------------------------------------------------------------------
+// cgroups v2 syscalls
+// ---------------------------------------------------------------------------
+
+fn handle_cgroup_create(args: SyscallArgs) -> SyscallResult {
+    let parent_ptr = args.arg0 as *const u8;
+    let parent_len = args.arg1 as usize;
+    let name_ptr = args.arg2 as *const u8;
+    let name_len = args.arg3 as usize;
+
+    if parent_ptr.is_null() || parent_len == 0 || name_ptr.is_null() || name_len == 0 {
+        return SyscallResult::Error(22);
+    }
+
+    let parent_slice = unsafe { core::slice::from_raw_parts(parent_ptr, parent_len) };
+    let parent_path = match core::str::from_utf8(parent_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+    let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
+    let name = match core::str::from_utf8(name_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    match crate::cgroup::cgroup_create(parent_path, name) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(e) => SyscallResult::Error(e as i64),
+    }
+}
+
+fn handle_cgroup_add_process(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    let pid = args.arg2 as u32;
+
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(22);
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path = match core::str::from_utf8(path_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    match crate::cgroup::cgroup_add_process(path, pid) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(e) => SyscallResult::Error(e as i64),
+    }
+}
+
+fn handle_cgroup_set_cpu_max(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    let max = args.arg2;
+
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(22);
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path = match core::str::from_utf8(path_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    match crate::cgroup::cgroup_set_cpu_max(path, max) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(e) => SyscallResult::Error(e as i64),
+    }
+}
+
+fn handle_cgroup_set_memory_max(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    let max = args.arg2;
+
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(22);
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path = match core::str::from_utf8(path_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    match crate::cgroup::cgroup_set_memory_max(path, max) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(e) => SyscallResult::Error(e as i64),
+    }
+}
+
+fn handle_cgroup_set_pids_max(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+    let max = args.arg2 as u32;
+
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(22);
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path = match core::str::from_utf8(path_slice) {
+        Ok(s) => s,
+        Err(_) => return SyscallResult::Error(22),
+    };
+
+    match crate::cgroup::cgroup_set_pids_max(path, max) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(e) => SyscallResult::Error(e as i64),
+    }
 }
 
 // ---------------------------------------------------------------------------

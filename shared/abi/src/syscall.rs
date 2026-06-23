@@ -86,6 +86,11 @@ pub enum Syscall {
     EpollWait = 71,
     SchedSetScheduler = 72,
     SchedGetScheduler = 73,
+    CgroupCreate = 74,
+    CgroupAddProcess = 75,
+    CgroupSetCpuMax = 76,
+    CgroupSetMemoryMax = 77,
+    CgroupSetPidsMax = 78,
 }
 
 impl Syscall {
@@ -164,6 +169,11 @@ impl Syscall {
             71 => Some(Self::EpollWait),
             72 => Some(Self::SchedSetScheduler),
             73 => Some(Self::SchedGetScheduler),
+            74 => Some(Self::CgroupCreate),
+            75 => Some(Self::CgroupAddProcess),
+            76 => Some(Self::CgroupSetCpuMax),
+            77 => Some(Self::CgroupSetMemoryMax),
+            78 => Some(Self::CgroupSetPidsMax),
             _ => None,
         }
     }
