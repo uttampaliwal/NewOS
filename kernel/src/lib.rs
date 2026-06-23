@@ -1,5 +1,9 @@
 #![no_std]
 #![cfg_attr(feature = "arch-x86_64", feature(abi_x86_interrupt))]
+// TODO: Switch to #![warn(clippy::undocumented_unsafe_blocks)] once safety
+// comments are backfilled. Currently 352 unsafe blocks lack Safety docs.
+// Track: KNOWN_ISSUES.md #16
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 //! Kernel skeleton for turnix.
 //!

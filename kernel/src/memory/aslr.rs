@@ -74,14 +74,57 @@ fn rdrand_u64() -> Option<u64> {
 lazy_static! {
     static ref ASLR_RNG: Mutex<SimpleRng> = {
         let rng = match SimpleRng::seed_from_rdrand() {
-            Some(r) => r,
+            Some(r) => {
+                log::info!("ASLR: seeded from RDRAND");
+                r
+            }
             None => {
-                log::warn!("ASLR: RDRAND failed, using fallback seed");
-                SimpleRng::new(42)
+                // RDRAND unavailable (older CPUs, VMs, or adversarial fault).
+                // Derive entropy from TSC jitter: read the cycle counter
+                // multiple times and XOR-mix the deltas. Not cryptographic,
+                // but vastly better than a constant seed — the exact TSC
+                // value at boot varies across power cycles and is unknown
+                // to an attacker without local observation.
+                let seed = tsc_jitter_seed();
+                log::warn!(
+                    "ASLR: RDRAND unavailable — seeded from TSC jitter ({:#018x}). \
+                     ASLR entropy is reduced; consider enabling RDRAND in firmware.",
+                    seed,
+                );
+                SimpleRng::new(seed)
             }
         };
         Mutex::new(rng)
     };
+}
+
+/// Derive a non-cryptographic seed from TSC (Time Stamp Counter) jitter.
+///
+/// Reads the cycle counter in a tight loop and mixes the low bits of each
+/// delta into a 64-bit state. The resulting seed varies across power cycles
+/// because the TSC start value is random on each boot (especially under
+/// virtualization). This is **not** cryptographically secure, but it
+/// prevents the catastrophic predictability of a fixed constant.
+fn tsc_jitter_seed() -> u64 {
+    let mut state: u64 = 0;
+    // Safety: rdtsc is a safe, non-privileging instruction on x86_64.
+    // It reads the 64-bit time-stamp counter without side effects.
+    for _ in 0..16 {
+        let lo: u32;
+        let hi: u32;
+        unsafe {
+            core::arch::asm!(
+                "rdtsc",
+                out("eax") lo,
+                out("edx") hi,
+                options(nomem, nostack),
+            );
+        }
+        let tsc = ((hi as u64) << 32) | (lo as u64);
+        state ^= tsc;
+        state = state.wrapping_mul(0x517c1b92_6b5f3e7d);
+    }
+    state
 }
 
 // ---------------------------------------------------------------------------

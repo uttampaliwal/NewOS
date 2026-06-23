@@ -319,6 +319,58 @@ and lifecycle.
 
 ---
 
+## 16. Undocumented Unsafe Blocks (352 instances)
+
+| | |
+|---|---|
+| **Severity** | Medium |
+| **Component** | `kernel/src/` (all subsystems) |
+| **Status** | Open |
+
+**Impact:** 352 unsafe blocks/fns in production code lack `// Safety:`
+comments. For a Rust-first OS, this is the largest gap between stated
+values and actual code. No clippy lint enforces documentation, so the
+debt grows with each new subsystem.
+
+**Proposed Fix:**
+- Enable `#![warn(clippy::undocumented_unsafe_blocks)]` in `kernel/src/lib.rs`
+- Backfill safety comments incrementally by subsystem, starting with:
+  - `memory/paging.rs` and `memory/aslr.rs` (highest risk)
+  - `arch/x86_64/interrupts/` (hardware interaction)
+  - `drv/` (device drivers)
+- Add CI check: deny undocumented unsafe after backfill is complete
+
+**Tracking:** Tracked in `kernel/src/lib.rs` TODO comment
+
+---
+
+## 17. Uneven Test Coverage
+
+| | |
+|---|---|
+| **Severity** | Medium |
+| **Component** | `kernel/src/task/`, `kernel/src/net/` |
+| **Status** | Open |
+
+**Impact:** Scheduler (`task/scheduler.rs`), signal delivery
+(`task/signals.rs`), and networking (`net/socket.rs`,
+`net/smoltcp_iface.rs`) carry real complexity (SMP scheduling, signal
+state machines, socket state transitions) but have the fewest tests.
+These are the hardest subsystems to debug post-hoc.
+
+**Proposed Fix:**
+- Scheduler: tests for SMP load balancing, CFS vruntime fairness,
+  scheduler class switching, cgroup enforcement under contention
+- Signals: tests for signal delivery during sleep/wake, blocked signal
+  queuing, signal handler stack frame construction, SIGKILL/SIGSTOP
+  immutability
+- Networking: socket state machine tests (LISTEN→ESTABLISHED→CLOSE),
+  TCP retransmission, concurrent accept()
+
+**Tracking:** `docs/sota-gap-analysis.md` #1 (Scalability)
+
+---
+
 ## Summary
 
 | # | Issue | Severity | Status |
@@ -338,3 +390,5 @@ and lifecycle.
 | 13 | No KASAN/KFENCE memory safety detection | High | Open |
 | 14 | No lockdep or completion variables | Medium | Partial |
 | 15 | No container runtime or OCI support | Medium | Open |
+| 16 | Undocumented unsafe blocks (352 instances) | Medium | Open |
+| 17 | Uneven test coverage (scheduler, signals, net) | Medium | Open |
