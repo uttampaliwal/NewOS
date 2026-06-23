@@ -6,7 +6,7 @@ use device_manager::{
     default_driver_rules, DriverRuleTable, HotplugSource, RawHotplugEvent, DeviceBus,
     HotplugEventType, parse_hotplug_event,
 };
-use ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError};
+use turnix_ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError};
 
 // ---------------------------------------------------------------------------
 // Real hotplug source (kernel hotplug_subscribe syscall)
@@ -248,7 +248,7 @@ fn handle_ipc(
                 }
                 _ => {
                     Err(IpcError {
-                        code: ipc_proto::ERROR_METHOD_NOT_FOUND,
+                        code: turnix_ipc_proto::ERROR_METHOD_NOT_FOUND,
                         message: format!("unknown method: {method}"),
                     })
                 }

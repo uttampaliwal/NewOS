@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError,
+use turnix_ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError,
     ERROR_SERVICE_NOT_FOUND, ERROR_INTERNAL, ERROR_INVALID_ARGS};
 use service_manager::{ServiceManager, ServiceUnit, ServiceState};
 

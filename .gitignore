@@ -17,6 +17,7 @@ prompts.odt
 *.bin
 *.elf
 *.map
+**/proptest-regressions/
 
 # --- IDEs & Editors ---
 .idea/

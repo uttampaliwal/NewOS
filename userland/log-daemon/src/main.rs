@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError,
+use turnix_ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError,
     ERROR_INTERNAL, ERROR_INVALID_ARGS};
 use log_daemon::{KernelLogSource, LogEntry, LogRotator, FileKernelLogSource};
 

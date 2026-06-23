@@ -309,7 +309,7 @@ impl PackageFetcher {
     /// Fetch a package and return the cached path.
     pub async fn fetch(
         &self,
-        resolved: &tpkg_format::ResolvedPackage,
+        resolved: &turnix_tpkg_format::ResolvedPackage,
     ) -> Result<PathBuf, FetchError> {
         let name = resolved.name.as_str();
         let version = resolved.version.to_string();
@@ -321,7 +321,7 @@ impl PackageFetcher {
         }
 
         match &resolved.source {
-            tpkg_format::PackageSource::Local { path } => {
+            turnix_tpkg_format::PackageSource::Local { path } => {
                 let src = PathBuf::from(path);
                 if src.exists() {
                     std::fs::create_dir_all(&self.cache_dir)
@@ -332,7 +332,7 @@ impl PackageFetcher {
                 }
                 Err(FetchError::NotFound)
             }
-            tpkg_format::PackageSource::Repository { url, .. } => {
+            turnix_tpkg_format::PackageSource::Repository { url, .. } => {
                 let data = Fetcher::http_get(url)?;
                 std::fs::create_dir_all(&self.cache_dir)
                     .map_err(FetchError::IoError)?;

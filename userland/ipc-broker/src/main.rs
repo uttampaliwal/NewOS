@@ -33,7 +33,7 @@ fn main() {
                         // to "org.turnix.Broker" / "Register" conveying the
                         // interface name and methods.
                         match &msg {
-                            ipc_proto::IpcMessage::MethodCall {
+                            turnix_ipc_proto::IpcMessage::MethodCall {
                                 id: _,
                                 interface,
                                 method,
@@ -53,9 +53,9 @@ fn main() {
                                     Ok(()) => {
                                         // Send acknowledgment
                                         if let Err(e) = transport.send(
-                                            &ipc_proto::IpcMessage::MethodReturn {
+                                            &turnix_ipc_proto::IpcMessage::MethodReturn {
                                                 id: 1,
-                                                result: Ok(ipc_proto::IpcValue::Null),
+                                                result: Ok(turnix_ipc_proto::IpcValue::Null),
                                             },
                                         ) {
                                             eprintln!("ipc-broker: ack send failed: {e}");

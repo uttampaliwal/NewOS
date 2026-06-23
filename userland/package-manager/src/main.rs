@@ -50,7 +50,7 @@ async fn main() {
                     std::process::exit(1);
                 }
             };
-            let manifest = match tpkg_format::TpkgManifest::parse(&manifest_content) {
+            let manifest = match turnix_tpkg_format::TpkgManifest::parse(&manifest_content) {
                 Ok(m) => m,
                 Err(e) => {
                     eprintln!("Error: invalid manifest for '{name}': {e}");
@@ -61,11 +61,11 @@ async fn main() {
                 eprintln!("Error: invalid version in manifest for '{name}'");
                 std::process::exit(1);
             });
-            let resolved = tpkg_format::ResolvedPackage {
+            let resolved = turnix_tpkg_format::ResolvedPackage {
                 name: manifest.package.name.clone(),
                 version,
                 manifest,
-                source: tpkg_format::PackageSource::Repository {
+                source: turnix_tpkg_format::PackageSource::Repository {
                     url: format!("https://packages.turnix.org/{name}.tpkg"),
                     checksum: String::new(),
                 },
@@ -103,7 +103,7 @@ async fn main() {
                     std::process::exit(1);
                 }
             };
-            let manifest = match tpkg_format::TpkgManifest::parse(&manifest_content) {
+            let manifest = match turnix_tpkg_format::TpkgManifest::parse(&manifest_content) {
                 Ok(m) => m,
                 Err(e) => {
                     eprintln!("Error: invalid manifest for '{name}': {e}");
@@ -114,11 +114,11 @@ async fn main() {
                 eprintln!("Error: invalid version in manifest for '{name}'");
                 std::process::exit(1);
             });
-            let resolved = tpkg_format::ResolvedPackage {
+            let resolved = turnix_tpkg_format::ResolvedPackage {
                 name: manifest.package.name.clone(),
                 version,
                 manifest,
-                source: tpkg_format::PackageSource::Repository {
+                source: turnix_tpkg_format::PackageSource::Repository {
                     url: format!("https://packages.turnix.org/{name}.tpkg"),
                     checksum: String::new(),
                 },

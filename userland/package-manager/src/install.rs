@@ -5,7 +5,7 @@ use crate::fetcher::{FetchError, PackageFetcher, verify_sha256};
 use crate::snapshot::{
     PackageDb, PackageEntry, Snapshot, SnapshotError, SnapshotId, SnapshotManager, SnapshotTrigger,
 };
-use tpkg_format::{PackageSource, ResolvedPackage};
+use turnix_tpkg_format::{PackageSource, ResolvedPackage};
 
 // ---------------------------------------------------------------------------
 // InstallError
@@ -372,7 +372,7 @@ mod tests {
     use crate::snapshot::SnapshotManager;
     use semver::Version;
     use sha2::Digest;
-    use tpkg_format::TpkgManifest;
+    use turnix_tpkg_format::TpkgManifest;
 
     fn test_pipeline(tmp: &Path) -> InstallPipeline {
         let fetcher = PackageFetcher::new_without_client(tmp.join("packages"));
@@ -384,8 +384,8 @@ mod tests {
 
     fn make_resolved_package(name: &str, version: &str) -> ResolvedPackage {
         let manifest = TpkgManifest {
-            package: tpkg_format::PackageManifest {
-                name: tpkg_format::PackageName::new(name).unwrap(),
+            package: turnix_tpkg_format::PackageManifest {
+                name: turnix_tpkg_format::PackageName::new(name).unwrap(),
                 version: version.into(),
                 description: None,
                 license: None,
@@ -397,7 +397,7 @@ mod tests {
             scripts: None,
         };
         ResolvedPackage {
-            name: tpkg_format::PackageName::new(name).unwrap(),
+            name: turnix_tpkg_format::PackageName::new(name).unwrap(),
             version: Version::parse(version).unwrap(),
             manifest,
             source: PackageSource::Local {

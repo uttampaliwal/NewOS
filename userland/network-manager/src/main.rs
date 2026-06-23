@@ -5,7 +5,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
-use ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError,
+use turnix_ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError,
     ERROR_INTERNAL, ERROR_INVALID_ARGS};
 use network_manager::{DhcpLease, InterfaceInfo, InterfaceState, NetworkConfig, NetworkError};
 

@@ -19,7 +19,7 @@ smoltcp = { version = "0.9.0", default-features = false, features = [
     "socket-dhcpv4",
     "socket-dns",
 ] }
-ipc-proto = { path = "../../shared/ipc-proto" }
+turnix-ipc-proto = { path = "../../shared/ipc-proto" }
 
 [dev-dependencies]
 heapless = "0.7"

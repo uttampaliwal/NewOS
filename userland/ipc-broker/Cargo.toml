@@ -9,6 +9,6 @@ publish = false
 workspace = true
 
 [dependencies]
-ipc-proto = { path = "../../shared/ipc-proto" }
+turnix-ipc-proto = { path = "../../shared/ipc-proto" }
 smol = "2"
 async-io = "2"

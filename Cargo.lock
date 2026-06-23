@@ -504,10 +504,10 @@ dependencies = [
 name = "device-manager"
 version = "0.1.0"
 dependencies = [
- "ipc-proto",
  "serde",
  "serde_json",
  "toml",
+ "turnix-ipc-proto",
 ]
 
 [[package]]
@@ -881,10 +881,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "host-benchmarks"
-version = "0.1.0"
-
-[[package]]
 name = "http"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1115,16 +1111,8 @@ name = "ipc-broker"
 version = "0.1.0"
 dependencies = [
  "async-io",
- "ipc-proto",
  "smol",
-]
-
-[[package]]
-name = "ipc-proto"
-version = "0.1.0"
-dependencies = [
- "postcard",
- "serde",
+ "turnix-ipc-proto",
 ]
 
 [[package]]
@@ -1332,10 +1320,10 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "hmac",
- "ipc-proto",
  "serde",
  "serde_json",
  "sha2",
+ "turnix-ipc-proto",
 ]
 
 [[package]]
@@ -1366,10 +1354,10 @@ name = "network-manager"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "ipc-proto",
  "serde",
  "smoltcp",
  "toml",
+ "turnix-ipc-proto",
 ]
 
 [[package]]
@@ -1434,7 +1422,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tough",
- "tpkg-format",
+ "turnix-tpkg-format",
  "url",
  "varisat",
 ]
@@ -2127,9 +2115,9 @@ dependencies = [
 name = "service-manager"
 version = "0.1.0"
 dependencies = [
- "ipc-proto",
  "serde",
  "toml",
+ "turnix-ipc-proto",
 ]
 
 [[package]]
@@ -2601,17 +2589,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
-name = "tpkg-format"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "semver",
- "serde",
- "thiserror 2.0.18",
- "toml",
-]
-
-[[package]]
 name = "tracing"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2643,6 +2620,18 @@ version = "0.1.0"
 [[package]]
 name = "turnix-error"
 version = "0.1.0"
+
+[[package]]
+name = "turnix-host-benchmarks"
+version = "0.1.0"
+
+[[package]]
+name = "turnix-ipc-proto"
+version = "0.1.0"
+dependencies = [
+ "postcard",
+ "serde",
+]
 
 [[package]]
 name = "turnix-kernel"
@@ -2677,6 +2666,17 @@ version = "0.1.0"
 dependencies = [
  "libturnix",
  "turnix-abi",
+]
+
+[[package]]
+name = "turnix-tpkg-format"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "semver",
+ "serde",
+ "thiserror 2.0.18",
+ "toml",
 ]
 
 [[package]]

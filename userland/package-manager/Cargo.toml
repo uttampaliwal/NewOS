@@ -11,7 +11,7 @@ workspace = true
 [dependencies]
 varisat = "0.2"
 semver = { version = "1", features = ["serde"] }
-tpkg-format = { path = "../../shared/tpkg-format" }
+turnix-tpkg-format = { path = "../../shared/tpkg-format" }
 tough = { version = "0.23", default-features = false, features = ["http"] }
 tokio = { version = "1", features = ["full"] }
 url = "2"

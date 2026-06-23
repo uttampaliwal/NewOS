@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ipc_proto::{encode_message, decode_message, IpcError, IpcMessage, IpcValue};
+use turnix_ipc_proto::{encode_message, decode_message, IpcError, IpcMessage, IpcValue};
 
 // ---------------------------------------------------------------------------
 // BrokerError

@@ -1,6 +1,6 @@
 use semver::{Version, VersionReq};
 use std::collections::{BTreeMap, BTreeSet};
-use tpkg_format::{InstallPlan, PackageName};
+use turnix_tpkg_format::{InstallPlan, PackageName};
 use varisat::ExtendFormula;
 
 // ---------------------------------------------------------------------------
