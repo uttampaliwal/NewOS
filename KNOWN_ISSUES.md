@@ -1,7 +1,8 @@
 # Known Issues
 
 > Known limitations that require future work. Each item includes the impact,
-> root cause, and proposed fix.
+> root cause, and proposed fix. Fully resolved items have been removed —
+> see git history for the complete list.
 
 ---
 
@@ -24,25 +25,9 @@ block device. `sync()` marks all inodes clean but does not flush to NVMe.
 This is expected for a memory-backed filesystem and does not affect
 correctness for the current use case.
 
-**Tracking:** `.kiro/specs/turnix-production-readiness/gap-fixes.md` GFS-2, GFS-4
-
 ---
 
-## 2. EVM HMAC Key Is Hardcoded (Resolved)
-
-| | |
-|---|---|
-| **Severity** | High |
-| **Component** | `kernel/src/security/ima.rs` |
-| **Status** | Resolved |
-
-**Resolution:** EVM HMAC key is now derived from TPM via `TPM2_CC_GET_RANDOM`
-at first use. Falls back to hardcoded key when TPM is not available. Key is
-stored in `Mutex<Option<[u8; 32]>>` and lazily initialized.
-
----
-
-## 3. Kernel GP Fault During Userspace Scheduling (Mitigated)
+## 2. Kernel GP Fault During Userspace Scheduling (Mitigated)
 
 | | |
 |---|---|
@@ -57,266 +42,7 @@ The root cause may still require QEMU-level debugging to fully resolve.
 
 ---
 
-## 4. Worker UART Busy-Wait Starves Serial Writes (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Low |
-| **Component** | `kernel/src/boot.rs` (line ~482) |
-| **Status** | Resolved |
-
-**Resolution:** Added bounded retry count (UART_TIMEOUT) to SerialWriter::write_byte()
-to prevent infinite spinning. Added spin::Mutex for concurrent UART access safety.
-Added yield_task() to worker_task() to prevent starvation.
-
----
-
-## 5. Branch Naming Inconsistency (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Low |
-| **Component** | Repository structure |
-| **Status** | Resolved |
-
-**Resolution:** The repository uses `master` as the production branch and
-`development` as the integration branch (Gitflow model). All documentation
-has been updated to reference `master` instead of `main`. CI triggers on
-`master` for production builds.
-
----
-
-## 6. Rust Toolchain Not Pinned (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Low |
-| **Component** | `rust-toolchain.toml` |
-| **Status** | Resolved |
-
-**Resolution:** Toolchain pinned to `nightly-2026-06-22` in `rust-toolchain.toml`.
-
----
-
-## 7. No Security Architecture Documentation (Resolved)
-
-| | |
-|---|---|
-| **Severity** | High |
-| **Component** | `docs/security/` |
-| **Status** | Resolved |
-
-**Resolution:** Created `docs/security/` with six comprehensive documents:
-`threat-model.md` (trust boundaries, attacker models, TCB),
-`capabilities.md` (POSIX.1e capability sets, exec transformation),
-`namespaces.md` (PID, mount, network, user namespace isolation),
-`seccomp.md` (BPF interpreter, filter inheritance),
-`lsm.md` (pluggable hook framework, DAC/MAC policies),
-`ima-evm.md` (integrity measurement, EVM verification, TPM integration).
-
----
-
-## 8. No Fuzz Testing Infrastructure (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Medium |
-| **Component** | `fuzz/` |
-| **Status** | Resolved |
-
-**Resolution:** Created `fuzz/` directory with 5 standalone fuzz targets:
-`fuzz_elf_parser` (ELF header parsing), `fuzz_seccomp_bpf` (BPF interpreter),
-`fuzz_ipc_message` (IPC deserialization), `fuzz_vfs_path` (path normalization),
-`fuzz_syscall_args` (argument decoding). Each reads from stdin and tests
-parsing logic for panics. Includes README with cargo-fuzz/AFL integration.
-
----
-
-## 9. No Unified Kernel Error Type (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Medium |
-| **Component** | `shared/error/` |
-| **Status** | Resolved |
-
-**Resolution:** Created `shared/error/` crate (`turnix-error`) with a
-unified `KernelError` enum covering 58 POSIX-compatible error variants.
-Includes `to_errno()` / `from_errno()` conversion, `Display` impl,
-and 3 unit tests. All subsystems can now map internal errors to
-`KernelError` at boundaries.
-
----
-
-## 10. No Userland Observability Commands (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Medium |
-| **Component** | `userland/observability/` |
-| **Status** | Resolved |
-
-**Resolution:** Created `userland/observability/` crate with 5 commands:
-`ps` (process listing via dmesg), `meminfo` (memory info from kernel log),
-`mount` (filesystem mount points), `lsns` (namespace listing),
-`capsh` (POSIX capability inspection via capget syscall). All use
-`no_std` with direct libturnix syscalls.
-
----
-
-## 11. No Performance Benchmark Suite (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Low |
-| **Component** | `benchmarks/` |
-| **Status** | Resolved |
-
-**Resolution:** Created `benchmarks/` crate (`host-benchmarks`) with
-12 host-side benchmarks: SHA-256, BTreeMap insert/lookup, Vec push/sort,
-String format/parse, memcpy/memset, HashMap insert/lookup, bitfield ops.
-Includes throughput and latency metrics. Run with
-`cargo run -p host-benchmarks --release`.
-
----
-
-## 12. No mdBook / Generated Documentation (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Low |
-| **Component** | `book/` |
-| **Status** | Resolved |
-
-**Resolution:** Created `book/` directory with mdBook setup: `book.toml`,
-`SUMMARY.md`, and 20+ chapter files covering architecture, security,
-subsystems, userland, and development. Chapters include real source
-paths and Turnix-specific details. CI job builds rustdoc + mdBook.
-
----
-
-## 13. No README Badges or Screenshots (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Low |
-| **Component** | `README.md` |
-| **Status** | Resolved |
-
-**Resolution:** Added CI status badge, license badge, Rust version badge,
-and test count badge to README header.
-
----
-
-## 14. Kernel Architecture Boundary Undefined (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Medium |
-| **Component** | `docs/architecture/boundaries.md`, `book/src/architecture/boundaries.md` |
-| **Status** | Resolved |
-
-**Resolution:** Created comprehensive kernel/user boundary documentation
-covering: what runs in kernel space (scheduler, VMM, VFS, IPC, security,
-drivers), what runs in user space (init, shell, compositor, daemons),
-IPC surface, potential user-space migrations, and TCB definition with
-line counts.
-
----
-
-## 15. Roadmap Ends at Phase 7, No Future Phases (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Low |
-| **Component** | `docs/roadmap.md` |
-| **Status** | Resolved |
-
-**Resolution:** Added 4 future phases to `docs/roadmap.md`:
-Phase 8 (SMP, APIC, NUMA), Phase 9 (TCP/IP, DNS, HTTP, TLS),
-Phase 10 (Wayland polish, GPU, audio, packages),
-Phase 11 (self-hosting, Rust compiler, native dev env).
-
----
-
-## 16. CI Missing Doc Build and Fuzz Jobs (Resolved)
-
-| | |
-|---|---|
-| **Severity** | Low |
-| **Component** | `.github/workflows/ci.yml` |
-| **Status** | Resolved |
-
-**Resolution:** Extended CI matrix with 3 new jobs:
-`lint` (clippy with `-D warnings`), `docs` (rustdoc + mdBook build with
-artifact upload), `fuzz` (nightly fuzz campaign on master pushes for
-all 5 fuzz targets).
-
----
-
-## 17. No Scheduler Classes (CFS/RT/Deadline) (Resolved)
-
-| | |
-|---|---|
-| **Severity** | High |
-| **Component** | `kernel/src/task/scheduler_class.rs`, `kernel/src/task/scheduler.rs` |
-| **Status** | Resolved |
-
-**Resolution:** Implemented scheduler class framework with `SchedulingPolicy` enum
-(SCHED_NORMAL, SCHED_BATCH, SCHED_FIFO, SCHED_RR, SCHED_IDLE). CFS-style virtual
-runtime (`vruntime`) tracking per task. Timer tick increments vruntime for
-SCHED_NORMAL/BATCH tasks. Preemptive scheduler selects lowest-vruntime task from
-run queue. `SchedSetScheduler`/`SchedGetScheduler` syscalls (IDs 72-73) expose
-policy and priority to userland.
-
----
-
-## 18. No cgroups v2 or Resource Accounting (Resolved)
-
-| | |
-|---|---|
-| **Severity** | High |
-| **Component** | `kernel/src/cgroup/mod.rs` |
-| **Status** | Resolved |
-
-**Resolution:** Implemented cgroups v2 hierarchy with per-cgroup process tracking.
-CPU controller: `cpu_used` tick accounting with `cgroup_cpu_tick()` called from
-scheduler timer_tick — preempts process when quota exhausted. Memory controller:
-`memory_used` tracking via `cgroup_memory_alloc()`/`cgroup_memory_free()` called
-from demand paging — OOM-kills process when `memory_max` exceeded. PIDs controller:
-`pids_max` limit enforced at fork time. Syscalls: `CgroupCreate` (74),
-`CgroupAddProcess` (75), `CgroupSetCpuMax` (76), `CgroupSetMemoryMax` (77),
-`CgroupSetPidsMax` (78). Processes track their `cgroup_path` in the PCB.
-
----
-
-## 19. No Async I/O (epoll, io_uring, futex) (Resolved)
-
-| | |
-|---|---|
-| **Severity** | High |
-| **Component** | `kernel/src/ipc/epoll.rs`, `kernel/src/ipc/futex.rs`, `kernel/src/ipc/mqueue.rs`, `kernel/src/ipc/shm.rs` |
-| **Status** | Resolved |
-
-**Resolution:** Implemented epoll, futex, POSIX message queues, and POSIX shared memory.
-
-- **epoll**: `EpollCreate` (69), `EpollCtl` (70), `EpollWait` (71) with
-  `EPOLLIN`/`EPOLLOUT`/`EPOLLRDHUP`. Blocking wait via `blocked_waiters` list.
-  Global `notify_all_epoll_waiters()` triggered by pipe/socket/mqueue state changes.
-- **futex**: `Futex` (68) with `FUTEX_WAIT`/`FUTEX_WAKE` for userspace
-  synchronization primitives. Hash-table-based wait queue.
-- **POSIX message queues**: `MqOpen` (63), `MqClose` (64), `MqUnlink` (65),
-  `MqSend` (66), `MqReceive` (67). Blocking send/receive with notification.
-- **POSIX shared memory**: `ShmOpen` (61), `ShmUnlink` (62). Wraps VFS
-  operations on `/dev/shm/`.
-
-**Remaining:** io_uring not yet implemented.
-
-**Tracking:** `docs/roadmap.md` Phase 10, `docs/sota-gap-analysis.md` #9
-
----
-
-## 20. No Performance Tracing (ftrace, kprobes)
+## 3. No Performance Tracing (ftrace, kprobes)
 
 | | |
 |---|---|
@@ -335,11 +61,11 @@ observability infrastructure.
 - perf: hardware performance counter abstraction (PMU)
 - trace output to ring buffer, readable via /sys/kernel/debug/tracing
 
-**Tracking:** `docs/roadmap.md` Phase 13, `docs/sota-gap-analysis.md` #10
+**Tracking:** `docs/roadmap.md` Phase 14, `docs/sota-gap-analysis.md` #10
 
 ---
 
-## 21. No Memory Compression (zswap/zram)
+## 4. No Memory Compression (zswap/zram)
 
 | | |
 |---|---|
@@ -357,11 +83,9 @@ responsiveness under memory pressure.
 - LZ4 or ZSTD compression for swap pages
 - same-page merging (KSM) for deduplication
 
-**Tracking:** `docs/roadmap.md` Phase 11, `docs/sota-gap-analysis.md` #5
-
 ---
 
-## 22. No Crash Dump / Reliability Engineering
+## 5. No Crash Dump / Reliability Engineering
 
 | | |
 |---|---|
@@ -380,11 +104,11 @@ injection for robustness testing. Production kernels require all three.
 - Panic reports: structured JSON logs with backtrace, oops decoding
 - Kernel checkpoints: save/restore state for live migration
 
-**Tracking:** `docs/roadmap.md` Phase 16, `docs/sota-gap-analysis.md` #16
+**Tracking:** `docs/roadmap.md` Phase 15
 
 ---
 
-## 23. No Kernel Crypto API
+## 6. No Kernel Crypto API
 
 | | |
 |---|---|
@@ -403,11 +127,9 @@ filesystems, network traffic, or key management.
 - Random: /dev/random, /dev/urandom, getrandom syscall
 - HMAC for IMA/EVM and network authentication
 
-**Tracking:** `docs/roadmap.md` Phase 12, `docs/sota-gap-analysis.md` #6
-
 ---
 
-## 24. No Device Driver PM / Hotplug Framework
+## 7. No Device Driver PM / Hotplug Framework
 
 | | |
 |---|---|
@@ -426,11 +148,11 @@ cannot do runtime power management. Laptops and servers require all three.
 - Hotplug: USB device insertion/removal events, PCI hot-add/hot-remove
 - Device tree or ACPI-based enumeration
 
-**Tracking:** `docs/roadmap.md` Phase 16, `docs/sota-gap-analysis.md` #8
+**Tracking:** `docs/roadmap.md` Phase 16
 
 ---
 
-## 25. No Hypervisor / Virtualization Support
+## 8. No Hypervisor / Virtualization Support
 
 | | |
 |---|---|
@@ -449,11 +171,11 @@ legacy software.
 - /dev/kvm interface for userspace hypervisors
 - VM launch: load ELF kernel into guest physical memory, set up CR3/CR4
 
-**Tracking:** `docs/roadmap.md` Phase 16, `docs/sota-gap-analysis.md` #14
+**Tracking:** `docs/roadmap.md` Phase 16
 
 ---
 
-## 26. No Userspace Coreutils / POSIX Utilities
+## 9. No Userspace Coreutils / POSIX Utilities
 
 | | |
 |---|---|
@@ -473,32 +195,17 @@ coreutils is not usable for development or daily use.
 - Archives: tar, gzip, gunzip
 - Network: curl, wget, ssh, scp
 
-**Tracking:** `docs/roadmap.md` Phase 15, `docs/sota-gap-analysis.md` #12
+**Tracking:** `docs/roadmap.md` Phase 15
 
 ---
 
-## 27. No RCU or Per-CPU Infrastructure
-
-| | |
-|---|---|
-| **Severity** | High |
-| **Component** | `kernel/src/sync/rcu.rs`, `kernel/src/sync/percpu.rs` |
-| **Status** | **Resolved** |
-
-**Resolution:** Implemented in Phase 12. RCU core with `rcu_read_lock`/`rcu_read_unlock`,
-`synchronize_rcu`, `call_rcu` for deferred cleanup. Per-CPU counters via `PerCpuCounter`,
-`PerCpuAtomicCounter`, and `PerCpuBool`. Tree RCU and per-CPU slab caches remain as
-future enhancements.
-
----
-
-## 28. No io_uring or Zero-Copy Networking
+## 10. No io_uring or Zero-Copy Networking
 
 | | |
 |---|---|
 | **Severity** | High |
 | **Component** | `kernel/src/io/uring.rs` (new) |
-| **Status** | **Partial** |
+| **Status** | Partial |
 
 **Resolution:** eventfd and timerfd implemented in Phase 13 (Syscalls 79-84).
 io_uring and zero-copy networking remain open.
@@ -511,13 +218,12 @@ highest-impact missing subsystem for network servers and storage workloads.
 - Registered buffers and files for pinned memory
 - Linked operations for dependent syscalls
 - Zero-copy: sendfile, MSG_ZEROCOPY, splice
-- eventfd and timerfd for event notification
 
 **Tracking:** `docs/roadmap.md` Phase 13
 
 ---
 
-## 29. No Huge Pages, THP, NUMA, or KSM
+## 11. No Huge Pages, THP, NUMA, or KSM
 
 | | |
 |---|---|
@@ -540,13 +246,13 @@ No NUMA awareness means poor performance on multi-socket systems.
 
 ---
 
-## 30. No Workqueues, Softirqs, or Tasklets
+## 12. No Workqueues, Softirqs, or Tasklets
 
 | | |
 |---|---|
 | **Severity** | High |
 | **Component** | `kernel/src/sync/workqueue.rs`, `kernel/src/softirq.rs` |
-| **Status** | **Partial** |
+| **Status** | Partial |
 
 **Resolution:** Workqueue and softirq implemented in Phase 12. WorkQueue provides
 FIFO function-pointer dispatch. Softirq provides 8 named vectors with bitmask
@@ -554,7 +260,7 @@ tracking. Tasklets remain as a future enhancement.
 
 ---
 
-## 31. No KASAN/KFENCE Memory Safety Detection
+## 13. No KASAN/KFENCE Memory Safety Detection
 
 | | |
 |---|---|
@@ -576,13 +282,13 @@ kernel development and CI.
 
 ---
 
-## 32. No Lockdep or Seqlocks
+## 14. No Lockdep or Completion Variables
 
 | | |
 |---|---|
 | **Severity** | Medium |
-| **Component** | `kernel/src/sync/lockdep.rs`, `kernel/src/sync/seqlock.rs` |
-| **Status** | **Partial** |
+| **Component** | `kernel/src/sync/lockdep.rs` (new) |
+| **Status** | Partial |
 
 **Resolution:** SeqLock and RwLock implemented in Phase 12. SeqLock provides
 optimistic reader / exclusive writer. RwLock provides multiple-reader /
@@ -590,7 +296,7 @@ single-writer. Lockdep and completion variables remain as future enhancements.
 
 ---
 
-## 33. No Container Runtime or OCI Support
+## 15. No Container Runtime or OCI Support
 
 | | |
 |---|---|
@@ -618,35 +324,17 @@ and lifecycle.
 | # | Issue | Severity | Status |
 |---|-------|----------|--------|
 | 1 | ext4 writes are in-memory only | Medium | Partially Resolved |
-| 2 | EVM HMAC key is hardcoded | High | Resolved |
-| 3 | GP fault during fork/clone | Medium | Mitigated |
-| 4 | UART busy-wait starves serial | Low | Resolved |
-| 5 | Branch naming inconsistency | Low | Resolved |
-| 6 | Rust toolchain not pinned | Low | Resolved |
-| 7 | No security architecture docs | High | Resolved |
-| 8 | No fuzz testing infrastructure | Medium | Resolved |
-| 9 | No unified kernel error type | Medium | Resolved |
-| 10 | No userland observability commands | Medium | Resolved |
-| 11 | No performance benchmark suite | Low | Resolved |
-| 12 | No mdBook / generated docs | Low | Resolved |
-| 13 | No README badges or screenshots | Low | Resolved |
-| 14 | Kernel architecture boundary undefined | Medium | Resolved |
-| 15 | Roadmap ends at Phase 7 | Low | Resolved |
-| 16 | CI missing doc build and fuzz jobs | Low | Resolved |
-| 17 | No scheduler classes (CFS/RT/deadline) | High | Resolved |
-| 18 | No cgroups v2 or resource accounting | High | Resolved |
-| 19 | No async I/O (epoll, futex) | High | Resolved |
-| 20 | No performance tracing (ftrace, kprobes) | High | Open |
-| 21 | No memory compression (zswap/zram) | Medium | Open |
-| 22 | No crash dump / reliability engineering | High | Open |
-| 23 | No kernel crypto API | Medium | Open |
-| 24 | No device driver PM / hotplug framework | Medium | Open |
-| 25 | No hypervisor / virtualization support | Medium | Open |
-| 26 | No userspace coreutils / POSIX utilities | Medium | Open |
-| 27 | No RCU or per-CPU infrastructure | High | Open |
-| 28 | No io_uring or zero-copy networking | High | Open |
-| 29 | No huge pages, THP, NUMA, or KSM | High | Open |
-| 30 | No workqueues, softirqs, or tasklets | High | Open |
-| 31 | No KASAN/KFENCE memory safety detection | High | Open |
-| 32 | No lockdep or seqlocks | Medium | Open |
-| 33 | No container runtime or OCI support | Medium | Open |
+| 2 | GP fault during fork/clone | Medium | Mitigated |
+| 3 | No performance tracing (ftrace, kprobes) | High | Open |
+| 4 | No memory compression (zswap/zram) | Medium | Open |
+| 5 | No crash dump / reliability engineering | High | Open |
+| 6 | No kernel crypto API | Medium | Open |
+| 7 | No device driver PM / hotplug framework | Medium | Open |
+| 8 | No hypervisor / virtualization support | Medium | Open |
+| 9 | No userspace coreutils / POSIX utilities | Medium | Open |
+| 10 | No io_uring or zero-copy networking | High | Partial |
+| 11 | No huge pages, THP, NUMA, or KSM | High | Open |
+| 12 | No workqueues, softirqs, or tasklets | High | Partial |
+| 13 | No KASAN/KFENCE memory safety detection | High | Open |
+| 14 | No lockdep or completion variables | Medium | Partial |
+| 15 | No container runtime or OCI support | Medium | Open |
