@@ -10,3 +10,8 @@
 pub fn uptime_us() -> u64 {
     crate::task::scheduler::get_uptime_ticks() * 1000
 }
+
+/// Get the raw scheduler uptime in ticks (1 tick = 1 ms).
+pub fn uptime_ticks() -> u64 {
+    crate::task::scheduler::get_uptime_ticks()
+}

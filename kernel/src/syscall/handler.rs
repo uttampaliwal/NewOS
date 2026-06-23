@@ -113,6 +113,12 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::CgroupSetCpuMax => handle_cgroup_set_cpu_max(args),
         Syscall::CgroupSetMemoryMax => handle_cgroup_set_memory_max(args),
         Syscall::CgroupSetPidsMax => handle_cgroup_set_pids_max(args),
+        Syscall::EventFdCreate => handle_eventfd_create(args),
+        Syscall::EventFdRead => handle_eventfd_read(args),
+        Syscall::EventFdWrite => handle_eventfd_write(args),
+        Syscall::TimerFdCreate => handle_timerfd_create(args),
+        Syscall::TimerFdSettime => handle_timerfd_settime(args),
+        Syscall::TimerFdGettime => handle_timerfd_gettime(args),
     }
 }
 
@@ -2525,6 +2531,162 @@ fn handle_futex(args: SyscallArgs) -> SyscallResult {
         }
         _ => SyscallResult::Error(22), // EINVAL
     }
+}
+
+fn helper_alloc_fd(process: &crate::process::Process, fd_entry: crate::vfs::FileDescriptor) -> usize {
+    let mut inner = process.inner.lock();
+    let fd = inner.fd_table.iter().position(|s| s.is_none()).unwrap_or(inner.fd_table.len());
+    if fd >= inner.fd_table.len() {
+        inner.fd_table.resize_with(fd + 1, || None);
+    }
+    inner.fd_table[fd] = Some(fd_entry);
+    fd
+}
+
+fn handle_eventfd_create(args: SyscallArgs) -> SyscallResult {
+    let initval = args.arg0;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let efd = alloc::sync::Arc::new(crate::ipc::eventfd::EventFd::new(initval));
+
+    let fd = helper_alloc_fd(
+        &process,
+        crate::vfs::FileDescriptor {
+            inode: crate::vfs::InodeId(0),
+            backend: alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+            offset: core::sync::atomic::AtomicU64::new(0),
+            flags: crate::vfs::OpenFlags::RDWR,
+            kind: crate::vfs::FdKind::EventFd(efd),
+            name: alloc::string::String::from("eventfd"),
+        },
+    );
+
+    SyscallResult::Success(fd as u64)
+}
+
+fn handle_eventfd_read(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let inner = process.inner.lock();
+    let efd = match inner.fd_table.get(fd).and_then(|e| e.as_ref()) {
+        Some(fd_entry) => match &fd_entry.kind {
+            crate::vfs::FdKind::EventFd(efd) => alloc::sync::Arc::clone(efd),
+            _ => return SyscallResult::Error(9), // EBADF (not an eventfd)
+        },
+        None => return SyscallResult::Error(9),
+    };
+    drop(inner);
+
+    match efd.read_value() {
+        Ok(val) => SyscallResult::Success(val),
+        Err(_) => SyscallResult::Error(11), // EAGAIN (would block)
+    }
+}
+
+fn handle_eventfd_write(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let val = args.arg1;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let inner = process.inner.lock();
+    let efd = match inner.fd_table.get(fd).and_then(|e| e.as_ref()) {
+        Some(fd_entry) => match &fd_entry.kind {
+            crate::vfs::FdKind::EventFd(efd) => alloc::sync::Arc::clone(efd),
+            _ => return SyscallResult::Error(9),
+        },
+        None => return SyscallResult::Error(9),
+    };
+    drop(inner);
+
+    match efd.write_value(val) {
+        Ok(()) => SyscallResult::Success(0),
+        Err(_) => SyscallResult::Error(11), // EAGAIN (would block)
+    }
+}
+
+fn handle_timerfd_create(_args: SyscallArgs) -> SyscallResult {
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let tfd = alloc::sync::Arc::new(crate::ipc::timerfd::TimerFd::new());
+    crate::ipc::timerfd::register_timerfd(alloc::sync::Arc::clone(&tfd));
+
+    let fd = helper_alloc_fd(
+        &process,
+        crate::vfs::FileDescriptor {
+            inode: crate::vfs::InodeId(0),
+            backend: alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+            offset: core::sync::atomic::AtomicU64::new(0),
+            flags: crate::vfs::OpenFlags::RDONLY,
+            kind: crate::vfs::FdKind::TimerFd(tfd),
+            name: alloc::string::String::from("timerfd"),
+        },
+    );
+
+    SyscallResult::Success(fd as u64)
+}
+
+fn handle_timerfd_settime(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let initial_ticks = args.arg1;
+    let interval_ticks = args.arg2;
+    let flags = args.arg3 as u32;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let inner = process.inner.lock();
+    let tfd = match inner.fd_table.get(fd).and_then(|e| e.as_ref()) {
+        Some(fd_entry) => match &fd_entry.kind {
+            crate::vfs::FdKind::TimerFd(tfd) => alloc::sync::Arc::clone(tfd),
+            _ => return SyscallResult::Error(9),
+        },
+        None => return SyscallResult::Error(9),
+    };
+    drop(inner);
+
+    tfd.settime(initial_ticks, interval_ticks, flags);
+    SyscallResult::Success(0)
+}
+
+fn handle_timerfd_gettime(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let inner = process.inner.lock();
+    let tfd = match inner.fd_table.get(fd).and_then(|e| e.as_ref()) {
+        Some(fd_entry) => match &fd_entry.kind {
+            crate::vfs::FdKind::TimerFd(tfd) => alloc::sync::Arc::clone(tfd),
+            _ => return SyscallResult::Error(9),
+        },
+        None => return SyscallResult::Error(9),
+    };
+    drop(inner);
+
+    let (remaining, interval) = tfd.gettime();
+    // Encode remaining in low 32 bits, interval in high 32 bits.
+    SyscallResult::Success((remaining & 0xFFFF_FFFF) | (interval << 32))
 }
 
 #[cfg(test)]

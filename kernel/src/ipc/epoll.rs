@@ -112,6 +112,18 @@ impl EpollInstance {
                                 revents |= EPOLLOUT;
                             }
                         }
+                        crate::vfs::FdKind::EventFd(efd) => {
+                            let p = efd.poll();
+                            if entry.events & EPOLLIN != 0 && p & 0x01 != 0 {
+                                revents |= EPOLLIN;
+                            }
+                        }
+                        crate::vfs::FdKind::TimerFd(tfd) => {
+                            let p = tfd.poll();
+                            if entry.events & EPOLLIN != 0 && p & 0x01 != 0 {
+                                revents |= EPOLLIN;
+                            }
+                        }
                         _ => {
                             if entry.events & (EPOLLIN | EPOLLOUT) != 0 {
                                 revents |= entry.events & (EPOLLIN | EPOLLOUT);

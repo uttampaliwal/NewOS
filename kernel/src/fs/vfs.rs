@@ -428,6 +428,10 @@ pub enum FdKind {
     Epoll(Arc<crate::ipc::epoll::EpollInstance>),
     /// A POSIX message queue descriptor.
     MessageQueue(Arc<crate::ipc::mqueue::MessageQueue>),
+    /// An eventfd file descriptor.
+    EventFd(Arc<crate::ipc::eventfd::EventFd>),
+    /// A timerfd file descriptor.
+    TimerFd(Arc<crate::ipc::timerfd::TimerFd>),
 }
 
 impl core::fmt::Debug for FdKind {
@@ -440,6 +444,8 @@ impl core::fmt::Debug for FdKind {
             FdKind::Device(k) => write!(f, "Device({:?})", k),
             FdKind::Epoll(_) => write!(f, "Epoll"),
             FdKind::MessageQueue(_) => write!(f, "MessageQueue"),
+            FdKind::EventFd(_) => write!(f, "EventFd"),
+            FdKind::TimerFd(_) => write!(f, "TimerFd"),
         }
     }
 }
@@ -997,6 +1003,28 @@ impl Vfs {
                 // Sockets don't use file offset.
                 Some(n)
             }
+            FdKind::EventFd(efd) => {
+                match efd.read_value() {
+                    Ok(val) => {
+                        let bytes = val.to_ne_bytes();
+                        let len = buf.len().min(8);
+                        buf[..len].copy_from_slice(&bytes[..len]);
+                        Some(len)
+                    }
+                    Err(_) => None,
+                }
+            }
+            FdKind::TimerFd(tfd) => {
+                match tfd.read_expirations() {
+                    Ok(exps) => {
+                        let bytes = exps.to_ne_bytes();
+                        let len = buf.len().min(8);
+                        buf[..len].copy_from_slice(&bytes[..len]);
+                        Some(len)
+                    }
+                    Err(_) => None,
+                }
+            }
             _ => {
                 let inode = fd.inode;
                 let offset = fd.get_offset();
@@ -1057,6 +1085,27 @@ impl Vfs {
                 }
                 let n = sock.write(buf);
                 Some(n)
+            }
+            FdKind::EventFd(efd) => {
+                let val = if buf.len() >= 8 {
+                    let mut bytes = [0u8; 8];
+                    bytes.copy_from_slice(&buf[..8]);
+                    u64::from_ne_bytes(bytes)
+                } else if !buf.is_empty() {
+                    let mut bytes = [0u8; 8];
+                    bytes[..buf.len()].copy_from_slice(buf);
+                    u64::from_ne_bytes(bytes)
+                } else {
+                    return None;
+                };
+                match efd.write_value(val) {
+                    Ok(()) => Some(8),
+                    Err(_) => None,
+                }
+            }
+            FdKind::TimerFd(_) => {
+                // timerfd is read-only; writes not allowed.
+                None
             }
             _ => {
                 let inode = fd.inode;

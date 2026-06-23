@@ -91,6 +91,12 @@ pub enum Syscall {
     CgroupSetCpuMax = 76,
     CgroupSetMemoryMax = 77,
     CgroupSetPidsMax = 78,
+    EventFdCreate = 79,
+    EventFdRead = 80,
+    EventFdWrite = 81,
+    TimerFdCreate = 82,
+    TimerFdSettime = 83,
+    TimerFdGettime = 84,
 }
 
 impl Syscall {
@@ -174,6 +180,12 @@ impl Syscall {
             76 => Some(Self::CgroupSetCpuMax),
             77 => Some(Self::CgroupSetMemoryMax),
             78 => Some(Self::CgroupSetPidsMax),
+            79 => Some(Self::EventFdCreate),
+            80 => Some(Self::EventFdRead),
+            81 => Some(Self::EventFdWrite),
+            82 => Some(Self::TimerFdCreate),
+            83 => Some(Self::TimerFdSettime),
+            84 => Some(Self::TimerFdGettime),
             _ => None,
         }
     }
