@@ -273,4 +273,15 @@ mod tests {
         assert_eq!(caps.max_transmission_unit, 1500);
         assert_eq!(caps.medium, Medium::Ethernet);
     }
+
+    #[test]
+    fn test_alloc_ephemeral_port_wraps_at_upper_bound() {
+        let mut stack = NET_STACK.lock();
+        stack.next_ephemeral_port = 65535;
+        let first = stack.alloc_ephemeral_port();
+        let second = stack.alloc_ephemeral_port();
+
+        assert_eq!(first, 65535);
+        assert_eq!(second, 49152);
+    }
 }
