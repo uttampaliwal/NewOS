@@ -52,10 +52,7 @@ pub fn ls(buf: &mut [u8]) -> Option<u64> {
 pub use turnix_abi::syscall::Stat;
 
 pub fn stat(path: &str) -> Option<Stat> {
-    let mut st = Stat {
-        size: 0,
-        file_type: 0,
-    };
+    let mut st = Stat::default();
     let res = syscall3(
         Syscall::Stat as u64,
         path.as_ptr() as u64,

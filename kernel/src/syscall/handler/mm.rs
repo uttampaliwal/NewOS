@@ -3,12 +3,40 @@ use turnix_abi::syscall::SyscallArgs;
 use crate::memory::vma::{VmaFlags, VmaProt};
 use x86_64::VirtAddr;
 
-pub fn handle_brk(_args: SyscallArgs) -> SyscallResult {
-    // Brk syscall for user space memory allocation
-    // arg0: new break address (0 to get current)
-    // Returns the new break address or 0 on error
-    // For now, return error as this requires proper memory management
-    SyscallResult::Error(1)
+pub fn handle_brk(args: SyscallArgs) -> SyscallResult {
+    let new_brk = args.arg0;
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+
+    let mut inner = process.inner.lock();
+
+    if new_brk == 0 {
+        // Return current mmap_next_addr (break address)
+        return SyscallResult::Success(inner.mmap_next_addr.as_u64());
+    }
+
+    // Extend the break address
+    let current_brk = inner.mmap_next_addr.as_u64();
+    if new_brk > current_brk {
+        // Growing: allocate anonymous memory from current break to new break
+        let length = new_brk - current_brk;
+        drop(inner);
+        let flags = crate::memory::vma::VmaFlags::MAP_PRIVATE;
+        match process.mmap_anon(None, length, crate::memory::vma::VmaProt::READ | crate::memory::vma::VmaProt::WRITE, flags) {
+            Ok(_start) => {
+                // mmap_anon already advances mmap_next_addr
+                SyscallResult::Success(new_brk)
+            }
+            Err(_) => SyscallResult::Error(12), // ENOMEM
+        }
+    } else {
+        // Shrinking or same: just update the break address
+        inner.mmap_next_addr = VirtAddr::new(new_brk);
+        SyscallResult::Success(new_brk)
+    }
 }
 
 pub fn handle_mmap_framebuffer_syscall(_args: SyscallArgs) -> SyscallResult {
@@ -27,6 +55,13 @@ pub fn handle_mmap(args: SyscallArgs) -> SyscallResult {
 
     if length == 0 || length > 0x1000_0000 {
         return SyscallResult::Error(22);
+    }
+
+    // Exactly one of MAP_PRIVATE (bit 0) or MAP_SHARED (bit 1) must be set.
+    let has_private = flags_bits & 1 != 0;
+    let has_shared = flags_bits & 2 != 0;
+    if has_private == has_shared {
+        return SyscallResult::Error(22); // EINVAL
     }
 
     let prot = VmaProt::from_bits_truncate(prot_bits);

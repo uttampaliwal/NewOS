@@ -69,12 +69,34 @@ pub fn handle_write_file(args: SyscallArgs) -> SyscallResult {
 
 pub fn handle_seek(args: SyscallArgs) -> SyscallResult {
     let fd = args.arg0 as usize;
-    let offset = args.arg1;
+    let offset = args.arg1 as i64;
+    let whence = args.arg2 as i32;
+
     let mut vfs = VFS.lock();
-    if vfs.seek(fd, offset) {
-        SyscallResult::Success(0)
+
+    let new_offset = match whence {
+        0 => offset as u64,                                // SEEK_SET
+        1 => {
+            let cur = match vfs.get_fd_offset(fd) {
+                Some(o) => o,
+                None => return SyscallResult::Error(9),    // EBADF
+            };
+            cur.wrapping_add(offset as u64)                // SEEK_CUR
+        }
+        2 => {
+            let size = match vfs.stat_fd(fd) {
+                Some(s) => s,
+                None => return SyscallResult::Error(9),    // EBADF
+            };
+            size.wrapping_add(offset as u64)               // SEEK_END
+        }
+        _ => return SyscallResult::Error(22),              // EINVAL
+    };
+
+    if vfs.seek(fd, new_offset) {
+        SyscallResult::Success(new_offset)
     } else {
-        SyscallResult::Error(1)
+        SyscallResult::Error(9) // EBADF
     }
 }
 
@@ -132,6 +154,7 @@ pub fn handle_ls(args: SyscallArgs) -> SyscallResult {
 pub fn handle_open(args: SyscallArgs) -> SyscallResult {
     let path_ptr = args.arg0 as *const u8;
     let path_len = args.arg1 as usize;
+    let flags_bits = args.arg2 as u32;
 
     if path_ptr.is_null() || path_len == 0 {
         return SyscallResult::Error(1);
@@ -141,9 +164,9 @@ pub fn handle_open(args: SyscallArgs) -> SyscallResult {
     let path = core::str::from_utf8(path_slice).unwrap_or("");
 
     let mut vfs = VFS.lock();
-    match vfs.open(path) {
-        Some(fd) => SyscallResult::Success(fd as u64),
-        None => SyscallResult::Error(1),
+    match vfs.open_with_creds(path, crate::fs::vfs::OpenFlags(flags_bits), 0, 0) {
+        Ok(fd) => SyscallResult::Success(fd as u64),
+        Err(_) => SyscallResult::Error(1),
     }
 }
 
@@ -157,8 +180,11 @@ pub fn handle_close(args: SyscallArgs) -> SyscallResult {
 
     // Fall back to VFS
     let mut vfs = VFS.lock();
-    vfs.close(fd);
-    SyscallResult::Success(0)
+    if vfs.close(fd) {
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(9) // EBADF
+    }
 }
 
 /// `pipe(pipefd: *mut [u64; 2]) -> 0 on success`

@@ -219,7 +219,7 @@ proptest! {
 
         // Call wait(-1) and capture the exit status.
         let mut status: i32 = 0xdead;
-        let result = handle_wait_impl(-1, &mut status as *mut i32);
+        let result = handle_wait_impl(-1, &mut status as *mut i32, false);
         match result {
             SyscallResult::Success(pid) => {
                 assert_eq!(pid, child_pid.0 as u64,
@@ -267,7 +267,7 @@ fn test_wait_reaps_zombie_child() {
     crate::task::scheduler::set_current_task_for_test(task);
 
     // Call handle_wait_impl — expects Zombie child, should reap it.
-    let result = handle_wait_impl(-1, core::ptr::null_mut());
+    let result = handle_wait_impl(-1, core::ptr::null_mut(), false);
     match result {
         SyscallResult::Success(pid) => {
             assert_eq!(pid, child_pid.0 as u64, "returned wrong child PID");
@@ -302,7 +302,7 @@ fn test_wait_returns_echild_when_no_children() {
     let task = Task::new_test(TaskId::new(), parent_proc, TaskState::Running);
     crate::task::scheduler::set_current_task_for_test(task);
 
-    let result = handle_wait_impl(-1, core::ptr::null_mut());
+    let result = handle_wait_impl(-1, core::ptr::null_mut(), false);
     match result {
         SyscallResult::Error(e) => {
             assert_eq!(e, 10, "expected ECHILD (10), got {}", e);
@@ -336,7 +336,7 @@ fn test_waitpid_reaps_specific_child() {
     crate::task::scheduler::set_current_task_for_test(task);
 
     // Wait specifically for child_a.
-    let result = handle_wait_impl(401, core::ptr::null_mut());
+    let result = handle_wait_impl(401, core::ptr::null_mut(), false);
     match result {
         SyscallResult::Success(pid) => {
             assert_eq!(pid, child_a_pid.0 as u64, "should have reaped child_a");

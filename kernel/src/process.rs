@@ -517,7 +517,7 @@ impl Process {
                 mmap_next_addr: mmap_base,
                 aslr_base,
                 fd_table: retained_fd_table.clone(),
-                signal_mask: SignalSet::empty(), // Reset signals on exec
+                signal_mask: SignalSet::empty(),
                 signal_handlers: [SignalAction::Default; 64],
                 pending_signals: SignalSet::empty(),
                 pending_signal_frame: None,
@@ -706,6 +706,10 @@ impl Process {
 
         {
             let mut current_inner = self.inner.lock();
+            // Preserve signal mask across exec (POSIX requirement)
+            let old_signal_mask = current_inner.signal_mask;
+            // Preserve SIG_IGN handlers, reset custom handlers to Default
+            let old_handlers = current_inner.signal_handlers;
             current_inner.pml4_frame = new_pml4_frame;
             current_inner.entry_point = entry_point;
             current_inner.stack_top = temp_stack_top;
@@ -713,10 +717,17 @@ impl Process {
             current_inner.mmap_next_addr = mmap_base;
             current_inner.aslr_base = aslr_base;
             current_inner.fd_table = retained_fd_table;
-            current_inner.signal_mask = SignalSet::empty();
-            current_inner.signal_handlers = [SignalAction::Default; 64];
+            current_inner.signal_mask = old_signal_mask;
             current_inner.pending_signals = SignalSet::empty();
             current_inner.state = ProcessState::Running;
+            // Preserve SIG_IGN handlers, reset all others to Default
+            for (i, handler) in old_handlers.iter().enumerate() {
+                current_inner.signal_handlers[i] = if *handler == SignalAction::Ignore {
+                    SignalAction::Ignore
+                } else {
+                    SignalAction::Default
+                };
+            }
             // Apply POSIX exec_transform on capabilities.
             let (new_permitted, new_effective) = if let Some(ref fc) = file_caps {
                 let bounding = current_inner.sec_ctx.caps.bounding;

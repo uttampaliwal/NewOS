@@ -564,25 +564,26 @@ pub fn handle_clone(_args: SyscallArgs) -> SyscallResult {
 ///  * `-4`  (EINTR)  if interrupted (future signal support)
 pub fn handle_wait(args: SyscallArgs) -> SyscallResult {
     let status_ptr = args.arg0 as *mut i32;
-    handle_wait_impl(/*pid=*/ -1, status_ptr)
+    handle_wait_impl(/*pid=*/ -1, status_ptr, false)
 }
 
-/// `waitpid(pid, status_ptr, _options) -> child_pid`
+/// `waitpid(pid, status_ptr, options) -> child_pid`
 ///
 /// * `pid == -1`  — wait for any child (same as `wait`)
 /// * `pid  >  0`  — wait for the specific child PID
 pub fn handle_waitpid(args: SyscallArgs) -> SyscallResult {
     let pid       = args.arg0 as i64;
     let status_ptr = args.arg1 as *mut i32;
-    // arg2 = options (WNOHANG etc.) — ignored for now
-    handle_wait_impl(pid as i32, status_ptr)
+    let options = args.arg2 as u32;
+    let nohang = options & 1 != 0;
+    handle_wait_impl(pid as i32, status_ptr, nohang)
 }
 
 /// Common implementation for wait/waitpid.
 ///
 /// `target_pid == -1`  → any child
 /// `target_pid  >  0`  → a specific child
-pub fn handle_wait_impl(target_pid: i32, status_ptr: *mut i32) -> SyscallResult {
+pub fn handle_wait_impl(target_pid: i32, status_ptr: *mut i32, nohang: bool) -> SyscallResult {
     let my_pid = match crate::task::scheduler::get_current_process_id() {
         Some(p) => p,
         None    => return SyscallResult::Error(3), // ESRCH – no current process
@@ -649,6 +650,11 @@ pub fn handle_wait_impl(target_pid: i32, status_ptr: *mut i32) -> SyscallResult 
                 unsafe { status_ptr.write(encoded); }
             }
             return SyscallResult::Success(child_pid.0 as u64);
+        }
+
+        // WNOHANG: return 0 immediately if no zombie child found.
+        if nohang {
+            return SyscallResult::Success(0);
         }
 
         // No zombie child yet — block and wait to be woken by a child's exit.

@@ -239,18 +239,28 @@ pub struct FileStat {
 
 impl FileStat {
     pub fn to_abi(&self) -> turnix_abi::syscall::Stat {
-        use turnix_abi::syscall::*;
-        let abi_type = match self.file_type {
-            FileType::Regular => FILE_TYPE_REGULAR,
-            FileType::Directory => FILE_TYPE_DIRECTORY,
-            FileType::Device => FILE_TYPE_DEVICE,
-            FileType::Pipe => FILE_TYPE_PIPE,
-            FileType::Socket => FILE_TYPE_REGULAR, // no ABI constant yet
-            FileType::Symlink => FILE_TYPE_REGULAR, // no ABI constant yet
+        let mode = match self.file_type {
+            FileType::Regular => 0o100_000u32,
+            FileType::Directory => 0o040_000u32,
+            FileType::Device => 0o060_000u32,
+            FileType::Pipe => 0o010_000u32,
+            FileType::Socket => 0o140_000u32,
+            FileType::Symlink => 0o120_000u32,
         };
         turnix_abi::syscall::Stat {
-            size: self.size,
-            file_type: abi_type,
+            st_dev: 0,
+            st_ino: 0,
+            st_mode: mode | 0o644,
+            st_nlink: 1,
+            st_uid: 0,
+            st_gid: 0,
+            st_rdev: 0,
+            st_size: self.size as i64,
+            st_blksize: 4096,
+            st_blocks: (self.size.div_ceil(512)) as i64,
+            st_atime: 0,
+            st_mtime: 0,
+            st_ctime: 0,
         }
     }
 }
@@ -1154,6 +1164,18 @@ impl Vfs {
         } else {
             false
         }
+    }
+
+    /// Get the current offset for fd `fd_idx`.
+    pub fn get_fd_offset(&self, fd_idx: usize) -> Option<u64> {
+        self.open_files.get(&fd_idx).map(|fd| fd.get_offset())
+    }
+
+    /// Get the file size for fd `fd_idx` via stat.
+    pub fn stat_fd(&self, fd_idx: usize) -> Option<u64> {
+        let fd = self.open_files.get(&fd_idx)?;
+        let name = fd.name.clone();
+        self.stat(&name).map(|s| s.size)
     }
 
     // -----------------------------------------------------------------------
