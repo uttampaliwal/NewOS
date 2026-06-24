@@ -38,13 +38,9 @@ fn main() {
                                 interface,
                                 method,
                                 args,
-                            } if interface == "org.turnix.Broker"
-                              && method == "Register" =>
-                            {
-                                let iface = args
-                                    .first()
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("unknown");
+                            } if interface == "org.turnix.Broker" && method == "Register" => {
+                                let iface =
+                                    args.first().and_then(|v| v.as_str()).unwrap_or("unknown");
                                 let registration = ServiceRegistration {
                                     interface: iface.to_string(),
                                     methods: vec![], // optional; validated at call time

@@ -44,7 +44,7 @@ assessment.
 * **Process Table**: PCB tracking process state, signal masks, and file descriptors.
 * **Process Lifecycle**: Full implementation of `fork`, `exec` (ELF loading, ASLR, argument vectors), and parent `wait`/`waitpid` reaping.
 * **Virtual File System (VFS)**: Mount/unmount lifecycle, path resolution over mounts, and inode permissions.
-* **tmpfs & ext4 Backends**: In-memory tmpfs filesystem and ext4 read-only block device integration.
+* **tmpfs & ext4 Backends**: In-memory tmpfs filesystem and in-memory ext4 state management with write support; no block allocator or disk write-back yet.
 * **IPC Mechanisms**: Ring-buffered pipes (with full blocking and `SIGPIPE` delivery) and Unix domain sockets (`AF_UNIX`).
 * **Console Redirection**: Stdin/stdout/stderr file descriptor routing and `dup`/`dup2` redirection.
 * **Init Daemon**: Services manifest manager parsing dependency orders (topological sort) and reaping orphaned children.
@@ -215,8 +215,8 @@ assessment.
 ### 12e. Locking Primitives
 * [x] **Seqlocks**: Optimistic concurrency for read-mostly data
 * [x] **RwLock**: Multiple-reader / single-writer lock with try_read/try_write
-* [ ] **Completion Variables**: Wait/signal for one-shot events
-* [ ] **Lockdep**: Runtime deadlock detection and lock ordering validation
+* [x] **Completion Variables**: Wait/signal for one-shot events
+* [x] **Lockdep**: Runtime deadlock detection and lock ordering validation
 * [ ] **Priority Inheritance Futexes**: `FUTEX_LOCK_PI`/`FUTEX_UNLOCK_PI` for priority inversion avoidance
 
 ---
@@ -292,7 +292,7 @@ assessment.
 
 ### 15d. Memory Safety Detection
 * [x] **KASAN (Kernel Address Sanitizer)**: Heap out-of-bounds, use-after-free detection — shadow memory, poison/free poisoning, violation reporting
-* **KFENCE (Kernel Electric Fence)**: Low-overhead sampling-based memory error detector
+* **KFENCE (Kernel Electric Fence)**: Low-overhead sampling-based memory error detector; prototype exists, allocator integration remains pending
 * **Stack Protector**: Canary-based stack overflow detection (stack canaries already in Phase 4)
 * **Memory Poisoning**: Detect uninitialized memory reads
 
@@ -437,7 +437,7 @@ assessment.
 ## Known Limitations
 
 See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations:
-* ext4 writes are in-memory only (no block allocator, no journal)
+* ext4 writes are in-memory only (no block allocator, no journal, no disk flush)
 * No io_uring or zero-copy networking
 * No ftrace/kprobes/perf observability
 * No crash dump / reliability engineering

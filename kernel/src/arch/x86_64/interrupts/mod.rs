@@ -297,7 +297,11 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
         // Push the raw key event (press/release) for the normalized event bus.
         let pressed = key_event.state == KeyState::Down;
-        let value = if pressed { KEY_STATE_PRESSED } else { KEY_STATE_RELEASED };
+        let value = if pressed {
+            KEY_STATE_PRESSED
+        } else {
+            KEY_STATE_RELEASED
+        };
         let keycode = crate::input::ps2_keycode_to_key(key_event.code);
         crate::input::add_event(InputEvent::new(
             turnix_abi::input::INPUT_KIND_KEY,
@@ -351,11 +355,13 @@ extern "x86-interrupt" fn double_fault_handler(
     use x86_64::registers::control::Cr2;
     let cr2 = Cr2::read_raw();
     crate::serial::println!("EXCEPTION: DOUBLE FAULT");
-    crate::serial::println!("  RIP={:#018x} CS={:#06x}",
+    crate::serial::println!(
+        "  RIP={:#018x} CS={:#06x}",
         stack_frame.instruction_pointer.as_u64(),
         stack_frame.code_segment.0 as u64,
     );
-    crate::serial::println!("  RSP={:#018x} SS={:#06x} CR2={:#018x}",
+    crate::serial::println!(
+        "  RSP={:#018x} SS={:#06x} CR2={:#018x}",
         stack_frame.stack_pointer.as_u64(),
         stack_frame.stack_segment.0 as u64,
         cr2,
@@ -442,7 +448,12 @@ extern "x86-interrupt" fn gpf_handler(stack_frame: InterruptStackFrame, error_co
             "PROCESS FAULT: General Protection Fault with error code {}. Terminating process.",
             error_code
         );
-        crate::serial::println!("  CS={:#x} RIP={:?} RSP={:?}", stack_frame.code_segment.0, stack_frame.instruction_pointer, stack_frame.stack_pointer);
+        crate::serial::println!(
+            "  CS={:#x} RIP={:?} RSP={:?}",
+            stack_frame.code_segment.0,
+            stack_frame.instruction_pointer,
+            stack_frame.stack_pointer
+        );
         crate::serial::println!("  RFLAGS={:#x}", stack_frame.cpu_flags);
         crate::task::scheduler::exit_current_task();
     }

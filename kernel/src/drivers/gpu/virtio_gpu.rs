@@ -571,8 +571,7 @@ mod tests {
         let mut gpu = VirtioGpuDriver::new();
         let id = gpu.create_resource_2d(800, 600, formats::DRM_FORMAT_XRGB8888);
 
-        gpu.attach_backing(id, 0x1000_0000, 800 * 600 * 4)
-            .unwrap();
+        gpu.attach_backing(id, 0x1000_0000, 800 * 600 * 4).unwrap();
         assert_eq!(gpu.resources()[0].backing_addr, Some(0x1000_0000));
 
         gpu.detach_backing(id).unwrap();

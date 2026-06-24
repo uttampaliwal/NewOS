@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
-use crate::dhcp;
 use crate::NetworkError;
+use crate::dhcp;
 
 /// Network interface configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +78,12 @@ mod tests {
     struct MockController;
 
     impl InterfaceController for MockController {
-        fn set_ip(&mut self, _name: &str, _ip: Ipv4Addr, _mask: Ipv4Addr) -> Result<(), NetworkError> {
+        fn set_ip(
+            &mut self,
+            _name: &str,
+            _ip: Ipv4Addr,
+            _mask: Ipv4Addr,
+        ) -> Result<(), NetworkError> {
             Ok(())
         }
         fn set_gateway(&mut self, _name: &str, _gw: Ipv4Addr) -> Result<(), NetworkError> {

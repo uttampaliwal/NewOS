@@ -9,16 +9,16 @@ use alloc::vec::Vec;
 // BPF Instruction constants (subset of classic BPF)
 // ---------------------------------------------------------------------------
 
-pub const BPF_LD: u16   = 0x00;
-pub const BPF_LDX: u16  = 0x01;
-pub const BPF_JMP: u16  = 0x05;
-pub const BPF_ALU: u16  = 0x04;
-pub const BPF_RET: u16  = 0x06;
+pub const BPF_LD: u16 = 0x00;
+pub const BPF_LDX: u16 = 0x01;
+pub const BPF_JMP: u16 = 0x05;
+pub const BPF_ALU: u16 = 0x04;
+pub const BPF_RET: u16 = 0x06;
 pub const BPF_MISC: u16 = 0x07;
 
-pub const BPF_W: u16   = 0x00;
-pub const BPF_H: u16   = 0x08;
-pub const BPF_B: u16   = 0x10;
+pub const BPF_W: u16 = 0x00;
+pub const BPF_H: u16 = 0x08;
+pub const BPF_B: u16 = 0x10;
 
 pub const BPF_IMM: u16 = 0x00;
 pub const BPF_ABS: u16 = 0x20;
@@ -27,17 +27,17 @@ pub const BPF_MEM: u16 = 0x60;
 pub const BPF_LEN: u16 = 0x80;
 pub const BPF_MSH: u16 = 0xa0;
 
-pub const BPF_JA: u16   = 0x00;
-pub const BPF_JEQ: u16  = 0x10;
-pub const BPF_JGT: u16  = 0x20;
-pub const BPF_JGE: u16  = 0x30;
+pub const BPF_JA: u16 = 0x00;
+pub const BPF_JEQ: u16 = 0x10;
+pub const BPF_JGT: u16 = 0x20;
+pub const BPF_JGE: u16 = 0x30;
 pub const BPF_JSET: u16 = 0x40;
 
 pub const BPF_ADD: u16 = 0x00;
 pub const BPF_SUB: u16 = 0x10;
 pub const BPF_MUL: u16 = 0x20;
 pub const BPF_DIV: u16 = 0x30;
-pub const BPF_OR: u16  = 0x40;
+pub const BPF_OR: u16 = 0x40;
 pub const BPF_AND: u16 = 0x50;
 pub const BPF_LSH: u16 = 0x60;
 pub const BPF_RSH: u16 = 0x70;
@@ -45,8 +45,8 @@ pub const BPF_NEG: u16 = 0x80;
 pub const BPF_MOD: u16 = 0x90;
 pub const BPF_XOR: u16 = 0xa0;
 
-pub const BPF_K: u16  = 0x00;
-pub const BPF_X: u16  = 0x08;
+pub const BPF_K: u16 = 0x00;
+pub const BPF_X: u16 = 0x08;
 
 pub const BPF_TAX: u16 = 0x00;
 pub const BPF_TXA: u16 = 0x80;
@@ -113,9 +113,9 @@ pub struct BpfInstruction {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct SeccompData {
-    pub nr: u32,       // syscall number
-    pub arch: u32,     // architecture (AUDIT_ARCH_X86_64 = 0xC000003E)
-    pub ip: u64,       // instruction pointer
+    pub nr: u32,        // syscall number
+    pub arch: u32,      // architecture (AUDIT_ARCH_X86_64 = 0xC000003E)
+    pub ip: u64,        // instruction pointer
     pub args: [u64; 6], // syscall arguments
 }
 
@@ -276,7 +276,7 @@ impl SeccompFilter {
                                 acc = 0;
                             }
                         }
-                        BPF_OR  => acc |= insn.k,
+                        BPF_OR => acc |= insn.k,
                         BPF_AND => acc &= insn.k,
                         BPF_LSH => acc = acc.wrapping_shl(insn.k),
                         BPF_RSH => acc = acc.wrapping_shr(insn.k),
@@ -297,19 +297,17 @@ impl SeccompFilter {
                 0x06 => {
                     let val = match insn.code & 0xe0 {
                         0x00 => insn.k, // BPF_K
-                        _ => acc,        // BPF_A
+                        _ => acc,       // BPF_A
                     };
                     return SeccompAction::from_raw(val);
                 }
 
                 // BPF_MISC
-                0x07 => {
-                    match insn.code & 0xf0 {
-                        BPF_TAX => x = acc,
-                        BPF_TXA => acc = x,
-                        _ => return SeccompAction::KillThread,
-                    }
-                }
+                0x07 => match insn.code & 0xf0 {
+                    BPF_TAX => x = acc,
+                    BPF_TXA => acc = x,
+                    _ => return SeccompAction::KillThread,
+                },
 
                 _ => return SeccompAction::KillThread,
             }
@@ -711,13 +709,19 @@ mod tests {
 
     #[test]
     fn test_seccomp_action_kill_thread_roundtrip() {
-        assert_eq!(SeccompAction::from_raw(0x00000000), SeccompAction::KillThread);
+        assert_eq!(
+            SeccompAction::from_raw(0x00000000),
+            SeccompAction::KillThread
+        );
         assert_eq!(SeccompAction::KillThread.to_raw(), 0x00000000);
     }
 
     #[test]
     fn test_seccomp_action_kill_process_roundtrip() {
-        assert_eq!(SeccompAction::from_raw(0x80000000), SeccompAction::KillProcess);
+        assert_eq!(
+            SeccompAction::from_raw(0x80000000),
+            SeccompAction::KillProcess
+        );
         assert_eq!(SeccompAction::KillProcess.to_raw(), 0x80000000);
     }
 
@@ -741,7 +745,10 @@ mod tests {
 
         let e42 = SeccompAction::Errno(42);
         assert_eq!(e42.to_raw(), 0x0005002a);
-        assert_eq!(SeccompAction::from_raw(0x0005002a), SeccompAction::Errno(42));
+        assert_eq!(
+            SeccompAction::from_raw(0x0005002a),
+            SeccompAction::Errno(42)
+        );
 
         let e0 = SeccompAction::Errno(0);
         assert_eq!(e0.to_raw(), 0x00050000);
@@ -761,7 +768,12 @@ mod tests {
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Errno(42));
     }
 
@@ -777,7 +789,12 @@ mod tests {
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::KillProcess);
     }
 
@@ -812,7 +829,12 @@ mod tests {
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -849,7 +871,12 @@ mod tests {
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -886,7 +913,12 @@ mod tests {
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::KillThread);
     }
 
@@ -897,32 +929,45 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_IMM, // This is BPF_LD, not BPF_LDX
-                    jt: 0, jf: 0, k: 0,            // A = 0
+                    jt: 0,
+                    jf: 0,
+                    k: 0, // A = 0
                 },
                 BpfInstruction {
-                    code: BPF_LD | BPF_W | BPF_ABS, jt: 0, jf: 0, k: 0, // A = data.nr
+                    code: BPF_LD | BPF_W | BPF_ABS,
+                    jt: 0,
+                    jf: 0,
+                    k: 0, // A = data.nr
                 },
                 // Jump if nr == 0 → KILL, else → ALLOW
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 42, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 42,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -933,39 +978,50 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_IMM,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0x42,
                 },
                 BpfInstruction {
                     code: BPF_MISC | BPF_TAX,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_MISC | BPF_TXA,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 0x42,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -977,34 +1033,44 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_IMM,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 1,
                 },
                 BpfInstruction {
                     code: BPF_ALU | BPF_NEG,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 0xFFFFFFFFu32,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -1015,34 +1081,44 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_IMM,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 10,
                 },
                 BpfInstruction {
                     code: BPF_ALU | BPF_MOD | BPF_K,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 3,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 1,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -1053,34 +1129,44 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_IMM,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 10,
                 },
                 BpfInstruction {
                     code: BPF_ALU | BPF_DIV | BPF_K,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -1091,29 +1177,38 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_LEN,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 64,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -1128,40 +1223,51 @@ mod tests {
                 // Actually: do LDX with IMM to set X, then IND
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_IMM,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0xFF, // A = 0xFF
                 },
                 BpfInstruction {
                     code: BPF_MISC | BPF_TAX,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0, // X = A = 0xFF
                 },
                 // Now IND with k=0: loads from offset X+0 = 0xFF, which is beyond 60 → 0
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_IND,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 0, // Should be 0 (out of bounds)
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 255, arch: 0xC000003E, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 255,
+            arch: 0xC000003E,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -1172,29 +1278,38 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_H | BPF_ABS,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 0x1234,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0xABCD1234, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0xABCD1234,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -1205,29 +1320,38 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_B | BPF_ABS,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 0x34,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0xABCD1234, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0xABCD1234,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -1238,29 +1362,38 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_ABS,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 64,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 42, arch: 0xC000003E, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 42,
+            arch: 0xC000003E,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -1271,34 +1404,44 @@ mod tests {
             vec![
                 BpfInstruction {
                     code: BPF_LD | BPF_W | BPF_IMM,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 10,
                 },
                 BpfInstruction {
                     code: BPF_ALU | BPF_MOD | BPF_K,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_JMP | BPF_JEQ | BPF_K,
-                    jt: 0, jf: 1,
+                    jt: 0,
+                    jf: 1,
                     k: 0,
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::Allow.to_raw(),
                 },
                 BpfInstruction {
                     code: BPF_RET,
-                    jt: 0, jf: 0,
+                    jt: 0,
+                    jf: 0,
                     k: SeccompAction::KillThread.to_raw(),
                 },
             ],
             false,
         )
         .unwrap();
-        let data = SeccompData { nr: 0, arch: 0, ip: 0, args: [0; 6] };
+        let data = SeccompData {
+            nr: 0,
+            arch: 0,
+            ip: 0,
+            args: [0; 6],
+        };
         assert_eq!(filter.evaluate(&data), SeccompAction::Allow);
     }
 
@@ -1311,10 +1454,10 @@ mod tests {
         use proptest::prelude::*;
         proptest::collection::vec(
             (
-                any::<u16>(),  // code
-                any::<u8>(),   // jt
-                any::<u8>(),   // jf
-                any::<u32>(),  // k
+                any::<u16>(), // code
+                any::<u8>(),  // jt
+                any::<u8>(),  // jf
+                any::<u32>(), // k
             ),
             1..=10, // 1 to 10 instructions
         )

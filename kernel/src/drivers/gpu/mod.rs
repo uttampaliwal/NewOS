@@ -12,8 +12,8 @@ pub mod gbm;
 pub mod virtio_gpu;
 
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use spin::Mutex;
 
@@ -309,7 +309,8 @@ impl DrmManager {
 
     /// Register a CRTC for flip notifications.
     pub fn register_flip_notification(&mut self, crtc_id: u32) {
-        self.flip_complete.insert(crtc_id, alloc::sync::Arc::new(AtomicBool::new(false)));
+        self.flip_complete
+            .insert(crtc_id, alloc::sync::Arc::new(AtomicBool::new(false)));
     }
 
     /// Get the physical framebuffer address for mapping.
@@ -864,7 +865,10 @@ mod tests {
 
         let mode = DisplayMode::new(1920, 1080);
         let result = mgr.set_mode(1, 1, &mode);
-        assert!(result.is_ok(), "set_mode with valid connector and mode should succeed");
+        assert!(
+            result.is_ok(),
+            "set_mode with valid connector and mode should succeed"
+        );
     }
 
     #[test]
@@ -878,7 +882,10 @@ mod tests {
         mgr.register_driver(mock);
 
         let result = mgr.page_flip(1, 42);
-        assert!(result.is_ok(), "page_flip with valid framebuffer should succeed");
+        assert!(
+            result.is_ok(),
+            "page_flip with valid framebuffer should succeed"
+        );
     }
 
     #[test]
@@ -911,9 +918,17 @@ mod tests {
 
         assert_eq!(mgr.page_flip_seq(), 0, "initial flip seq should be 0");
         mgr.page_flip(1, 1).expect("first flip should succeed");
-        assert_eq!(mgr.page_flip_seq(), 1, "flip seq should be 1 after first flip");
+        assert_eq!(
+            mgr.page_flip_seq(),
+            1,
+            "flip seq should be 1 after first flip"
+        );
         mgr.page_flip(1, 1).expect("second flip should succeed");
-        assert_eq!(mgr.page_flip_seq(), 2, "flip seq should be 2 after second flip");
+        assert_eq!(
+            mgr.page_flip_seq(),
+            2,
+            "flip seq should be 2 after second flip"
+        );
     }
 
     #[test]

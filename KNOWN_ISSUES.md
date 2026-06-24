@@ -251,13 +251,13 @@ tracking. Tasklets remain as a future enhancement.
 
 ---
 
-## 13. ~~No KASAN/KFENCE Memory Safety Detection~~ (KASAN Resolved)
+## 13. No KASAN/KFENCE Memory Safety Detection
 
 | | |
 |---|---|
 | **Severity** | High |
 | **Component** | `kernel/src/memory/kasan.rs` |
-| **Status** | Resolved |
+| **Status** | Partially Resolved |
 
 **Resolution:** KASAN implemented with shadow memory (1 byte per 8 bytes
 heap), poisoning (0x6b alloc, 0xbb redzone), range validation
@@ -265,7 +265,8 @@ heap), poisoning (0x6b alloc, 0xbb redzone), range validation
 command, validate_user_ptr/validate_kernel_buf APIs. Integrated into
 fixed_size_block allocator.
 
-**Remaining:** KFENCE (low-overhead sampling detector) is future work.
+**Remaining:** KFENCE exists as a standalone prototype in `kernel/src/memory/kfence.rs`
+but is not yet wired into the allocator or enabled in production paths.
 
 ---
 
@@ -275,11 +276,12 @@ fixed_size_block allocator.
 |---|---|
 | **Severity** | Medium |
 | **Component** | `kernel/src/sync/lockdep.rs` (new) |
-| **Status** | Partial |
+| **Status** | Resolved |
 
 **Resolution:** SeqLock and RwLock implemented in Phase 12. SeqLock provides
 optimistic reader / exclusive writer. RwLock provides multiple-reader /
-single-writer. Lockdep and completion variables remain as future enhancements.
+single-writer. Lockdep now tracks lock-order inversions and completion
+variables provide one-shot wait/signal synchronization.
 
 ---
 
@@ -374,8 +376,8 @@ These are the hardest subsystems to debug post-hoc.
 | 10 | No io_uring or zero-copy networking | High | Resolved |
 | 11 | No huge pages, THP, NUMA, or KSM | High | Open |
 | 12 | No workqueues, softirqs, or tasklets | High | Partial |
-| 13 | No KASAN/KFENCE memory safety detection | High | Resolved |
-| 14 | No lockdep or completion variables | Medium | Partial |
+| 13 | No KASAN/KFENCE memory safety detection | High | Partially Resolved |
+| 14 | No lockdep or completion variables | Medium | Resolved |
 | 15 | No container runtime or OCI support | Medium | Open |
 | 16 | Undocumented unsafe blocks (~352, ~60 done) | Medium | Partial |
 | 17 | Uneven test coverage | Medium | Improved |

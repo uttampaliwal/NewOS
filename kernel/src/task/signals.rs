@@ -45,10 +45,29 @@ pub const SIGSYS: u8 = 31;
 fn default_terminates(sig: u8) -> bool {
     matches!(
         sig,
-        SIGHUP | SIGINT | SIGQUIT | SIGILL | SIGTRAP | SIGABRT | SIGBUS
-            | SIGFPE | SIGKILL | SIGUSR1 | SIGSEGV | SIGUSR2 | SIGPIPE
-            | SIGALRM | SIGTERM | SIGSTKFLT | SIGXCPU | SIGXFSZ
-            | SIGVTALRM | SIGPROF | SIGIO | SIGPWR | SIGSYS
+        SIGHUP
+            | SIGINT
+            | SIGQUIT
+            | SIGILL
+            | SIGTRAP
+            | SIGABRT
+            | SIGBUS
+            | SIGFPE
+            | SIGKILL
+            | SIGUSR1
+            | SIGSEGV
+            | SIGUSR2
+            | SIGPIPE
+            | SIGALRM
+            | SIGTERM
+            | SIGSTKFLT
+            | SIGXCPU
+            | SIGXFSZ
+            | SIGVTALRM
+            | SIGPROF
+            | SIGIO
+            | SIGPWR
+            | SIGSYS
     )
 }
 
@@ -252,7 +271,10 @@ pub fn handle_sigreturn_with_frame(frame: &mut SyscallFrame) -> u64 {
 
     let (sig_frame, have_frame) = {
         let inner = current.inner.lock();
-        (inner.pending_signal_frame, inner.pending_signal_frame.is_some())
+        (
+            inner.pending_signal_frame,
+            inner.pending_signal_frame.is_some(),
+        )
     };
 
     if !have_frame {
@@ -329,7 +351,8 @@ mod tests {
             ppid: ProcessId(1),
             state: ProcessState::Ready,
             pml4_frame: x86_64::structures::paging::PhysFrame::containing_address(
-                x86_64::PhysAddr::new(0)),
+                x86_64::PhysAddr::new(0),
+            ),
             entry_point: x86_64::VirtAddr::zero(),
             stack_top: x86_64::VirtAddr::zero(),
             threads: alloc::vec![],
@@ -349,17 +372,36 @@ mod tests {
         let process = Process {
             inner: Arc::new(Mutex::new(pcb)),
         };
-        let task = Task::new_test(TaskId::new(), process.clone(), crate::task::TaskState::Running);
+        let task = Task::new_test(
+            TaskId::new(),
+            process.clone(),
+            crate::task::TaskState::Running,
+        );
         scheduler::set_current_task_for_test(task);
-        TestEnv { process, stack_layout, stack_ptr }
+        TestEnv {
+            process,
+            stack_layout,
+            stack_ptr,
+        }
     }
 
     fn make_frame(env: &TestEnv) -> SyscallFrame {
         SyscallFrame {
-            r15: 0, r14: 0, r13: 0, r12: 0,
-            r11: 0, r10: 0, r9: 0, r8: 0,
-            rdi: 0, rsi: 0, rbp: 0, rdx: 0,
-            rcx: 0, rbx: 0, rax: 0,
+            r15: 0,
+            r14: 0,
+            r13: 0,
+            r12: 0,
+            r11: 0,
+            r10: 0,
+            r9: 0,
+            r8: 0,
+            rdi: 0,
+            rsi: 0,
+            rbp: 0,
+            rdx: 0,
+            rcx: 0,
+            rbx: 0,
+            rax: 0,
             user_rip: 0x400000,
             user_cs: 0x2b,
             user_rflags: 0x202,
@@ -369,7 +411,9 @@ mod tests {
     }
 
     fn cleanup(env: TestEnv) {
-        unsafe { std::alloc::dealloc(env.stack_ptr as *mut u8, env.stack_layout); }
+        unsafe {
+            std::alloc::dealloc(env.stack_ptr as *mut u8, env.stack_layout);
+        }
         scheduler::test_reset();
     }
 
@@ -500,13 +544,17 @@ mod tests {
 
         check_pending_signals(&mut frame);
 
-        assert_eq!(frame.user_rip, original_rip,
-            "RIP must not change for ignored signal");
+        assert_eq!(
+            frame.user_rip, original_rip,
+            "RIP must not change for ignored signal"
+        );
 
         {
             let inner = env.process.inner.lock();
-            assert!(!inner.pending_signals.contains(SIGCHLD),
-                "SIGCHLD must be cleared after default ignore action");
+            assert!(
+                !inner.pending_signals.contains(SIGCHLD),
+                "SIGCHLD must be cleared after default ignore action"
+            );
         }
 
         cleanup(env);
@@ -522,10 +570,7 @@ mod tests {
         }
         {
             let inner = env.process.inner.lock();
-            assert_eq!(
-                inner.signal_handlers[10],
-                SignalAction::Handler(0xdeadbeef)
-            );
+            assert_eq!(inner.signal_handlers[10], SignalAction::Handler(0xdeadbeef));
         }
         cleanup(env);
     }
@@ -581,8 +626,11 @@ mod tests {
 
         // Now should be delivered.
         check_pending_signals(&mut frame);
-        assert_eq!(frame.user_rip, handler_addr,
-            "RIP must be set to handler after unmasking sig={}", sig_num);
+        assert_eq!(
+            frame.user_rip, handler_addr,
+            "RIP must be set to handler after unmasking sig={}",
+            sig_num
+        );
 
         cleanup(env);
     }
@@ -594,7 +642,9 @@ mod tests {
     fn test_send_signal_existing_process() {
         let _guard = crate::test_serial::acquire();
         let env = setup_test_env();
-        crate::process::PROCESS_TABLE.lock().insert(ProcessId(999), env.process.inner.clone());
+        crate::process::PROCESS_TABLE
+            .lock()
+            .insert(ProcessId(999), env.process.inner.clone());
         let result = send_signal(ProcessId(999), SIGUSR1);
         assert!(result, "send_signal should return true for existing PID");
         let inner = env.process.inner.lock();
@@ -615,7 +665,10 @@ mod tests {
         let _guard = crate::test_serial::acquire();
         let env = setup_test_env();
         let result = send_signal(ProcessId(99999), SIGUSR2);
-        assert!(!result, "send_signal should return false for nonexistent PID");
+        assert!(
+            !result,
+            "send_signal should return false for nonexistent PID"
+        );
         cleanup(env);
     }
 
@@ -742,8 +795,14 @@ mod tests {
         let original_rsp = frame.user_rsp;
         let result = handle_sigreturn_with_frame(&mut frame);
         assert_eq!(result, 0);
-        assert_eq!(frame.user_rip, original_rip, "frame RIP should not change without pending signal frame");
-        assert_eq!(frame.user_rsp, original_rsp, "frame RSP should not change without pending signal frame");
+        assert_eq!(
+            frame.user_rip, original_rip,
+            "frame RIP should not change without pending signal frame"
+        );
+        assert_eq!(
+            frame.user_rsp, original_rsp,
+            "frame RSP should not change without pending signal frame"
+        );
         cleanup(env);
     }
 
@@ -767,7 +826,10 @@ mod tests {
         let mut frame = make_frame(&env);
         check_pending_signals(&mut frame);
         // Signal 5 (lower number) should be delivered first
-        assert_eq!(frame.user_rip, handler_addr, "signal 5 (lower) should be delivered first");
+        assert_eq!(
+            frame.user_rip, handler_addr,
+            "signal 5 (lower) should be delivered first"
+        );
         assert_eq!(frame.rdi, 5, "rdi should be set to signal number 5");
         cleanup(env);
     }
@@ -860,7 +922,10 @@ mod tests {
         let mut frame = make_frame(&env);
         let original_rip = frame.user_rip;
         check_pending_signals(&mut frame);
-        assert_eq!(frame.user_rip, original_rip, "masked signal must not be delivered");
+        assert_eq!(
+            frame.user_rip, original_rip,
+            "masked signal must not be delivered"
+        );
         cleanup(env);
     }
 
@@ -880,8 +945,13 @@ mod tests {
         // Verify the handler was stored but SIGKILL still terminates via default_action.
         {
             let inner = env.process.inner.lock();
-            assert!(matches!(inner.signal_handlers[SIGKILL as usize], SignalAction::Handler(_)),
-                "handler storage itself is allowed, but delivery bypasses it");
+            assert!(
+                matches!(
+                    inner.signal_handlers[SIGKILL as usize],
+                    SignalAction::Handler(_)
+                ),
+                "handler storage itself is allowed, but delivery bypasses it"
+            );
         }
         cleanup(env);
     }
@@ -889,8 +959,10 @@ mod tests {
     #[test]
     fn test_sigkill_default_action_is_terminate() {
         let _guard = crate::test_serial::acquire();
-        assert!(default_terminates(SIGKILL),
-            "SIGKILL must be classified as a terminating signal");
+        assert!(
+            default_terminates(SIGKILL),
+            "SIGKILL must be classified as a terminating signal"
+        );
     }
 
     #[test]
@@ -902,8 +974,10 @@ mod tests {
             inner.signal_handlers[SIGSTOP as usize] = SignalAction::Ignore;
         }
         // SIGSTOP always uses default_action even if set to Ignore
-        assert!(default_stops(SIGSTOP),
-            "SIGSTOP must always be classified as a stopping signal");
+        assert!(
+            default_stops(SIGSTOP),
+            "SIGSTOP must always be classified as a stopping signal"
+        );
         cleanup(env);
     }
 

@@ -291,11 +291,8 @@ impl CapabilitySet {
     /// - inheritable unchanged
     /// - ambient := 0 (ambient caps are cleared when file caps are present)
     pub fn exec_transform_with_filecaps(&self, file_caps: &FileCaps) -> Self {
-        let (new_permitted, new_effective) = file_caps.exec_transform(
-            self.permitted,
-            self.inheritable,
-            self.bounding,
-        );
+        let (new_permitted, new_effective) =
+            file_caps.exec_transform(self.permitted, self.inheritable, self.bounding);
         Self {
             effective: new_effective,
             permitted: new_permitted,
@@ -348,7 +345,11 @@ impl FileCaps {
         let permitted = u64::from_le_bytes(data[0..8].try_into().ok()?);
         let effective = u64::from_le_bytes(data[8..16].try_into().ok()?);
         let inheritable = u64::from_le_bytes(data[16..24].try_into().ok()?);
-        Some(Self { permitted, effective, inheritable })
+        Some(Self {
+            permitted,
+            effective,
+            inheritable,
+        })
     }
 
     /// Serialize FileCaps to bytes.
@@ -373,7 +374,11 @@ impl FileCaps {
     ) -> (u64, u64) {
         let _ = proc_permitted; // reserved for future securebits logic
         let new_permitted = (proc_inheritable & self.inheritable) | (self.permitted & bounding);
-        let new_effective = if self.effective != 0 { new_permitted } else { 0 };
+        let new_effective = if self.effective != 0 {
+            new_permitted
+        } else {
+            0
+        };
         (new_permitted, new_effective)
     }
 
@@ -690,7 +695,11 @@ mod tests {
 
     #[test]
     fn test_file_caps_to_bytes_roundtrip() {
-        let fc = FileCaps { permitted: 0xABCDE, effective: 0x123, inheritable: 0x456 };
+        let fc = FileCaps {
+            permitted: 0xABCDE,
+            effective: 0x123,
+            inheritable: 0x456,
+        };
         let bytes = fc.to_bytes();
         let parsed = FileCaps::from_bytes(&bytes).unwrap();
         assert_eq!(parsed.permitted, fc.permitted);

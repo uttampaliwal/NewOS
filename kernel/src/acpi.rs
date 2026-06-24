@@ -2019,9 +2019,7 @@ mod tests {
             .namespace
             .add_value(
                 fast_path.clone(),
-                AmlValue::native_method(1, false, 0, |_| {
-                    Ok(AmlValue::Integer(42))
-                }),
+                AmlValue::native_method(1, false, 0, |_| Ok(AmlValue::Integer(42))),
             )
             .unwrap();
 

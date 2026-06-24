@@ -1,7 +1,7 @@
 use super::SyscallResult;
-use turnix_abi::syscall::SyscallArgs;
 use crate::fs::vfs::UnixSocketState;
 use crate::vfs::VFS;
+use turnix_abi::syscall::SyscallArgs;
 
 /// `socket(domain: i32, type: i32, protocol: i32) -> fd`
 pub fn handle_socket(args: SyscallArgs) -> SyscallResult {
@@ -46,14 +46,19 @@ pub fn handle_bind(args: SyscallArgs) -> SyscallResult {
     match family {
         1 => {
             // AF_UNIX — sockaddr_un with sun_path as path
-            if addr_len < 3 { return SyscallResult::Error(14); }
-            let path_slice = unsafe {
-                core::slice::from_raw_parts(addr_ptr.add(2), addr_len - 2)
-            };
+            if addr_len < 3 {
+                return SyscallResult::Error(14);
+            }
+            let path_slice = unsafe { core::slice::from_raw_parts(addr_ptr.add(2), addr_len - 2) };
             // Trim trailing nulls
-            let path_len = path_slice.iter().position(|&b| b == 0).unwrap_or(path_slice.len());
+            let path_len = path_slice
+                .iter()
+                .position(|&b| b == 0)
+                .unwrap_or(path_slice.len());
             let path = core::str::from_utf8(&path_slice[..path_len]).unwrap_or("");
-            if path.is_empty() { return SyscallResult::Error(14); }
+            if path.is_empty() {
+                return SyscallResult::Error(14);
+            }
 
             let sock = {
                 let vfs = VFS.lock();
@@ -73,23 +78,27 @@ pub fn handle_bind(args: SyscallArgs) -> SyscallResult {
             // AF_INET or AF_INET6 — parse sockaddr_in
             // Check CAP_NET_ADMIN for network bind
             if let Some(current) = crate::task::scheduler::get_current_process()
-                && !current.inner.lock().sec_ctx.has_capability(
-                    crate::security::capabilities::Capability::NetAdmin
-                )
+                && !current
+                    .inner
+                    .lock()
+                    .sec_ctx
+                    .has_capability(crate::security::capabilities::Capability::NetAdmin)
             {
                 return SyscallResult::Error(1); // EPERM
             }
 
-            if addr_len < 8 { return SyscallResult::Error(14); }
+            if addr_len < 8 {
+                return SyscallResult::Error(14);
+            }
 
             // sockaddr_in layout: family(2) + port(2) + addr(4) + zero(8)
             let raw_port = unsafe { core::ptr::read_unaligned(addr_ptr.add(2) as *const u16) };
             let raw_addr = unsafe { core::ptr::read_unaligned(addr_ptr.add(4) as *const u32) };
 
             let port = u16::from_be(raw_port);
-            let ip = smoltcp::wire::IpAddress::Ipv4(
-                smoltcp::wire::Ipv4Address::from_bytes(&raw_addr.to_be_bytes())
-            );
+            let ip = smoltcp::wire::IpAddress::Ipv4(smoltcp::wire::Ipv4Address::from_bytes(
+                &raw_addr.to_be_bytes(),
+            ));
 
             match crate::net::socket::sys_bind(fd, ip, port) {
                 Ok(()) => SyscallResult::Success(0),
@@ -170,13 +179,18 @@ pub fn handle_connect(args: SyscallArgs) -> SyscallResult {
     match family {
         1 => {
             // AF_UNIX — sockaddr_un path
-            if addr_len < 3 { return SyscallResult::Error(14); }
-            let path_slice = unsafe {
-                core::slice::from_raw_parts(addr_ptr.add(2), addr_len - 2)
-            };
-            let path_len = path_slice.iter().position(|&b| b == 0).unwrap_or(path_slice.len());
+            if addr_len < 3 {
+                return SyscallResult::Error(14);
+            }
+            let path_slice = unsafe { core::slice::from_raw_parts(addr_ptr.add(2), addr_len - 2) };
+            let path_len = path_slice
+                .iter()
+                .position(|&b| b == 0)
+                .unwrap_or(path_slice.len());
             let path = core::str::from_utf8(&path_slice[..path_len]).unwrap_or("");
-            if path.is_empty() { return SyscallResult::Error(14); }
+            if path.is_empty() {
+                return SyscallResult::Error(14);
+            }
 
             let sock = {
                 let vfs = VFS.lock();
@@ -200,15 +214,17 @@ pub fn handle_connect(args: SyscallArgs) -> SyscallResult {
         }
         2 | 10 => {
             // AF_INET or AF_INET6
-            if addr_len < 8 { return SyscallResult::Error(14); }
+            if addr_len < 8 {
+                return SyscallResult::Error(14);
+            }
 
             let raw_port = unsafe { core::ptr::read_unaligned(addr_ptr.add(2) as *const u16) };
             let raw_addr = unsafe { core::ptr::read_unaligned(addr_ptr.add(4) as *const u32) };
 
             let port = u16::from_be(raw_port);
-            let ip = smoltcp::wire::IpAddress::Ipv4(
-                smoltcp::wire::Ipv4Address::from_bytes(&raw_addr.to_be_bytes())
-            );
+            let ip = smoltcp::wire::IpAddress::Ipv4(smoltcp::wire::Ipv4Address::from_bytes(
+                &raw_addr.to_be_bytes(),
+            ));
 
             match crate::net::socket::sys_connect(fd, ip, port) {
                 Ok(()) => SyscallResult::Success(0),
@@ -229,9 +245,11 @@ pub fn handle_connect(args: SyscallArgs) -> SyscallResult {
 pub fn handle_net_set_addr(args: SyscallArgs) -> SyscallResult {
     // Check CAP_NET_ADMIN
     if let Some(current) = crate::task::scheduler::get_current_process()
-        && !current.inner.lock().sec_ctx.has_capability(
-            crate::security::capabilities::Capability::NetAdmin,
-        )
+        && !current
+            .inner
+            .lock()
+            .sec_ctx
+            .has_capability(crate::security::capabilities::Capability::NetAdmin)
     {
         return SyscallResult::Error(1); // EPERM
     }
@@ -241,11 +259,7 @@ pub fn handle_net_set_addr(args: SyscallArgs) -> SyscallResult {
     let netmask_ptr = args.arg2 as *const [u8; 4];
     let gateway_ptr = args.arg3 as *const [u8; 4];
 
-    if iface_id >= 8
-        || addr_ptr.is_null()
-        || netmask_ptr.is_null()
-        || gateway_ptr.is_null()
-    {
+    if iface_id >= 8 || addr_ptr.is_null() || netmask_ptr.is_null() || gateway_ptr.is_null() {
         return SyscallResult::Error(22); // EINVAL
     }
 
@@ -256,7 +270,9 @@ pub fn handle_net_set_addr(args: SyscallArgs) -> SyscallResult {
     // Apply to smoltcp interface as well
     {
         let mut stack = crate::net::smoltcp_iface::NET_STACK.lock();
-        let prefix_len = netmask.iter().fold(0u8, |acc, b| acc + b.count_ones() as u8);
+        let prefix_len = netmask
+            .iter()
+            .fold(0u8, |acc, b| acc + b.count_ones() as u8);
         let ip_cidr = smoltcp::wire::IpCidr::new(
             smoltcp::wire::IpAddress::Ipv4(smoltcp::wire::Ipv4Address::from_bytes(&addr)),
             prefix_len,
@@ -285,9 +301,18 @@ pub fn handle_net_set_addr(args: SyscallArgs) -> SyscallResult {
     crate::serial::println!(
         "[NET] set_addr iface={} ip={}.{}.{}.{} nm={}.{}.{}.{} gw={}.{}.{}.{}",
         iface_id,
-        addr[0], addr[1], addr[2], addr[3],
-        netmask[0], netmask[1], netmask[2], netmask[3],
-        gateway[0], gateway[1], gateway[2], gateway[3],
+        addr[0],
+        addr[1],
+        addr[2],
+        addr[3],
+        netmask[0],
+        netmask[1],
+        netmask[2],
+        netmask[3],
+        gateway[0],
+        gateway[1],
+        gateway[2],
+        gateway[3],
     );
 
     SyscallResult::Success(0)
@@ -300,9 +325,11 @@ pub fn handle_net_set_addr(args: SyscallArgs) -> SyscallResult {
 pub fn handle_net_set_route(args: SyscallArgs) -> SyscallResult {
     // Check CAP_NET_ADMIN
     if let Some(current) = crate::task::scheduler::get_current_process()
-        && !current.inner.lock().sec_ctx.has_capability(
-            crate::security::capabilities::Capability::NetAdmin,
-        )
+        && !current
+            .inner
+            .lock()
+            .sec_ctx
+            .has_capability(crate::security::capabilities::Capability::NetAdmin)
     {
         return SyscallResult::Error(1); // EPERM
     }
@@ -321,7 +348,10 @@ pub fn handle_net_set_route(args: SyscallArgs) -> SyscallResult {
 
     crate::serial::println!(
         "[NET] set_route gw={}.{}.{}.{}",
-        gateway[0], gateway[1], gateway[2], gateway[3],
+        gateway[0],
+        gateway[1],
+        gateway[2],
+        gateway[3],
     );
 
     SyscallResult::Success(0)

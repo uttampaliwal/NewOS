@@ -5,9 +5,11 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use turnix_ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError,
-    ERROR_INTERNAL, ERROR_INVALID_ARGS};
-use log_daemon::{KernelLogSource, LogEntry, LogRotator, FileKernelLogSource};
+use log_daemon::{FileKernelLogSource, KernelLogSource, LogEntry, LogRotator};
+use turnix_ipc_proto::{
+    ERROR_INTERNAL, ERROR_INVALID_ARGS, IpcError, IpcMessage, IpcValue, decode_message,
+    encode_message,
+};
 
 // ---------------------------------------------------------------------------
 // Shorthand helpers
@@ -76,8 +78,7 @@ impl LogDaemon {
         let _rotator = self.rotator.lock().unwrap();
         // Read the current log file
         let log_path = Path::new("/var/log/turnix.log");
-        let content = fs::read_to_string(log_path)
-            .map_err(|e| format!("cannot read log: {e}"))?;
+        let content = fs::read_to_string(log_path).map_err(|e| format!("cannot read log: {e}"))?;
         let mut entries: Vec<LogEntry> = Vec::new();
         for line in content.lines().rev() {
             if line.is_empty() {
@@ -157,10 +158,13 @@ fn main() {
     } else {
         eprintln!("log-daemon: kernel log forwarding disabled ({kernel_log_path} not found)");
     }
-    let mut kernel_log: Box<dyn KernelLogSource> = Box::new(FileKernelLogSource::new(kernel_log_path));
+    let mut kernel_log: Box<dyn KernelLogSource> =
+        Box::new(FileKernelLogSource::new(kernel_log_path));
 
     // Main event loop: accept log submissions on the socket
-    broker.set_read_timeout(Some(Duration::from_millis(500))).ok();
+    broker
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .ok();
     listener.set_nonblocking(true).ok();
 
     loop {
@@ -202,7 +206,9 @@ fn main() {
         // Handle IPC requests
         if let Some(msg) = recv_msg(&mut broker) {
             handle_ipc(&daemon, &mut broker, msg);
-            broker.set_read_timeout(Some(Duration::from_millis(500))).ok();
+            broker
+                .set_read_timeout(Some(Duration::from_millis(500)))
+                .ok();
         }
 
         std::thread::sleep(Duration::from_millis(100));
@@ -225,7 +231,10 @@ fn accept_one(listener: &UnixListener) -> Option<UnixStream> {
 // ---------------------------------------------------------------------------
 
 fn handle_ipc(daemon: &LogDaemon, broker: &mut UnixStream, msg: IpcMessage) {
-    if let IpcMessage::MethodCall { id, method, args, .. } = msg {
+    if let IpcMessage::MethodCall {
+        id, method, args, ..
+    } = msg
+    {
         let response = match method.as_str() {
             "Submit" => {
                 let json_str = args.first().and_then(|v| v.as_str()).unwrap_or("");
@@ -274,7 +283,10 @@ fn handle_ipc(daemon: &LogDaemon, broker: &mut UnixStream, msg: IpcMessage) {
             }
             _ => IpcMessage::MethodReturn {
                 id,
-                result: Err(IpcError::new(ERROR_INTERNAL, format!("unknown method {method}"))),
+                result: Err(IpcError::new(
+                    ERROR_INTERNAL,
+                    format!("unknown method {method}"),
+                )),
             },
         };
         send_msg(broker, &response);
@@ -285,12 +297,11 @@ fn ipc_value_from_json(val: serde_json::Value) -> IpcValue {
     match val {
         serde_json::Value::Null => IpcValue::Null,
         serde_json::Value::Bool(b) => IpcValue::Bool(b),
-        serde_json::Value::Number(n) => {
-            n.as_i64()
-                .map(IpcValue::Int)
-                .or_else(|| n.as_f64().map(IpcValue::Float))
-                .unwrap_or(IpcValue::Null)
-        }
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .map(IpcValue::Int)
+            .or_else(|| n.as_f64().map(IpcValue::Float))
+            .unwrap_or(IpcValue::Null),
         serde_json::Value::String(s) => IpcValue::String(s),
         serde_json::Value::Array(arr) => {
             IpcValue::Array(arr.into_iter().map(ipc_value_from_json).collect())

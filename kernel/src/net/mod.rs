@@ -26,10 +26,12 @@ impl Default for NetInterfaceConfig {
 }
 
 /// Global array of interface configurations (max 8 interfaces).
-pub static NET_CONFIGS: Mutex<[NetInterfaceConfig; 8]> = Mutex::new([NetInterfaceConfig {
-    ip: [0; 4],
-    netmask: [0; 4],
-    gateway: [0; 4],
-    mtu: 1500,
-    up: false,
-}; 8]);
+pub static NET_CONFIGS: Mutex<[NetInterfaceConfig; 8]> = Mutex::new(
+    [NetInterfaceConfig {
+        ip: [0; 4],
+        netmask: [0; 4],
+        gateway: [0; 4],
+        mtu: 1500,
+        up: false,
+    }; 8],
+);

@@ -1,6 +1,6 @@
-use alloc::alloc::{alloc, dealloc, Layout};
-use alloc::vec::Vec;
+use alloc::alloc::{Layout, alloc, dealloc};
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use core::mem;
 use spin::Mutex;
 
@@ -186,7 +186,9 @@ static SLAB_CACHES: Mutex<BTreeMap<usize, SlabCache>> = Mutex::new(BTreeMap::new
 
 pub fn slab_alloc(obj_size: usize) -> Option<*mut u8> {
     let mut caches = SLAB_CACHES.lock();
-    let cache = caches.entry(obj_size).or_insert_with(|| SlabCache::new(obj_size));
+    let cache = caches
+        .entry(obj_size)
+        .or_insert_with(|| SlabCache::new(obj_size));
     cache.alloc()
 }
 

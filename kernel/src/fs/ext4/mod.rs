@@ -15,7 +15,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use spin::Mutex;
 
-use crate::fs::vfs::{DirEntry, FsBackend, FsError, FileType, InodeId, InodeStat, OpenFlags};
+use crate::fs::vfs::{DirEntry, FileType, FsBackend, FsError, InodeId, InodeStat, OpenFlags};
 use state::Ext4State;
 
 // ---------------------------------------------------------------------------
@@ -79,12 +79,16 @@ impl FsBackend for Ext4Backend {
 
     fn read(&self, inode: InodeId, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
         let state = self.state.lock();
-        state.read_data(inode.0, offset, buf).map_err(|_| FsError::IoError)
+        state
+            .read_data(inode.0, offset, buf)
+            .map_err(|_| FsError::IoError)
     }
 
     fn write(&self, inode: InodeId, offset: u64, buf: &[u8]) -> Result<usize, FsError> {
         let mut state = self.state.lock();
-        state.write_data(inode.0, offset, buf).map_err(|_| FsError::IoError)
+        state
+            .write_data(inode.0, offset, buf)
+            .map_err(|_| FsError::IoError)
     }
 
     fn stat(&self, inode: InodeId) -> Result<InodeStat, FsError> {
@@ -272,9 +276,7 @@ impl FsBackend for Ext4Backend {
     fn xattr_set(&self, inode: InodeId, name: &str, value: &[u8]) -> Result<(), FsError> {
         let mut state = self.state.lock();
         let mem_inode = state.get_inode_mut(inode.0).ok_or(FsError::NotFound)?;
-        mem_inode
-            .xattrs
-            .insert(name.to_string(), value.to_vec());
+        mem_inode.xattrs.insert(name.to_string(), value.to_vec());
         mem_inode.dirty = true;
         Ok(())
     }
@@ -391,9 +393,7 @@ mod tests {
 
         ext4.xattr_remove(file_id, "user.test")
             .expect("xattr_remove");
-        assert!(ext4.xattr_get(file_id, "user.test")
-            .unwrap()
-            .is_none());
+        assert!(ext4.xattr_get(file_id, "user.test").unwrap().is_none());
     }
 
     #[test]
@@ -408,7 +408,8 @@ mod tests {
     fn rename_moves_entry() {
         let ext4 = Ext4Backend::new();
         let file_id = ext4.create(InodeId(2), "old.txt", 0o644).unwrap();
-        ext4.rename(InodeId(2), "old.txt", InodeId(2), "new.txt").expect("rename");
+        ext4.rename(InodeId(2), "old.txt", InodeId(2), "new.txt")
+            .expect("rename");
         assert!(ext4.lookup(InodeId(2), "old.txt").is_err());
         assert_eq!(ext4.lookup(InodeId(2), "new.txt").unwrap(), file_id);
     }

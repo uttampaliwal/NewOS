@@ -1,6 +1,6 @@
 use super::SyscallResult;
-use turnix_abi::syscall::SyscallArgs;
 use crate::memory::vma::{VmaFlags, VmaProt};
+use turnix_abi::syscall::SyscallArgs;
 use x86_64::VirtAddr;
 
 pub fn handle_brk(args: SyscallArgs) -> SyscallResult {
@@ -25,7 +25,12 @@ pub fn handle_brk(args: SyscallArgs) -> SyscallResult {
         let length = new_brk - current_brk;
         drop(inner);
         let flags = crate::memory::vma::VmaFlags::MAP_PRIVATE;
-        match process.mmap_anon(None, length, crate::memory::vma::VmaProt::READ | crate::memory::vma::VmaProt::WRITE, flags) {
+        match process.mmap_anon(
+            None,
+            length,
+            crate::memory::vma::VmaProt::READ | crate::memory::vma::VmaProt::WRITE,
+            flags,
+        ) {
             Ok(_start) => {
                 // mmap_anon already advances mmap_next_addr
                 SyscallResult::Success(new_brk)
@@ -178,7 +183,10 @@ pub fn handle_mmap2(args: SyscallArgs) -> SyscallResult {
                 Some(e) => e.clone(),
                 None => return SyscallResult::Error(9), // EBADF
             };
-            (fd_entry.inode, fd_entry.offset.load(core::sync::atomic::Ordering::Relaxed))
+            (
+                fd_entry.inode,
+                fd_entry.offset.load(core::sync::atomic::Ordering::Relaxed),
+            )
         };
 
         let page_aligned_len = length.max(4096).next_multiple_of(4096);
@@ -189,14 +197,20 @@ pub fn handle_mmap2(args: SyscallArgs) -> SyscallResult {
                     let mut inner = process.inner.lock();
                     let a = inner.mmap_next_addr;
                     inner.mmap_next_addr = VirtAddr::new(
-                        inner.mmap_next_addr.as_u64().saturating_add(page_aligned_len),
+                        inner
+                            .mmap_next_addr
+                            .as_u64()
+                            .saturating_add(page_aligned_len),
                     );
                     a
                 }
             },
             end: VirtAddr::new(0), // set below
             prot,
-            backing: crate::memory::vma::VmaBacking::FileBacked { inode: crate::memory::vma::InodeId(inode.0), offset: fd_offset },
+            backing: crate::memory::vma::VmaBacking::FileBacked {
+                inode: crate::memory::vma::InodeId(inode.0),
+                offset: fd_offset,
+            },
             flags,
         };
         let start = vma.start;

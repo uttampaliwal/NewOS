@@ -48,6 +48,9 @@ pub fn get_bsp_cpu_id() -> u32 {
 pub fn get_current_cpu_id() -> u32 {
     match crate::acpi::get_lapic_address() {
         Some(lapic_base) => {
+            // SAFETY: `lapic_base` is a valid LAPIC MMIO physical address obtained
+            // from ACPI; the +0x20 offset is the LAPIC ID register, which is
+            // always 4-byte aligned and readable on x86_64 APIC-capable hardware.
             let lapic_id_reg =
                 unsafe { core::ptr::read_volatile((lapic_base as usize + 0x20) as *const u32) };
             lapic_id_reg >> 24
@@ -59,6 +62,10 @@ pub fn get_current_cpu_id() -> u32 {
 pub fn set_current_cpu_data(data: &PerCpuData) {
     let idx = data.cpu_id as usize;
     if idx < MAX_CPUS {
+        // SAFETY: `idx` is bounds-checked to be less than MAX_CPUS immediately
+        // above, so the slice access is valid. `PER_CPU_AREA` is a static
+        // mut array; each CPU only writes its own index, preventing data races
+        // (callers must ensure CPU-local exclusivity).
         unsafe {
             PER_CPU_AREA[idx] = *data;
         }
@@ -68,8 +75,14 @@ pub fn set_current_cpu_data(data: &PerCpuData) {
 pub fn get_cpu_data(cpu_id: u32) -> &'static PerCpuData {
     let idx = cpu_id as usize;
     if idx < MAX_CPUS {
+        // SAFETY: `idx` is less than MAX_CPUS (checked above), so the array
+        // access is in-bounds. The returned reference has 'static lifetime
+        // because PER_CPU_AREA is a static. The caller must not hold the
+        // reference across a write to the same slot.
         unsafe { &PER_CPU_AREA[idx] }
     } else {
+        // SAFETY: Slot 0 always exists (MAX_CPUS >= 1). Used as a safe
+        // fallback for out-of-range CPU IDs.
         unsafe { &PER_CPU_AREA[0] }
     }
 }
@@ -92,12 +105,16 @@ pub fn signal_ap_ready() {
 }
 
 pub fn wait_for_aps(timeout_us: u64) -> u32 {
+    // SAFETY: `_rdtsc` is a read-only, non-privileged hardware instruction.
+    // It has no side effects and is always safe to call on x86_64.
     let start = unsafe { core::arch::x86_64::_rdtsc() };
     loop {
         let ready = AP_READY.load(Ordering::Relaxed);
         if ready >= get_cpu_count() - 1 {
             return ready;
         }
+        // SAFETY: Same as above — `_rdtsc` is a non-privileged read-only
+        // instruction with no memory side effects.
         let now = unsafe { core::arch::x86_64::_rdtsc() };
         if now - start > timeout_us * 1000 {
             return ready;
@@ -154,6 +171,11 @@ fn send_init_sipi_sipi(apic_id: u32) -> bool {
     let icr_low = lapic_base + 0x300;
     let icr_high = lapic_base + 0x310;
 
+    // SAFETY: `icr_low` and `icr_high` are MMIO register addresses derived
+    // from the LAPIC base (validated by ACPI) at the standard ICR offsets
+    // (0x300 and 0x310). Volatile writes are used to prevent the compiler
+    // from reordering or eliding the MMIO register accesses. All accesses are
+    // 4-byte aligned. No Rust references overlap these raw addresses.
     unsafe {
         core::ptr::write_volatile(icr_high as *mut u32, apic_id << 24);
         core::ptr::write_volatile(icr_low as *mut u32, 0x0000C500);

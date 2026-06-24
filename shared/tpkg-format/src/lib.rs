@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use semver::Version;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 // ---------------------------------------------------------------------------
@@ -60,7 +60,11 @@ impl PackageName {
         {
             return Err(ValidationError::InvalidPackageName(name.to_string()));
         }
-        if trimmed.starts_with('.') || trimmed.starts_with('-') || trimmed.ends_with('.') || trimmed.ends_with('-') {
+        if trimmed.starts_with('.')
+            || trimmed.starts_with('-')
+            || trimmed.ends_with('.')
+            || trimmed.ends_with('-')
+        {
             return Err(ValidationError::InvalidPackageName(name.to_string()));
         }
         Ok(Self(trimmed.to_string()))
@@ -199,7 +203,8 @@ impl TpkgManifest {
             return Err(ValidationError::EmptyPackageName);
         }
         // Re-validate package name
-        PackageName::new(name).map_err(|_| ValidationError::InvalidPackageName(name.to_string()))?;
+        PackageName::new(name)
+            .map_err(|_| ValidationError::InvalidPackageName(name.to_string()))?;
 
         let ver = self.package.version.trim();
         if ver.is_empty() {
@@ -269,7 +274,9 @@ mod tests {
     pub fn arb_package_name() -> impl Strategy<Value = PackageName> {
         proptest::string::string_regex("[a-z][a-z0-9_-]{0,30}")
             .unwrap()
-            .prop_filter("valid package name", |s| !s.starts_with('-') && !s.ends_with('-'))
+            .prop_filter("valid package name", |s| {
+                !s.starts_with('-') && !s.ends_with('-')
+            })
             .prop_map(|s| PackageName::new(&s).unwrap())
     }
 
@@ -281,8 +288,7 @@ mod tests {
 
     fn arb_data_file() -> impl Strategy<Value = DataFile> {
         (
-            proptest::string::string_regex("(usr|etc|opt|var)/[a-z0-9/._-]{1,40}")
-                .unwrap(),
+            proptest::string::string_regex("(usr|etc|opt|var)/[a-z0-9/._-]{1,40}").unwrap(),
             proptest::option::of(0o644u32..=0o755u32),
         )
             .prop_map(|(path, mode)| DataFile {
@@ -313,21 +319,21 @@ mod tests {
             proptest::option::of(proptest::string::string_regex(".{1,80}").unwrap()),
             proptest::option::of(proptest::string::string_regex("[A-Z][a-z]{1,20}").unwrap()),
             proptest::collection::vec(
-                (arb_package_name(), arb_version()).prop_map(|(name, version_req)| Dependency {
-                    name,
-                    version_req,
-                }),
+                (arb_package_name(), arb_version())
+                    .prop_map(|(name, version_req)| Dependency { name, version_req }),
                 0..=5,
             ),
         )
-            .prop_map(|(name, version, desc, license, dependencies)| PackageManifest {
-                name,
-                version,
-                description: desc,
-                license,
-                authors: vec![],
-                dependencies,
-            })
+            .prop_map(
+                |(name, version, desc, license, dependencies)| PackageManifest {
+                    name,
+                    version,
+                    description: desc,
+                    license,
+                    authors: vec![],
+                    dependencies,
+                },
+            )
     }
 
     pub fn arb_valid_manifest() -> impl Strategy<Value = TpkgManifest> {
@@ -362,7 +368,10 @@ mod tests {
     fn arb_build_spec() -> impl Strategy<Value = BuildSpec> {
         (
             proptest::string::string_regex("[a-z]{3,15}").unwrap(),
-            proptest::collection::vec(proptest::string::string_regex("--[a-z-]{1,20}").unwrap(), 0..=5),
+            proptest::collection::vec(
+                proptest::string::string_regex("--[a-z-]{1,20}").unwrap(),
+                0..=5,
+            ),
         )
             .prop_map(|(command, args)| BuildSpec {
                 command,
@@ -412,7 +421,12 @@ mod tests {
                 // Valid TOML but either missing `package` key or package table has issues
                 let v: toml::Value = toml::from_str(s).unwrap();
                 !v.as_table().unwrap().contains_key("package")
-                    || v.as_table().unwrap().get("package").unwrap().as_table().is_none()
+                    || v.as_table()
+                        .unwrap()
+                        .get("package")
+                        .unwrap()
+                        .as_table()
+                        .is_none()
             })
     }
 
@@ -433,10 +447,7 @@ mod tests {
 
     #[test]
     fn test_empty_package_name_rejected() {
-        assert_eq!(
-            PackageName::new(""),
-            Err(ValidationError::EmptyPackageName)
-        );
+        assert_eq!(PackageName::new(""), Err(ValidationError::EmptyPackageName));
     }
 
     #[test]

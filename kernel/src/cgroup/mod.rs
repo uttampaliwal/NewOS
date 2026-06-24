@@ -91,7 +91,10 @@ pub fn cgroup_create(parent_path: &str, name: &str) -> Result<(), i32> {
 pub fn cgroup_add_process(path: &str, pid: u32) -> Result<(), i32> {
     let mut groups = CGROUPS.lock();
     let cgroup = groups.iter_mut().find(|g| g.path == path).ok_or(2)?;
-    if cgroup.pids_max.is_some_and(|max| cgroup.procs.len() >= max as usize) {
+    if cgroup
+        .pids_max
+        .is_some_and(|max| cgroup.procs.len() >= max as usize)
+    {
         return Err(28); // ENOSPC
     }
     if !cgroup.procs.contains(&pid) {
@@ -179,5 +182,8 @@ pub fn cgroup_memory_exceeded(pid: u32) -> bool {
 /// Find the cgroup path for a given PID.
 pub fn cgroup_find_for_pid(pid: u32) -> Option<String> {
     let groups = CGROUPS.lock();
-    groups.iter().find(|g| g.procs.contains(&pid)).map(|g| g.path.clone())
+    groups
+        .iter()
+        .find(|g| g.procs.contains(&pid))
+        .map(|g| g.path.clone())
 }

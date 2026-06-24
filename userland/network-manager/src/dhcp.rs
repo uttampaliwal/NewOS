@@ -383,7 +383,9 @@ impl DhcpPacket {
 
 fn rand_xid() -> u32 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     t.as_nanos() as u32
 }
 
@@ -407,7 +409,10 @@ mod tests {
         let mut offer = DhcpPacket::new(DhcpMessageType::Offer, client.transaction_id);
         offer.yiaddr = Ipv4Addr::new(192, 168, 1, 100);
         offer.add_option(options::SERVER_ID, &Ipv4Addr::new(192, 168, 1, 1).octets());
-        offer.add_option(options::SUBNET_MASK, &Ipv4Addr::new(255, 255, 255, 0).octets());
+        offer.add_option(
+            options::SUBNET_MASK,
+            &Ipv4Addr::new(255, 255, 255, 0).octets(),
+        );
         offer.add_option(options::ROUTER, &Ipv4Addr::new(192, 168, 1, 1).octets());
         offer.add_option(options::DNS_SERVER, &Ipv4Addr::new(8, 8, 8, 8).octets());
         offer.add_option(options::LEASE_TIME, &86400u32.to_be_bytes());
@@ -424,7 +429,10 @@ mod tests {
 
         let mut ack = DhcpPacket::new(DhcpMessageType::Ack, client.transaction_id);
         ack.yiaddr = Ipv4Addr::new(10, 0, 0, 50);
-        ack.add_option(options::SUBNET_MASK, &Ipv4Addr::new(255, 255, 255, 0).octets());
+        ack.add_option(
+            options::SUBNET_MASK,
+            &Ipv4Addr::new(255, 255, 255, 0).octets(),
+        );
         ack.add_option(options::ROUTER, &Ipv4Addr::new(10, 0, 0, 1).octets());
         ack.add_option(options::DNS_SERVER, &Ipv4Addr::new(1, 1, 1, 1).octets());
         ack.add_option(options::LEASE_TIME, &3600u32.to_be_bytes());

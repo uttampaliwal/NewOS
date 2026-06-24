@@ -97,7 +97,8 @@ pub struct RwLockReadGuard<'a, T> {
 impl<T> core::ops::Deref for RwLockReadGuard<'_, T> {
     type Target = T;
     fn deref(&self) -> &T {
-        // SAFETY: we hold a read lock, so data is accessible.
+        // SAFETY: We hold a read lock (state >= 2, bit 0 clear), so no writer
+        // is active. Shared immutable access is safe for multiple readers.
         unsafe { &*self.lock.data.get() }
     }
 }

@@ -30,7 +30,11 @@ impl std::fmt::Display for FetchError {
             Self::NetworkError(e) => write!(f, "network error: {}", e),
             Self::HttpError(code) => write!(f, "HTTP error {}", code),
             Self::ChecksumMismatch { expected, actual } => {
-                write!(f, "checksum mismatch: expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "checksum mismatch: expected {}, got {}",
+                    expected, actual
+                )
             }
             Self::IoError(e) => write!(f, "I/O error: {}", e),
             Self::NotFound => write!(f, "package not found"),
@@ -193,11 +197,7 @@ impl Fetcher {
     }
 
     /// Download a package and save to cache.
-    pub fn download_and_cache(
-        &self,
-        name: &str,
-        version: &str,
-    ) -> Result<PathBuf, FetchError> {
+    pub fn download_and_cache(&self, name: &str, version: &str) -> Result<PathBuf, FetchError> {
         let data = self.download_package(name, version)?;
 
         // Compute expected SHA-256
@@ -250,8 +250,7 @@ pub fn verify_sha256(data: &[u8], expected: &str) -> Result<(), FetchError> {
 pub fn verify_package(path: &Path, expected_sha: &str) -> Result<bool, FetchError> {
     let mut file = File::open(path).map_err(FetchError::IoError)?;
     let mut data = Vec::new();
-    file.read_to_end(&mut data)
-        .map_err(FetchError::IoError)?;
+    file.read_to_end(&mut data).map_err(FetchError::IoError)?;
 
     let actual_sha = compute_sha256(&data);
     Ok(actual_sha == expected_sha)
@@ -324,20 +323,16 @@ impl PackageFetcher {
             turnix_tpkg_format::PackageSource::Local { path } => {
                 let src = PathBuf::from(path);
                 if src.exists() {
-                    std::fs::create_dir_all(&self.cache_dir)
-                        .map_err(FetchError::IoError)?;
-                    std::fs::copy(&src, &cache_path)
-                        .map_err(FetchError::IoError)?;
+                    std::fs::create_dir_all(&self.cache_dir).map_err(FetchError::IoError)?;
+                    std::fs::copy(&src, &cache_path).map_err(FetchError::IoError)?;
                     return Ok(cache_path);
                 }
                 Err(FetchError::NotFound)
             }
             turnix_tpkg_format::PackageSource::Repository { url, .. } => {
                 let data = Fetcher::http_get(url)?;
-                std::fs::create_dir_all(&self.cache_dir)
-                    .map_err(FetchError::IoError)?;
-                std::fs::write(&cache_path, &data)
-                    .map_err(FetchError::IoError)?;
+                std::fs::create_dir_all(&self.cache_dir).map_err(FetchError::IoError)?;
+                std::fs::write(&cache_path, &data).map_err(FetchError::IoError)?;
                 Ok(cache_path)
             }
         }

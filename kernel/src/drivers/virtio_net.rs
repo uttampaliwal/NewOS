@@ -383,7 +383,8 @@ impl VirtioNetDevice {
         if self.stats.tx_errors > 100 || self.stats.rx_errors > 100 {
             crate::serial::println!(
                 "[DRIVER] virtio-net: excessive errors (tx={}, rx={}), resetting",
-                self.stats.tx_errors, self.stats.rx_errors
+                self.stats.tx_errors,
+                self.stats.rx_errors
             );
             self.reset_device()?;
             self.stats = VirtioNetStats::default();

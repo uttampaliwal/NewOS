@@ -138,7 +138,9 @@ impl InstallPipeline {
         self.verify_archive(&archive_path, resolved)?;
 
         // Step 4: Extract to staging
-        let staging_pkg = self.staging_dir.join(format!("{}-{}", resolved.name, resolved.version));
+        let staging_pkg = self
+            .staging_dir
+            .join(format!("{}-{}", resolved.name, resolved.version));
         if staging_pkg.exists() {
             fs::remove_dir_all(&staging_pkg)
                 .map_err(|e| InstallError::IoError(format!("cannot clean staging: {e}")))?;
@@ -288,7 +290,11 @@ impl InstallPipeline {
         Ok(())
     }
 
-    fn apply_to_filesystem(&self, staging: &Path, _resolved: &ResolvedPackage) -> Result<(), InstallError> {
+    fn apply_to_filesystem(
+        &self,
+        staging: &Path,
+        _resolved: &ResolvedPackage,
+    ) -> Result<(), InstallError> {
         copy_dir_contents(staging, &self.target_root)
             .map_err(|e| InstallError::IoError(format!("apply failed: {e}")))
     }
@@ -338,7 +344,11 @@ fn collect_files_recursive(base: &Path, dir: &Path, files: &mut Vec<String>) {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            let rel = path.strip_prefix(base).unwrap().to_string_lossy().to_string();
+            let rel = path
+                .strip_prefix(base)
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
             let rel_path = format!("/{rel}");
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 files.push(rel_path);
@@ -429,7 +439,10 @@ mod tests {
         // This package source points to a non-existent local path
         let rt = tokio::runtime::Runtime::new().unwrap();
         let result = rt.block_on(pipeline.install(&pkg));
-        assert!(result.is_err(), "install should fail because archive doesn't exist");
+        assert!(
+            result.is_err(),
+            "install should fail because archive doesn't exist"
+        );
     }
 
     #[test]
@@ -520,7 +533,12 @@ mod tests {
         let pipeline = test_pipeline(tmp.path());
         let result = pipeline.verify_archive(&archive, &pkg);
         assert!(
-            matches!(result, Err(InstallError::FetchError(FetchError::ChecksumMismatch { .. }))),
+            matches!(
+                result,
+                Err(InstallError::FetchError(
+                    FetchError::ChecksumMismatch { .. }
+                ))
+            ),
             "invalid checksum should produce ChecksumMismatch, got {:?}",
             result
         );

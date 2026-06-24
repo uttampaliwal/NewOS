@@ -88,8 +88,8 @@ pub fn select_victim() -> Option<ProcessId> {
 /// Delivers SIGKILL via the signal subsystem. If the target is the current
 /// process, we additionally trigger the scheduler exit path.
 fn kill_process(pid: ProcessId) -> bool {
-    use crate::task::signals::send_signal;
     use crate::task::scheduler;
+    use crate::task::signals::send_signal;
 
     // If we're killing the current process, use the scheduler exit path.
     let maybe_current = scheduler::get_current_process();

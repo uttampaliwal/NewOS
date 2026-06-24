@@ -66,7 +66,9 @@ pub fn init(heap_start: usize, heap_end: usize, shadow_base: usize) {
     let shadow_size = (heap_end - heap_start).div_ceil(SHADOW_SCALE);
 
     KASAN.heap_start.store(heap_start, Ordering::Release);
-    KASAN.heap_end.store(heap_end + REDZONE_SIZE, Ordering::Release);
+    KASAN
+        .heap_end
+        .store(heap_end + REDZONE_SIZE, Ordering::Release);
     KASAN.shadow_base.store(shadow_base, Ordering::Release);
 
     let shadow = shadow_base as *mut u8;
@@ -203,11 +205,7 @@ pub fn report_violation(addr: usize, size: usize, error: &KasanError) {
     KASAN.error_count.fetch_add(1, Ordering::Relaxed);
 
     crate::serial::println!("[KASAN] BUG: {:?}", error);
-    crate::serial::println!(
-        "[KASAN]   Access at {:x} ({} bytes)",
-        addr,
-        size
-    );
+    crate::serial::println!("[KASAN]   Access at {:x} ({} bytes)", addr, size);
     crate::serial::println!(
         "[KASAN]   Heap range: {:x}..{:x}",
         KASAN.heap_start.load(Ordering::Acquire),

@@ -48,9 +48,9 @@ pub mod test_serial {
     }
 }
 
+pub mod arch;
 pub mod block;
 pub mod cgroup;
-pub mod arch;
 
 // Re-export arch-specific modules at their original paths so
 // existing `crate::gdt::*` and `crate::interrupts::*` references
@@ -72,6 +72,7 @@ pub mod fs;
 pub mod input;
 #[cfg(feature = "arch-x86_64")]
 pub mod ipc;
+pub mod log_ring;
 #[cfg(feature = "arch-x86_64")]
 pub mod memory;
 #[cfg(feature = "arch-x86_64")]
@@ -80,18 +81,17 @@ pub mod net;
 pub mod process;
 #[cfg(feature = "arch-x86_64")]
 pub mod security;
-pub mod log_ring;
 pub mod serial;
-pub mod sync;
-pub mod softirq;
-#[cfg(feature = "arch-x86_64")]
-pub mod time;
 #[cfg(feature = "arch-x86_64")]
 pub mod smp;
+pub mod softirq;
+pub mod sync;
 #[cfg(feature = "arch-x86_64")]
 pub mod syscall;
 #[cfg(feature = "arch-x86_64")]
 pub mod task;
+#[cfg(feature = "arch-x86_64")]
+pub mod time;
 #[cfg(feature = "arch-x86_64")]
 pub mod tty;
 #[cfg(feature = "arch-x86_64")]

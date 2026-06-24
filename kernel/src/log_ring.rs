@@ -91,6 +91,11 @@ impl LogRingBuffer {
         let head = self.head.load(Ordering::Relaxed);
         let next_head = (head + 1) % RING_SIZE;
 
+        // SAFETY: `head` is derived from the atomic head index modulo RING_SIZE,
+        // so it is always in-bounds. The `UnsafeCell` is accessed under the
+        // single-producer protocol: only the code that advanced the head index
+        // writes to that slot, and the write uses `write_volatile` to prevent
+        // the compiler from eliding or reordering it with the atomic store.
         unsafe {
             let entries = &mut *self.entries.get();
             core::ptr::write_volatile(&mut entries[head] as *mut LogEntry, entry);
@@ -115,6 +120,10 @@ impl LogRingBuffer {
         }
 
         let tail = self.tail.load(Ordering::Relaxed);
+        // SAFETY: `tail` is derived from the atomic tail index modulo RING_SIZE
+        // so it is always in-bounds. `LogEntry` is `Copy`, so the read is
+        // safe regardless of concurrent head-side writes (the caller checked
+        // count > 0 before reaching this point).
         let entry = unsafe { (*self.entries.get())[tail] };
         let next_tail = (tail + 1) % RING_SIZE;
 
@@ -131,6 +140,9 @@ impl LogRingBuffer {
             return None;
         }
         let tail = self.tail.load(Ordering::Acquire);
+        // SAFETY: `tail` is derived from the atomic tail index modulo RING_SIZE,
+        // so it is always in-bounds. `LogEntry` is `Copy`, so the read is
+        // a snapshot and will not leave partially-written data.
         Some(unsafe { (*self.entries.get())[tail] })
     }
 
@@ -151,7 +163,8 @@ impl LogRingBuffer {
 
     /// Clear all entries from the buffer.
     pub fn clear(&self) {
-        self.tail.store(self.head.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.tail
+            .store(self.head.load(Ordering::Relaxed), Ordering::Relaxed);
         self.count.store(0, Ordering::Relaxed);
     }
 }

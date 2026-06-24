@@ -4,9 +4,11 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use turnix_ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError,
-    ERROR_SERVICE_NOT_FOUND, ERROR_INTERNAL, ERROR_INVALID_ARGS};
-use service_manager::{ServiceManager, ServiceUnit, ServiceState};
+use service_manager::{ServiceManager, ServiceState, ServiceUnit};
+use turnix_ipc_proto::{
+    ERROR_INTERNAL, ERROR_INVALID_ARGS, ERROR_SERVICE_NOT_FOUND, IpcError, IpcMessage, IpcValue,
+    decode_message, encode_message,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers for IPC broker communication
@@ -48,9 +50,16 @@ fn serialize_state(state: &ServiceState) -> IpcValue {
             ("pid".into(), IpcValue::Int(*pid as i64)),
             ("started_at".into(), IpcValue::Int(*started_at as i64)),
         ]),
-        ServiceState::Failed { exit_code, retry_count, message } => IpcValue::Map(vec![
+        ServiceState::Failed {
+            exit_code,
+            retry_count,
+            message,
+        } => IpcValue::Map(vec![
             ("status".into(), ipc_value_string("failed")),
-            ("exit_code".into(), IpcValue::Int(exit_code.unwrap_or(-1) as i64)),
+            (
+                "exit_code".into(),
+                IpcValue::Int(exit_code.unwrap_or(-1) as i64),
+            ),
             ("retries".into(), IpcValue::Int(*retry_count as i64)),
             ("message".into(), ipc_value_string(message)),
         ]),
@@ -136,13 +145,17 @@ fn main() {
     }
 
     // Main event loop
-    broker.set_read_timeout(Some(Duration::from_millis(500))).ok();
+    broker
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .ok();
     let mut last_check = Instant::now();
 
     loop {
         if let Some(msg) = recv_msg(&mut broker) {
             handle_ipc_message(&manager, &mut tracked, &mut broker, msg);
-            broker.set_read_timeout(Some(Duration::from_millis(500))).ok();
+            broker
+                .set_read_timeout(Some(Duration::from_millis(500)))
+                .ok();
         }
 
         if last_check.elapsed() >= Duration::from_millis(500) {
@@ -242,9 +255,14 @@ fn start_service(
             // Wait for TimeoutStartSec then check if still alive
             std::thread::sleep(Duration::from_secs(timeout));
 
-            let is_alive = tracked.get_mut(name).and_then(|t| {
-                t.child.as_mut().map(|c| !matches!(c.try_wait(), Ok(Some(_))))
-            }).unwrap_or(false);
+            let is_alive = tracked
+                .get_mut(name)
+                .and_then(|t| {
+                    t.child
+                        .as_mut()
+                        .map(|c| !matches!(c.try_wait(), Ok(Some(_))))
+                })
+                .unwrap_or(false);
 
             if is_alive {
                 eprintln!("service-manager: {name} started successfully within timeout");
@@ -262,10 +280,7 @@ fn start_service(
 // Service health check
 // ---------------------------------------------------------------------------
 
-fn check_services(
-    _manager: &ServiceManager,
-    tracked: &mut HashMap<String, TrackedService>,
-) {
+fn check_services(_manager: &ServiceManager, tracked: &mut HashMap<String, TrackedService>) {
     let names: Vec<String> = tracked.keys().cloned().collect();
     for name in names {
         let should_restart = {
@@ -311,7 +326,10 @@ fn handle_ipc_message(
     broker: &mut UnixStream,
     msg: IpcMessage,
 ) {
-    if let IpcMessage::MethodCall { id, method, args, .. } = msg {
+    if let IpcMessage::MethodCall {
+        id, method, args, ..
+    } = msg
+    {
         let response = match method.as_str() {
             "Start" => {
                 let svc_name = args.first().and_then(|v| v.as_str()).unwrap_or("");
@@ -323,7 +341,10 @@ fn handle_ipc_message(
                 } else if !tracked.contains_key(svc_name) {
                     IpcMessage::MethodReturn {
                         id,
-                        result: Err(IpcError::new(ERROR_SERVICE_NOT_FOUND, format!("service {svc_name} not found"))),
+                        result: Err(IpcError::new(
+                            ERROR_SERVICE_NOT_FOUND,
+                            format!("service {svc_name} not found"),
+                        )),
                     }
                 } else {
                     start_service(manager, tracked, svc_name);
@@ -347,7 +368,10 @@ fn handle_ipc_message(
                 } else {
                     IpcMessage::MethodReturn {
                         id,
-                        result: Err(IpcError::new(ERROR_SERVICE_NOT_FOUND, format!("service {svc_name} not found"))),
+                        result: Err(IpcError::new(
+                            ERROR_SERVICE_NOT_FOUND,
+                            format!("service {svc_name} not found"),
+                        )),
                     }
                 }
             }
@@ -360,7 +384,10 @@ fn handle_ipc_message(
                     },
                     None => IpcMessage::MethodReturn {
                         id,
-                        result: Err(IpcError::new(ERROR_SERVICE_NOT_FOUND, format!("service {svc_name} not found"))),
+                        result: Err(IpcError::new(
+                            ERROR_SERVICE_NOT_FOUND,
+                            format!("service {svc_name} not found"),
+                        )),
                     },
                 }
             }
@@ -370,7 +397,9 @@ fn handle_ipc_message(
                     .into_iter()
                     .map(|nm| {
                         let state = manager.state(&nm);
-                        let state_val = state.map(serialize_state).unwrap_or(ipc_value_string("unknown"));
+                        let state_val = state
+                            .map(serialize_state)
+                            .unwrap_or(ipc_value_string("unknown"));
                         IpcValue::Map(vec![
                             ("name".into(), ipc_value_string(&nm)),
                             ("state".into(), state_val),
@@ -382,12 +411,13 @@ fn handle_ipc_message(
                     result: Ok(IpcValue::Array(services)),
                 }
             }
-            _ => {
-                IpcMessage::MethodReturn {
-                    id,
-                    result: Err(IpcError::new(ERROR_INTERNAL, format!("unknown method {method}"))),
-                }
-            }
+            _ => IpcMessage::MethodReturn {
+                id,
+                result: Err(IpcError::new(
+                    ERROR_INTERNAL,
+                    format!("unknown method {method}"),
+                )),
+            },
         };
         send_msg(broker, &response);
     }

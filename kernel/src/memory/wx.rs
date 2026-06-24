@@ -270,8 +270,14 @@ mod tests {
         let mut f = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::HUGE_PAGE;
         let was = enforce_wx_on_flags(&mut f);
         assert!(was, "W+X with HUGE_PAGE must be detected");
-        assert!(!f.contains(PageTableFlags::WRITABLE), "WRITABLE must be stripped");
-        assert!(f.contains(PageTableFlags::HUGE_PAGE), "HUGE_PAGE must be preserved");
+        assert!(
+            !f.contains(PageTableFlags::WRITABLE),
+            "WRITABLE must be stripped"
+        );
+        assert!(
+            f.contains(PageTableFlags::HUGE_PAGE),
+            "HUGE_PAGE must be preserved"
+        );
     }
 
     #[test]
@@ -280,7 +286,10 @@ mod tests {
         let was = enforce_wx_on_flags(&mut f);
         assert!(was, "W+X with GLOBAL must be detected");
         assert!(!f.contains(PageTableFlags::WRITABLE));
-        assert!(f.contains(PageTableFlags::GLOBAL), "GLOBAL must be preserved");
+        assert!(
+            f.contains(PageTableFlags::GLOBAL),
+            "GLOBAL must be preserved"
+        );
     }
 
     #[test]

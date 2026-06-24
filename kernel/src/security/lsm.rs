@@ -219,12 +219,7 @@ pub trait LsmHook: Send + Sync {
     }
 
     /// Called before a capability check is performed.
-    fn capability_check(
-        &self,
-        _cap: u32,
-        _uid: u32,
-        _gid: u32,
-    ) -> Result<(), LsmError> {
+    fn capability_check(&self, _cap: u32, _uid: u32, _gid: u32) -> Result<(), LsmError> {
         Ok(())
     }
 }
@@ -319,10 +314,7 @@ impl DacHook {
 impl LsmHook for DacHook {
     fn file_open(&self, path: &str, flags: u32, uid: u32, _gid: u32) -> Result<(), LsmError> {
         if (path.starts_with("/proc/") || path.starts_with("/sys/")) && flags & 1 != 0 && uid != 0 {
-            crate::serial::println!(
-                "[DAC] Write denied for non-root to protected fs: {}",
-                path
-            );
+            crate::serial::println!("[DAC] Write denied for non-root to protected fs: {}", path);
             return Err(LsmError::AccessDenied);
         }
         Ok(())
@@ -371,7 +363,9 @@ impl LsmHook for DacHook {
         };
         let inner = proc.inner.lock();
         use crate::security::capabilities::Capability;
-        if let Some(c) = Capability::from_bit(cap_bit) && !inner.sec_ctx.has_capability(c) {
+        if let Some(c) = Capability::from_bit(cap_bit)
+            && !inner.sec_ctx.has_capability(c)
+        {
             return Err(LsmError::AccessDenied);
         }
         Ok(())
@@ -447,7 +441,13 @@ mod tests {
     struct DenyFileHook;
 
     impl LsmHook for DenyFileHook {
-        fn file_open(&self, _path: &str, _flags: u32, _uid: u32, _gid: u32) -> Result<(), LsmError> {
+        fn file_open(
+            &self,
+            _path: &str,
+            _flags: u32,
+            _uid: u32,
+            _gid: u32,
+        ) -> Result<(), LsmError> {
             Err(LsmError::AccessDenied)
         }
     }
@@ -459,7 +459,9 @@ mod tests {
 
     impl CallRecorder {
         fn new() -> Self {
-            Self { calls: Mutex::new(Vec::new()) }
+            Self {
+                calls: Mutex::new(Vec::new()),
+            }
         }
 
         fn record(&self, name: &'static str) {
@@ -473,7 +475,13 @@ mod tests {
     }
 
     impl LsmHook for CallRecorder {
-        fn file_open(&self, _path: &str, _flags: u32, _uid: u32, _gid: u32) -> Result<(), LsmError> {
+        fn file_open(
+            &self,
+            _path: &str,
+            _flags: u32,
+            _uid: u32,
+            _gid: u32,
+        ) -> Result<(), LsmError> {
             self.record("file_open");
             Ok(())
         }
@@ -705,10 +713,7 @@ mod tests {
     #[test]
     fn test_security_label_unconfined() {
         let label = SecurityLabel::unconfined();
-        assert_eq!(
-            label.as_string(),
-            "unconfined_u:unconfined_r:unconfined_t"
-        );
+        assert_eq!(label.as_string(), "unconfined_u:unconfined_r:unconfined_t");
     }
 
     #[test]

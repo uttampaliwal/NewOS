@@ -337,8 +337,7 @@ impl FsBackend for TmpfsBackend {
     fn xattr_set(&self, inode: InodeId, name: &str, value: &[u8]) -> Result<(), FsError> {
         let mut inner = self.inner.lock();
         let node = inner.inodes.get_mut(&inode).ok_or(FsError::NotFound)?;
-        node.xattrs
-            .insert(String::from(name), value.to_vec());
+        node.xattrs.insert(String::from(name), value.to_vec());
         Ok(())
     }
 
@@ -372,9 +371,7 @@ impl FsBackend for TmpfsBackend {
         }
         let new_mode = if mode == 0 { 0o644 } else { mode };
         let new_id = inner.alloc_inode();
-        inner
-            .inodes
-            .insert(new_id, TmpfsInode::new_file(new_mode));
+        inner.inodes.insert(new_id, TmpfsInode::new_file(new_mode));
         if let Some(parent_node) = inner.inodes.get_mut(&parent) {
             parent_node.children.insert(String::from(name), new_id);
         }
@@ -668,13 +665,7 @@ mod tests {
 
         let mut attrs = fs.xattr_list(child).unwrap();
         attrs.sort();
-        assert_eq!(
-            attrs,
-            vec![
-                String::from("user.a"),
-                String::from("user.b"),
-            ]
-        );
+        assert_eq!(attrs, vec![String::from("user.a"), String::from("user.b"),]);
     }
 
     #[test]
@@ -694,10 +685,7 @@ mod tests {
         let fs = make_tmpfs();
         let bogus = InodeId(9999);
         assert_eq!(fs.xattr_get(bogus, "user.a"), Err(FsError::NotFound));
-        assert_eq!(
-            fs.xattr_set(bogus, "user.a", b"1"),
-            Err(FsError::NotFound)
-        );
+        assert_eq!(fs.xattr_set(bogus, "user.a", b"1"), Err(FsError::NotFound));
         assert_eq!(fs.xattr_remove(bogus, "user.a"), Err(FsError::NotFound));
         assert_eq!(fs.xattr_list(bogus), Err(FsError::NotFound));
     }

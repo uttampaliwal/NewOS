@@ -223,7 +223,9 @@ impl GroupAllocator {
 
     /// Free a block in this group.
     pub fn free_block(&mut self, block: u32, group_start: u32) -> Result<(), AllocError> {
-        let local = block.checked_sub(group_start).ok_or(AllocError::OutOfRange)?;
+        let local = block
+            .checked_sub(group_start)
+            .ok_or(AllocError::OutOfRange)?;
         self.block_bitmap.free(local)
     }
 

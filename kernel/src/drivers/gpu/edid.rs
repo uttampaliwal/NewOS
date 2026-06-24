@@ -124,7 +124,7 @@ impl EdidData {
                     0 => (h_pixels * 10) / 16, // 16:10
                     1 => (h_pixels * 3) / 4,   // 4:3
                     2 => (h_pixels * 9) / 16,  // 16:9
-                    3 => h_pixels,              // 5:4
+                    3 => h_pixels,             // 5:4
                     _ => (h_pixels * 3) / 4,
                 };
 

@@ -4,11 +4,9 @@
 #[cfg(not(test))]
 use core::panic::PanicInfo;
 use init::{
-    parse_services, topological_sort, ServiceManifest, MAX_AFTER, MAX_SERVICES, SERVICE_TOML,
+    MAX_AFTER, MAX_SERVICES, SERVICE_TOML, ServiceManifest, parse_services, topological_sort,
 };
-use libturnix::{
-    exec, exit, fork, kill, print, read_shutdown_signal, shutdown, wait,
-};
+use libturnix::{exec, exit, fork, kill, print, read_shutdown_signal, shutdown, wait};
 
 const SIGTERM: u8 = 15;
 const SIGKILL: u8 = 9;

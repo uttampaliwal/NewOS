@@ -612,10 +612,23 @@ mod tests {
             device: 0,
             function: 0,
             bars: [
-                Some(Bar::Memory32 { base: 0xA0000000, size: 0x1000, prefetchable: false }),
-                Some(Bar::Memory64 { base: 0x100000000, size: 0x20000, prefetchable: true }),
-                Some(Bar::Io { port: 0x3F8, size: 8 }),
-                None, None, None,
+                Some(Bar::Memory32 {
+                    base: 0xA0000000,
+                    size: 0x1000,
+                    prefetchable: false,
+                }),
+                Some(Bar::Memory64 {
+                    base: 0x100000000,
+                    size: 0x20000,
+                    prefetchable: true,
+                }),
+                Some(Bar::Io {
+                    port: 0x3F8,
+                    size: 8,
+                }),
+                None,
+                None,
+                None,
             ],
             interrupt_line: Some(10),
             interrupt_pin: Some(1),
@@ -624,8 +637,18 @@ mod tests {
         let cloned = info.clone();
         assert_eq!(cloned.vendor_id, 0x1234);
         match (&cloned.bars[0], &info.bars[0]) {
-            (Some(Bar::Memory32 { base: b1, size: s1, prefetchable: p1 }),
-             Some(Bar::Memory32 { base: b2, size: s2, prefetchable: p2 })) => {
+            (
+                Some(Bar::Memory32 {
+                    base: b1,
+                    size: s1,
+                    prefetchable: p1,
+                }),
+                Some(Bar::Memory32 {
+                    base: b2,
+                    size: s2,
+                    prefetchable: p2,
+                }),
+            ) => {
                 assert_eq!(b1, b2);
                 assert_eq!(s1, s2);
                 assert_eq!(p1, p2);
@@ -633,8 +656,18 @@ mod tests {
             _ => panic!("BAR0 mismatch"),
         }
         match (&cloned.bars[1], &info.bars[1]) {
-            (Some(Bar::Memory64 { base: b1, size: s1, prefetchable: p1 }),
-             Some(Bar::Memory64 { base: b2, size: s2, prefetchable: p2 })) => {
+            (
+                Some(Bar::Memory64 {
+                    base: b1,
+                    size: s1,
+                    prefetchable: p1,
+                }),
+                Some(Bar::Memory64 {
+                    base: b2,
+                    size: s2,
+                    prefetchable: p2,
+                }),
+            ) => {
                 assert_eq!(b1, b2);
                 assert_eq!(s1, s2);
                 assert_eq!(p1, p2);
@@ -642,8 +675,7 @@ mod tests {
             _ => panic!("BAR1 mismatch"),
         }
         match (&cloned.bars[2], &info.bars[2]) {
-            (Some(Bar::Io { port: p1, size: s1 }),
-             Some(Bar::Io { port: p2, size: s2 })) => {
+            (Some(Bar::Io { port: p1, size: s1 }), Some(Bar::Io { port: p2, size: s2 })) => {
                 assert_eq!(p1, p2);
                 assert_eq!(s1, s2);
             }

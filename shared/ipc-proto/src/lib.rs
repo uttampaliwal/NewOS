@@ -189,7 +189,11 @@ mod tests {
         let encoded = encode_message(msg).expect("encoding should succeed");
         let (decoded, consumed) = decode_message(&encoded).expect("decoding should succeed");
         assert_eq!(*msg, decoded, "round-trip must produce identical message");
-        assert_eq!(consumed, encoded.len(), "must consume exactly the encoded bytes");
+        assert_eq!(
+            consumed,
+            encoded.len(),
+            "must consume exactly the encoded bytes"
+        );
     }
 
     #[test]
@@ -198,10 +202,7 @@ mod tests {
             id: 1,
             interface: "com.turnix.Service".into(),
             method: "hello".into(),
-            args: vec![
-                IpcValue::String("world".into()),
-                IpcValue::Int(42),
-            ],
+            args: vec![IpcValue::String("world".into()), IpcValue::Int(42)],
         });
     }
 
@@ -262,9 +263,7 @@ mod tests {
             IpcValue::String("test".into()),
             IpcValue::Bytes(vec![0x00, 0xFF, 0xAB]),
             IpcValue::Array(vec![IpcValue::Int(1), IpcValue::Int(2)]),
-            IpcValue::Map(vec![
-                ("key".into(), IpcValue::String("val".into())),
-            ]),
+            IpcValue::Map(vec![("key".into(), IpcValue::String("val".into()))]),
         ];
         let msg = IpcMessage::MethodCall {
             id: 99,

@@ -733,7 +733,10 @@ mod tests {
             backing: VmaBacking::Anonymous,
             flags: VmaFlags::MAP_PRIVATE,
         };
-        assert!(set.insert(v2).is_err(), "same-start insertion must be rejected as conflict");
+        assert!(
+            set.insert(v2).is_err(),
+            "same-start insertion must be rejected as conflict"
+        );
     }
 
     #[test]
@@ -775,6 +778,9 @@ mod tests {
             flags: VmaFlags::MAP_PRIVATE,
         };
         let result = set.insert(v2);
-        assert!(result.is_err(), "same-start insertion must be rejected as conflict");
+        assert!(
+            result.is_err(),
+            "same-start insertion must be rejected as conflict"
+        );
     }
 }

@@ -69,12 +69,21 @@ pub fn parse_desktop_entry(content: &str) -> Option<DesktopEntry> {
 
 /// Fill a pixel buffer with a solid color (BGRA format).
 #[allow(clippy::too_many_arguments)]
-pub fn fill_rect(pixels: &mut [u8], width: u32, height: u32, x: u32, y: u32, w: u32, h: u32, color: [u8; 4]) {
+pub fn fill_rect(
+    pixels: &mut [u8],
+    width: u32,
+    height: u32,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    color: [u8; 4],
+) {
     for row in y..(y + h).min(height) {
         for col in x..(x + w).min(width) {
             let idx = ((row * width + col) * 4) as usize;
             if idx + 3 < pixels.len() {
-                pixels[idx] = color[0];     // B
+                pixels[idx] = color[0]; // B
                 pixels[idx + 1] = color[1]; // G
                 pixels[idx + 2] = color[2]; // R
                 pixels[idx + 3] = color[3]; // A
@@ -131,7 +140,8 @@ mod tests {
 
     #[test]
     fn test_parse_no_display_entry() {
-        let content = "[Desktop Entry]\nType=Application\nName=Hidden\nExec=/bin/hidden\nNoDisplay=true\n";
+        let content =
+            "[Desktop Entry]\nType=Application\nName=Hidden\nExec=/bin/hidden\nNoDisplay=true\n";
         let entry = parse_desktop_entry(content).unwrap();
         assert!(entry.no_display);
     }

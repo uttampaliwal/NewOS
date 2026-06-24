@@ -111,15 +111,33 @@ pub extern "C" fn _start() -> ! {
                 buf[p] = b' ';
                 p += 1;
                 for &b in name.as_bytes() {
-                    if p < 80 { buf[p] = b; p += 1; }
+                    if p < 80 {
+                        buf[p] = b;
+                        p += 1;
+                    }
                 }
                 // " eff=Y perm=Y inh=Y"
                 let eff_str = if has_eff { b" eff=Y" } else { b" eff=N" };
                 let perm_str = if has_perm { b" perm=Y" } else { b" perm=N" };
                 let inh_str = if has_inh { b" inh=Y" } else { b" inh=N" };
-                for &b in eff_str { if p < 80 { buf[p] = b; p += 1; } }
-                for &b in perm_str { if p < 80 { buf[p] = b; p += 1; } }
-                for &b in inh_str { if p < 80 { buf[p] = b; p += 1; } }
+                for &b in eff_str {
+                    if p < 80 {
+                        buf[p] = b;
+                        p += 1;
+                    }
+                }
+                for &b in perm_str {
+                    if p < 80 {
+                        buf[p] = b;
+                        p += 1;
+                    }
+                }
+                for &b in inh_str {
+                    if p < 80 {
+                        buf[p] = b;
+                        p += 1;
+                    }
+                }
                 if let Ok(s) = core::str::from_utf8(&buf[..p]) {
                     println(s);
                 }

@@ -3,10 +3,10 @@ use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
 use device_manager::{
-    default_driver_rules, DriverRuleTable, HotplugSource, RawHotplugEvent, DeviceBus,
-    HotplugEventType, parse_hotplug_event,
+    DeviceBus, DriverRuleTable, HotplugEventType, HotplugSource, RawHotplugEvent,
+    default_driver_rules, parse_hotplug_event,
 };
-use turnix_ipc_proto::{encode_message, decode_message, IpcMessage, IpcValue, IpcError};
+use turnix_ipc_proto::{IpcError, IpcMessage, IpcValue, decode_message, encode_message};
 
 // ---------------------------------------------------------------------------
 // Real hotplug source (kernel hotplug_subscribe syscall)
@@ -30,7 +30,9 @@ impl KernelHotplugSource {
 }
 
 impl HotplugSource for KernelHotplugSource {
-    fn poll_event(&mut self) -> Result<Option<RawHotplugEvent>, device_manager::DeviceManagerError> {
+    fn poll_event(
+        &mut self,
+    ) -> Result<Option<RawHotplugEvent>, device_manager::DeviceManagerError> {
         let file = match self.file.as_mut() {
             Some(f) => f,
             None => return Ok(None),
@@ -44,7 +46,9 @@ impl HotplugSource for KernelHotplugSource {
                 Ok(Some(event))
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-            Err(e) => Err(device_manager::DeviceManagerError::HotplugError(format!("read error: {e}"))),
+            Err(e) => Err(device_manager::DeviceManagerError::HotplugError(format!(
+                "read error: {e}"
+            ))),
         }
     }
 }
@@ -99,10 +103,14 @@ fn send_msg(stream: &mut UnixStream, msg: &IpcMessage) {
 
 fn recv_msg(stream: &mut UnixStream) -> Option<IpcMessage> {
     let mut len_buf = [0u8; 4];
-    if stream.read_exact(&mut len_buf).is_err() { return None; }
+    if stream.read_exact(&mut len_buf).is_err() {
+        return None;
+    }
     let len = u32::from_le_bytes(len_buf) as usize;
     let mut payload = vec![0u8; len];
-    if stream.read_exact(&mut payload).is_err() { return None; }
+    if stream.read_exact(&mut payload).is_err() {
+        return None;
+    }
     let mut full = Vec::with_capacity(4 + len);
     full.extend_from_slice(&len_buf);
     full.extend_from_slice(&payload);
@@ -144,7 +152,10 @@ fn main() {
     let rules = match DriverRuleTable::load_from_toml(&config.rules_path) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Warning: cannot load rules from '{0}': {e}", config.rules_path);
+            eprintln!(
+                "Warning: cannot load rules from '{0}': {e}",
+                config.rules_path
+            );
             eprintln!("Using default driver rules");
             default_driver_rules()
         }
@@ -210,48 +221,59 @@ fn main() {
     }
 }
 
-fn handle_ipc(
-    stream: &mut UnixStream,
-    dm: &mut device_manager::DeviceManager,
-    msg: IpcMessage,
-) {
+fn handle_ipc(stream: &mut UnixStream, dm: &mut device_manager::DeviceManager, msg: IpcMessage) {
     let resp = match msg {
         IpcMessage::MethodCall { id, method, .. } => {
             let result = match method.as_str() {
                 "ListDevices" => {
                     let infos = dm.list_device_infos();
-                    let devices: Vec<IpcValue> = infos.into_iter().map(|d| {
-                        IpcValue::Map(vec![
-                            ("vendor_id".into(), IpcValue::String(format!("{:04x}", d.vendor_id))),
-                            ("device_id".into(), IpcValue::String(format!("{:04x}", d.device_id))),
-                            ("description".into(), IpcValue::String(d.description)),
-                            ("driver".into(), IpcValue::String(d.driver.unwrap_or_else(|| "none".into()))),
-                            ("bus".into(), IpcValue::String(format!("{:?}", d.bus))),
-                        ])
-                    }).collect();
+                    let devices: Vec<IpcValue> = infos
+                        .into_iter()
+                        .map(|d| {
+                            IpcValue::Map(vec![
+                                (
+                                    "vendor_id".into(),
+                                    IpcValue::String(format!("{:04x}", d.vendor_id)),
+                                ),
+                                (
+                                    "device_id".into(),
+                                    IpcValue::String(format!("{:04x}", d.device_id)),
+                                ),
+                                ("description".into(), IpcValue::String(d.description)),
+                                (
+                                    "driver".into(),
+                                    IpcValue::String(d.driver.unwrap_or_else(|| "none".into())),
+                                ),
+                                ("bus".into(), IpcValue::String(format!("{:?}", d.bus))),
+                            ])
+                        })
+                        .collect();
 
-                    let mounts: Vec<IpcValue> = dm.mounts.iter().map(|m| {
-                        IpcValue::Map(vec![
-                            ("label".into(), IpcValue::String(m.label.clone())),
-                            ("mount_path".into(), IpcValue::String(m.mount_path.to_string_lossy().to_string())),
-                            ("is_mounted".into(), IpcValue::Bool(m.is_mounted)),
-                        ])
-                    }).collect();
+                    let mounts: Vec<IpcValue> = dm
+                        .mounts
+                        .iter()
+                        .map(|m| {
+                            IpcValue::Map(vec![
+                                ("label".into(), IpcValue::String(m.label.clone())),
+                                (
+                                    "mount_path".into(),
+                                    IpcValue::String(m.mount_path.to_string_lossy().to_string()),
+                                ),
+                                ("is_mounted".into(), IpcValue::Bool(m.is_mounted)),
+                            ])
+                        })
+                        .collect();
 
                     Ok(IpcValue::Map(vec![
                         ("devices".into(), IpcValue::Array(devices)),
                         ("mounts".into(), IpcValue::Array(mounts)),
                     ]))
                 }
-                "DeviceCount" => {
-                    Ok(IpcValue::Int(dm.device_count() as i64))
-                }
-                _ => {
-                    Err(IpcError {
-                        code: turnix_ipc_proto::ERROR_METHOD_NOT_FOUND,
-                        message: format!("unknown method: {method}"),
-                    })
-                }
+                "DeviceCount" => Ok(IpcValue::Int(dm.device_count() as i64)),
+                _ => Err(IpcError {
+                    code: turnix_ipc_proto::ERROR_METHOD_NOT_FOUND,
+                    message: format!("unknown method: {method}"),
+                }),
             };
 
             Some(IpcMessage::MethodReturn { id, result })

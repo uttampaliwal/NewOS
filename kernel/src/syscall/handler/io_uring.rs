@@ -1,5 +1,5 @@
-use turnix_abi::syscall::SyscallArgs;
 use super::SyscallResult;
+use turnix_abi::syscall::SyscallArgs;
 
 pub fn handle_io_uring_setup(args: SyscallArgs) -> SyscallResult {
     let sq_entries = args.arg0 as u32;

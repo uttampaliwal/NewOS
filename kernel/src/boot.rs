@@ -10,8 +10,6 @@ use alloc::sync::Arc;
 use lazy_static::lazy_static;
 use spin::Mutex;
 
-
-
 lazy_static! {
     pub static ref FRAME_ALLOCATOR: Mutex<Option<FrameAllocator<'static>>> = Mutex::new(None);
     pub static ref PHYS_MEM_OFFSET: Mutex<Option<VirtAddr>> = Mutex::new(None);
@@ -236,7 +234,9 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     let _ = writeln!(writer, "[STG: TPM_PROBE]");
 
     // Register PID 1 (init) as the Compositor process
-    crate::drivers::gpu::DRM_MANAGER.lock().set_compositor_pid(1);
+    crate::drivers::gpu::DRM_MANAGER
+        .lock()
+        .set_compositor_pid(1);
     let _ = writeln!(writer, "[STG: COMPOSITOR_PID_SET]");
 
     // 3.5 Initialize network stack (uses MAC from virtio-net)
@@ -284,8 +284,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
             let _ = writeln!(writer, "[STG: EXT4_MOUNTED]");
         }
     }
-
-
 
     // 4.1 Initialize Text Console with PSF font from VFS
     {
@@ -426,7 +424,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                     let table = crate::process::PROCESS_TABLE.lock();
                     if let Some(pcb_arc) = table.get(&init_proc.id()) {
                         let mut pcb = pcb_arc.lock();
-                            pcb.fd_table[0] = vfs.get_fd(0);
+                        pcb.fd_table[0] = vfs.get_fd(0);
                         pcb.fd_table[1] = vfs.get_fd(1);
                         pcb.fd_table[2] = vfs.get_fd(2);
                     }

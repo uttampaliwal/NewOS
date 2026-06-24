@@ -282,7 +282,10 @@ mod tests {
 
     #[test]
     fn display_messages() {
-        assert_eq!(format!("{}", KernelError::NotFound), "No such file or directory");
+        assert_eq!(
+            format!("{}", KernelError::NotFound),
+            "No such file or directory"
+        );
         assert_eq!(format!("{}", KernelError::BrokenPipe), "Broken pipe");
     }
 }

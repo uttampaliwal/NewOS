@@ -32,7 +32,9 @@ impl PipeInner {
         let to_read = core::cmp::min(self.bytes_available, buf.len());
         for (i, byte) in buf.iter_mut().enumerate().take(to_read) {
             let idx = (self.read_pos + i) % PIPE_BUF_SIZE;
-            unsafe { *byte = self.buffer.add(idx).read_volatile(); }
+            unsafe {
+                *byte = self.buffer.add(idx).read_volatile();
+            }
         }
         self.read_pos = (self.read_pos + to_read) % PIPE_BUF_SIZE;
         self.bytes_available -= to_read;
@@ -44,7 +46,9 @@ impl PipeInner {
         let to_write = core::cmp::min(space, buf.len());
         for (i, byte) in buf.iter().enumerate().take(to_write) {
             let idx = (self.write_pos + i) % PIPE_BUF_SIZE;
-            unsafe { self.buffer.add(idx).write_volatile(*byte); }
+            unsafe {
+                self.buffer.add(idx).write_volatile(*byte);
+            }
         }
         self.write_pos = (self.write_pos + to_write) % PIPE_BUF_SIZE;
         self.bytes_available += to_write;

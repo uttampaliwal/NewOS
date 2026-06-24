@@ -957,7 +957,11 @@ pub fn reinit() -> bool {
 pub fn deliver_hid_input(port_num: u8, usage: u8, pressed: bool) {
     use turnix_abi::input::*;
 
-    let value = if pressed { KEY_STATE_PRESSED } else { KEY_STATE_RELEASED };
+    let value = if pressed {
+        KEY_STATE_PRESSED
+    } else {
+        KEY_STATE_RELEASED
+    };
     let key = crate::input::hid_usage_to_keycode(usage);
 
     // Normalized key event.
@@ -1093,7 +1097,6 @@ mod tests {
     use super::*;
     use crate::drivers::framework::Bar;
     use alloc::format;
-
 
     // -----------------------------------------------------------------------
     // Port speed detection tests

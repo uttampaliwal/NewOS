@@ -118,7 +118,11 @@ pub fn parse_hotplug_event(data: &[u8]) -> Result<RawHotplugEvent, DeviceManager
         1 => HotplugEventType::DeviceAdded,
         2 => HotplugEventType::DeviceRemoved,
         3 => HotplugEventType::DeviceChanged,
-        t => return Err(DeviceManagerError::InvalidEvent(format!("unknown event type: {t}"))),
+        t => {
+            return Err(DeviceManagerError::InvalidEvent(format!(
+                "unknown event type: {t}"
+            )));
+        }
     };
 
     let vendor_id = u16::from_le_bytes([data[1], data[2]]);
@@ -212,11 +216,15 @@ pub struct DriverRuleTable {
 
 impl DriverRuleTable {
     pub fn match_device(&self, vendor_id: u16, device_id: u16) -> Option<&DriverRule> {
-        self.rules.iter().find(|r| r.vendor_id == vendor_id && r.device_id == device_id)
+        self.rules
+            .iter()
+            .find(|r| r.vendor_id == vendor_id && r.device_id == device_id)
     }
 
     pub fn match_device_mut(&mut self, vendor_id: u16, device_id: u16) -> Option<&mut DriverRule> {
-        self.rules.iter_mut().find(|r| r.vendor_id == vendor_id && r.device_id == device_id)
+        self.rules
+            .iter_mut()
+            .find(|r| r.vendor_id == vendor_id && r.device_id == device_id)
     }
 
     pub fn load_from_toml(path: &str) -> Result<Self, DeviceManagerError> {
@@ -383,15 +391,20 @@ impl DeviceManager {
             HotplugEventType::DeviceRemoved => self.handle_device_removed(event),
             HotplugEventType::DeviceChanged => {
                 // Re-check driver rules on device property change
-                if let Some(driver_rule) = self.driver_rules.match_device(event.vendor_id, event.device_id) {
+                if let Some(driver_rule) = self
+                    .driver_rules
+                    .match_device(event.vendor_id, event.device_id)
+                {
                     eprintln!(
                         "dev-mgr: device changed {:04x}:{:04x} — driver: {}",
                         event.vendor_id, event.device_id, driver_rule.driver_name
                     );
                     // Update the device entry if it exists
-                    if let Some(dev) = self.devices.iter_mut().find(|d| {
-                        d.vendor_id == event.vendor_id && d.device_id == event.device_id
-                    }) {
+                    if let Some(dev) = self
+                        .devices
+                        .iter_mut()
+                        .find(|d| d.vendor_id == event.vendor_id && d.device_id == event.device_id)
+                    {
                         dev.driver = Some(driver_rule.driver_name.clone());
                     }
                 }
@@ -401,18 +414,27 @@ impl DeviceManager {
     }
 
     fn handle_device_added(&mut self, event: &RawHotplugEvent) -> Result<(), DeviceManagerError> {
-        let driver_rule = self.driver_rules.match_device(event.vendor_id, event.device_id);
+        let driver_rule = self
+            .driver_rules
+            .match_device(event.vendor_id, event.device_id);
         let driver_name = driver_rule.map(|r| r.driver_name.clone());
-        let description = driver_rule.map(|r| r.description.clone())
-            .unwrap_or_else(|| format!("Unknown device {:04x}:{:04x}", event.vendor_id, event.device_id));
+        let description = driver_rule
+            .map(|r| r.description.clone())
+            .unwrap_or_else(|| {
+                format!(
+                    "Unknown device {:04x}:{:04x}",
+                    event.vendor_id, event.device_id
+                )
+            });
 
-        let is_usb_storage = event.bus_type == DeviceBus::Usb
-            && driver_name.as_deref() == Some("usb-storage");
+        let is_usb_storage =
+            event.bus_type == DeviceBus::Usb && driver_name.as_deref() == Some("usb-storage");
 
         let mount_point = if is_usb_storage {
-            let label = event.label.clone().unwrap_or_else(|| {
-                format!("usb-{:04x}-{:04x}", event.vendor_id, event.device_id)
-            });
+            let label = event
+                .label
+                .clone()
+                .unwrap_or_else(|| format!("usb-{:04x}-{:04x}", event.vendor_id, event.device_id));
             let mount_path = PathBuf::from(format!("/media/{label}"));
 
             // Create mount entry if not already tracked
@@ -484,25 +506,33 @@ impl DeviceManager {
     }
 
     pub fn get_devices_json(&self) -> serde_json::Value {
-        let devices: Vec<serde_json::Value> = self.devices.iter().map(|d| {
-            serde_json::json!({
-                "bus": format!("{:?}", d.bus),
-                "vendor_id": format!("{:04x}", d.vendor_id),
-                "device_id": format!("{:04x}", d.device_id),
-                "class_code": format!("{:04x}", d.class_code),
-                "description": d.description,
-                "driver": d.driver,
-                "mount_point": d.mount_point.as_ref().map(|p| p.to_string_lossy().to_string()),
+        let devices: Vec<serde_json::Value> = self
+            .devices
+            .iter()
+            .map(|d| {
+                serde_json::json!({
+                    "bus": format!("{:?}", d.bus),
+                    "vendor_id": format!("{:04x}", d.vendor_id),
+                    "device_id": format!("{:04x}", d.device_id),
+                    "class_code": format!("{:04x}", d.class_code),
+                    "description": d.description,
+                    "driver": d.driver,
+                    "mount_point": d.mount_point.as_ref().map(|p| p.to_string_lossy().to_string()),
+                })
             })
-        }).collect();
+            .collect();
 
-        let mounts: Vec<serde_json::Value> = self.mounts.iter().map(|m| {
-            serde_json::json!({
-                "label": m.label,
-                "mount_path": m.mount_path.to_string_lossy().to_string(),
-                "is_mounted": m.is_mounted,
+        let mounts: Vec<serde_json::Value> = self
+            .mounts
+            .iter()
+            .map(|m| {
+                serde_json::json!({
+                    "label": m.label,
+                    "mount_path": m.mount_path.to_string_lossy().to_string(),
+                    "is_mounted": m.is_mounted,
+                })
             })
-        }).collect();
+            .collect();
 
         serde_json::json!({
             "devices": devices,
@@ -531,16 +561,23 @@ impl std::fmt::Debug for DeviceManager {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DriverAction {
-    LoadDriver { driver: String, vendor_id: u16, device_id: u16 },
-    MountStorage { label: String, path: PathBuf },
-    UnmountStorage { label: String, path: PathBuf },
+    LoadDriver {
+        driver: String,
+        vendor_id: u16,
+        device_id: u16,
+    },
+    MountStorage {
+        label: String,
+        path: PathBuf,
+    },
+    UnmountStorage {
+        label: String,
+        path: PathBuf,
+    },
     Ignore,
 }
 
-pub fn evaluate_driver_rule(
-    event: &RawHotplugEvent,
-    rules: &DriverRuleTable,
-) -> DriverAction {
+pub fn evaluate_driver_rule(event: &RawHotplugEvent, rules: &DriverRuleTable) -> DriverAction {
     let rule = rules.match_device(event.vendor_id, event.device_id);
     match rule {
         Some(r) if r.auto_probe => {
@@ -550,10 +587,7 @@ pub fn evaluate_driver_rule(
                     format!("usb-{:04x}-{:04x}", event.vendor_id, event.device_id)
                 });
                 let path = PathBuf::from(format!("/media/{label}"));
-                DriverAction::MountStorage {
-                    label,
-                    path,
-                }
+                DriverAction::MountStorage { label, path }
             } else {
                 DriverAction::LoadDriver {
                     driver: r.driver_name.clone(),
@@ -659,7 +693,12 @@ mod tests {
         raw[0] = 99;
         let result = parse_hotplug_event(&raw);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown event type"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown event type")
+        );
     }
 
     #[test]
@@ -746,11 +785,14 @@ mod tests {
         };
 
         let action = evaluate_driver_rule(&event, &default_driver_rules());
-        assert_eq!(action, DriverAction::LoadDriver {
-            driver: "e1000".into(),
-            vendor_id: 0x8086,
-            device_id: 0x100e,
-        });
+        assert_eq!(
+            action,
+            DriverAction::LoadDriver {
+                driver: "e1000".into(),
+                vendor_id: 0x8086,
+                device_id: 0x100e,
+            }
+        );
     }
 
     #[test]
@@ -770,10 +812,13 @@ mod tests {
         };
 
         let action = evaluate_driver_rule(&event, &default_driver_rules());
-        assert_eq!(action, DriverAction::MountStorage {
-            label: "SAMSUNG".into(),
-            path: PathBuf::from("/media/SAMSUNG"),
-        });
+        assert_eq!(
+            action,
+            DriverAction::MountStorage {
+                label: "SAMSUNG".into(),
+                path: PathBuf::from("/media/SAMSUNG"),
+            }
+        );
     }
 
     #[test]
@@ -884,8 +929,13 @@ mod tests {
         dm.poll().unwrap();
 
         assert_eq!(dm.device_count(), 1);
-        assert_eq!(dm.devices[0].mount_point.as_ref().map(|p| p.to_string_lossy().to_string()),
-                   Some("/media/SAMSUNG".into()));
+        assert_eq!(
+            dm.devices[0]
+                .mount_point
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            Some("/media/SAMSUNG".into())
+        );
 
         assert_eq!(dm.mounts.len(), 1);
         assert!(dm.mounts[0].is_mounted);
@@ -933,7 +983,11 @@ mod tests {
     fn test_device_manager_multiple_devices() {
         let source = MockHotplugSource::new(vec![
             make_net_device_add(),
-            RawHotplugEvent { vendor_id: 0x8086, device_id: 0x100e, ..make_net_device_add() },
+            RawHotplugEvent {
+                vendor_id: 0x8086,
+                device_id: 0x100e,
+                ..make_net_device_add()
+            },
             make_usb_storage_add("DRIVE1"),
         ]);
         let mut dm = DeviceManager::new(Box::new(source));
@@ -947,10 +1001,8 @@ mod tests {
 
     #[test]
     fn test_device_list_json_output() {
-        let source = MockHotplugSource::new(vec![
-            make_net_device_add(),
-            make_usb_storage_add("DRIVE_A"),
-        ]);
+        let source =
+            MockHotplugSource::new(vec![make_net_device_add(), make_usb_storage_add("DRIVE_A")]);
         let mut dm = DeviceManager::new(Box::new(source));
         dm.poll().unwrap();
 
@@ -998,7 +1050,8 @@ mod tests {
                     device_id: device,
                 },
                 "Vendor {:04x} device {:04x} should match driver '{expected_driver}'",
-                vendor, device
+                vendor,
+                device
             );
         }
     }

@@ -40,7 +40,11 @@ pub struct MessageHeader {
 
 impl MessageHeader {
     pub const fn new(opcode: u32, payload_len: u32, surface_id: u32) -> Self {
-        Self { opcode, payload_len, surface_id }
+        Self {
+            opcode,
+            payload_len,
+            surface_id,
+        }
     }
 
     pub fn to_bytes(&self) -> [u8; 12] {
@@ -126,11 +130,7 @@ pub fn handle_client_message(
             let info = unsafe { &*(buf.as_ptr().add(12) as *const SurfaceInfo) };
             let id = compositor.create_surface(client_pid, info.width, info.height);
             if let Some(&fd) = compositor.client_fds.get(&client_pid) {
-                let ack = MessageHeader::new(
-                    ServerOpcode::SurfaceCreated as u32,
-                    0,
-                    id as u32,
-                );
+                let ack = MessageHeader::new(ServerOpcode::SurfaceCreated as u32, 0, id as u32);
                 send_server_message(fd, &ack, &[]);
             }
             Some(ClientOpcode::CreateSurface)

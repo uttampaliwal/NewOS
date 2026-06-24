@@ -220,9 +220,7 @@ mod tests {
 
     #[test]
     fn frame_allocator_exhausted() {
-        let descriptors = [
-            descriptor(MEMORY_TYPE_CONVENTIONAL, 0x100000, 3),
-        ];
+        let descriptors = [descriptor(MEMORY_TYPE_CONVENTIONAL, 0x100000, 3)];
         let boot_info = boot_info(&descriptors);
         let mut allocator = FrameAllocator::new(&boot_info);
 
@@ -235,9 +233,7 @@ mod tests {
 
     #[test]
     fn frame_allocator_deallocate_reuse() {
-        let descriptors = [
-            descriptor(MEMORY_TYPE_CONVENTIONAL, 0x100000, 1),
-        ];
+        let descriptors = [descriptor(MEMORY_TYPE_CONVENTIONAL, 0x100000, 1)];
         let boot_info = boot_info(&descriptors);
         let mut allocator = FrameAllocator::new(&boot_info);
 

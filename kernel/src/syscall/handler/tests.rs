@@ -1,19 +1,23 @@
-use super::*;
 use super::process::{handle_exec, handle_wait_impl};
-use crate::process::{Process, ProcessControlBlock, ProcessId, ProcessState, SignalSet, SignalAction};
-use crate::task::{Task, TaskId, TaskState};
-use crate::memory::vma::VmaSet;
+use super::*;
 use crate::fs::vfs::FsBackend;
-use spin::Mutex;
+use crate::memory::vma::VmaSet;
+use crate::process::{
+    Process, ProcessControlBlock, ProcessId, ProcessState, SignalAction, SignalSet,
+};
+use crate::task::{Task, TaskId, TaskState};
 use alloc::sync::Arc;
-use x86_64::{PhysAddr, VirtAddr};
-use x86_64::structures::paging::PhysFrame;
+use spin::Mutex;
 use turnix_abi::syscall::SyscallArgs;
+use x86_64::structures::paging::PhysFrame;
+use x86_64::{PhysAddr, VirtAddr};
 
 struct SafeBootInfo(turnix_abi::boot::BootInfo);
 unsafe impl Sync for SafeBootInfo {}
 
-static DUMMY_BOOT_INFO: SafeBootInfo = SafeBootInfo(turnix_abi::boot::BootInfo::uefi(turnix_abi::version::ABI_VERSION));
+static DUMMY_BOOT_INFO: SafeBootInfo = SafeBootInfo(turnix_abi::boot::BootInfo::uefi(
+    turnix_abi::version::ABI_VERSION,
+));
 
 fn setup_dummy_process() {
     let process = Process {
@@ -37,7 +41,7 @@ fn setup_dummy_process() {
             nsproxy: crate::security::namespaces::NsProxy::new(),
             seccomp_filter: None,
             cgroup_path: None,
-        }))
+        })),
     };
     let task = Task::new_test(TaskId::new(), process, TaskState::Running);
     crate::task::scheduler::set_current_task_for_test(task);
@@ -57,16 +61,16 @@ fn test_exec_nonexistent_path_returns_enoent() {
     // Ensure VFS has a mounted root but no such file
     let mut vfs = crate::vfs::VFS.lock();
     *vfs = crate::vfs::Vfs::new();
-    vfs.mount("/", Arc::new(crate::fs::tmpfs::TmpfsBackend::new()), crate::fs::vfs::MountFlags::default()).unwrap();
+    vfs.mount(
+        "/",
+        Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+        crate::fs::vfs::MountFlags::default(),
+    )
+    .unwrap();
     drop(vfs);
 
     let path = "/nonexistent_file";
-    let args = SyscallArgs::new(
-        path.as_ptr() as u64,
-        path.len() as u64,
-        0,
-        0,
-    );
+    let args = SyscallArgs::new(path.as_ptr() as u64, path.len() as u64, 0, 0);
 
     let result = handle_exec(args);
     match result {
@@ -101,21 +105,21 @@ fn test_exec_invalid_elf_magic_returns_enoexec() {
 
     // Mount a tmpfs root and create a file with invalid ELF magic directly
     let backend = Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
-    let inode = backend.inner.lock().create_file(crate::fs::vfs::InodeId(1), "invalid_elf", 0o777).unwrap();
+    let inode = backend
+        .inner
+        .lock()
+        .create_file(crate::fs::vfs::InodeId(1), "invalid_elf", 0o777)
+        .unwrap();
     backend.write(inode, 0, b"not a valid ELF file").unwrap();
 
     let mut vfs = crate::vfs::VFS.lock();
     *vfs = crate::vfs::Vfs::new();
-    vfs.mount("/", backend, crate::fs::vfs::MountFlags::default()).unwrap();
+    vfs.mount("/", backend, crate::fs::vfs::MountFlags::default())
+        .unwrap();
     drop(vfs);
 
     let path = "/invalid_elf";
-    let args = SyscallArgs::new(
-        path.as_ptr() as u64,
-        path.len() as u64,
-        0,
-        0,
-    );
+    let args = SyscallArgs::new(path.as_ptr() as u64, path.len() as u64, 0, 0);
 
     let result = handle_exec(args);
     match result {
@@ -140,11 +144,7 @@ fn test_exec_invalid_elf_magic_returns_enoexec() {
 use proptest::prelude::*;
 
 /// Build a minimal PCB with a given PID and PPID.
-fn make_pcb(
-    pid: usize,
-    ppid: usize,
-    state: ProcessState,
-) -> Arc<Mutex<ProcessControlBlock>> {
+fn make_pcb(pid: usize, ppid: usize, state: ProcessState) -> Arc<Mutex<ProcessControlBlock>> {
     Arc::new(Mutex::new(ProcessControlBlock {
         id: ProcessId(pid),
         ppid: ProcessId(ppid),
@@ -247,16 +247,19 @@ proptest! {
 #[test]
 fn test_wait_reaps_zombie_child() {
     let _guard = crate::test_serial::acquire();
-    use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
+    use crate::process::{PROCESS_TABLE, ProcessId, ProcessState};
 
     let _parent_pid = ProcessId(200);
-    let child_pid  = ProcessId(201);
-    let exit_code  = 42i32;
+    let child_pid = ProcessId(201);
+    let exit_code = 42i32;
 
     // Insert child (zombie) into process table.
     {
         let mut table = PROCESS_TABLE.lock();
-        table.insert(child_pid, make_pcb(201, 200, ProcessState::Zombie { exit_code }));
+        table.insert(
+            child_pid,
+            make_pcb(201, 200, ProcessState::Zombie { exit_code }),
+        );
     }
 
     // Set up a current task so get_current_process_id() returns parent_pid.
@@ -288,7 +291,7 @@ fn test_wait_reaps_zombie_child() {
 #[test]
 fn test_wait_returns_echild_when_no_children() {
     let _guard = crate::test_serial::acquire();
-    use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
+    use crate::process::{PROCESS_TABLE, ProcessId, ProcessState};
 
     // Make sure the process table has no children of PID 300.
     {
@@ -316,16 +319,19 @@ fn test_wait_returns_echild_when_no_children() {
 #[test]
 fn test_waitpid_reaps_specific_child() {
     let _guard = crate::test_serial::acquire();
-    use crate::process::{ProcessId, ProcessState, PROCESS_TABLE};
+    use crate::process::{PROCESS_TABLE, ProcessId, ProcessState};
 
-    let _parent_pid  = ProcessId(400);
+    let _parent_pid = ProcessId(400);
     let child_a_pid = ProcessId(401);
     let child_b_pid = ProcessId(402);
 
     {
         let mut table = PROCESS_TABLE.lock();
         // child_a: zombie, child_b: running
-        table.insert(child_a_pid, make_pcb(401, 400, ProcessState::Zombie { exit_code: 77 }));
+        table.insert(
+            child_a_pid,
+            make_pcb(401, 400, ProcessState::Zombie { exit_code: 77 }),
+        );
         table.insert(child_b_pid, make_pcb(402, 400, ProcessState::Running));
     }
 
@@ -346,8 +352,14 @@ fn test_waitpid_reaps_specific_child() {
 
     // child_a reaped, child_b still present.
     let table = PROCESS_TABLE.lock();
-    assert!(table.get(&child_a_pid).is_none(), "child_a should be reaped");
-    assert!(table.get(&child_b_pid).is_some(), "child_b should still exist");
+    assert!(
+        table.get(&child_a_pid).is_none(),
+        "child_a should be reaped"
+    );
+    assert!(
+        table.get(&child_b_pid).is_some(),
+        "child_b should still exist"
+    );
     drop(table);
 
     // Cleanup child_b.
@@ -432,7 +444,9 @@ fn dup2_same_fd_is_noop() {
     let _guard = crate::test_serial::acquire();
     let mut vfs = crate::vfs::VFS.lock();
     let fd = make_test_fd(&mut vfs, "test");
-    let result = vfs.dup2_fd(fd, fd).expect("dup2(oldfd, oldfd) should succeed");
+    let result = vfs
+        .dup2_fd(fd, fd)
+        .expect("dup2(oldfd, oldfd) should succeed");
     assert_eq!(result, fd, "dup2(oldfd, oldfd) must return oldfd");
     assert!(vfs.get_fd(fd).is_some(), "fd must still exist");
 }
@@ -441,12 +455,18 @@ fn dup2_same_fd_is_noop() {
 fn dup_bad_fd_returns_none() {
     let _guard = crate::test_serial::acquire();
     let mut vfs = crate::vfs::VFS.lock();
-    assert!(vfs.dup_fd(9999).is_none(), "dup of invalid fd must return None");
+    assert!(
+        vfs.dup_fd(9999).is_none(),
+        "dup of invalid fd must return None"
+    );
 }
 
 #[test]
 fn dup2_bad_fd_returns_none() {
     let _guard = crate::test_serial::acquire();
     let mut vfs = crate::vfs::VFS.lock();
-    assert!(vfs.dup2_fd(9999, 100).is_none(), "dup2 of invalid oldfd must return None");
+    assert!(
+        vfs.dup2_fd(9999, 100).is_none(),
+        "dup2 of invalid oldfd must return None"
+    );
 }

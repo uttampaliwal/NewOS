@@ -679,8 +679,8 @@ pub fn restore_swapped_page(pte_bits: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec::Vec;
     use alloc::format;
+    use alloc::vec::Vec;
 
     // ------------------------------------------------------------------
     // SwapSlotAllocator tests
@@ -966,7 +966,10 @@ mod tests {
         ];
         for e in &errs {
             let s = format!("{:?}", e);
-            assert!(!s.is_empty(), "SwapError variant must have non-empty Debug output");
+            assert!(
+                !s.is_empty(),
+                "SwapError variant must have non-empty Debug output"
+            );
         }
     }
 }

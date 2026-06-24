@@ -4,39 +4,39 @@
 //! When a namespace is `None`, the process shares the parent's / initial
 //! namespace (the kernel's single global namespace).
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+use crate::process::ProcessId;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
-use crate::process::ProcessId;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 // ---------------------------------------------------------------------------
 // CLONE flags (Linux-compatible)
 // ---------------------------------------------------------------------------
 
-pub const CLONE_VM: u64          = 0x00000100;
-pub const CLONE_FS: u64          = 0x00000200;
-pub const CLONE_FILES: u64       = 0x00000400;
-pub const CLONE_SIGHAND: u64     = 0x00000800;
-pub const CLONE_PIDFD: u64       = 0x00001000;
-pub const CLONE_PTRACE: u64      = 0x00002000;
-pub const CLONE_VFORK: u64       = 0x00004000;
-pub const CLONE_PARENT: u64      = 0x00008000;
-pub const CLONE_THREAD: u64      = 0x00010000;
-pub const CLONE_NEWNS: u64       = 0x00020000;
-pub const CLONE_SYSVSEM: u64     = 0x00040000;
-pub const CLONE_SETTLS: u64      = 0x00080000;
+pub const CLONE_VM: u64 = 0x00000100;
+pub const CLONE_FS: u64 = 0x00000200;
+pub const CLONE_FILES: u64 = 0x00000400;
+pub const CLONE_SIGHAND: u64 = 0x00000800;
+pub const CLONE_PIDFD: u64 = 0x00001000;
+pub const CLONE_PTRACE: u64 = 0x00002000;
+pub const CLONE_VFORK: u64 = 0x00004000;
+pub const CLONE_PARENT: u64 = 0x00008000;
+pub const CLONE_THREAD: u64 = 0x00010000;
+pub const CLONE_NEWNS: u64 = 0x00020000;
+pub const CLONE_SYSVSEM: u64 = 0x00040000;
+pub const CLONE_SETTLS: u64 = 0x00080000;
 pub const CLONE_PARENT_SETTID: u64 = 0x00100000;
 pub const CLONE_CHILD_CLEARTID: u64 = 0x00200000;
-pub const CLONE_DETACHED: u64    = 0x00400000;
-pub const CLONE_UNTRACED: u64    = 0x00800000;
+pub const CLONE_DETACHED: u64 = 0x00400000;
+pub const CLONE_UNTRACED: u64 = 0x00800000;
 pub const CLONE_CHILD_SETTID: u64 = 0x01000000;
-pub const CLONE_NEWCGROUP: u64   = 0x02000000;
-pub const CLONE_NEWUTS: u64      = 0x04000000;
-pub const CLONE_NEWIPC: u64      = 0x08000000;
-pub const CLONE_NEWUSER: u64     = 0x10000000;
-pub const CLONE_NEWPID: u64      = 0x20000000;
-pub const CLONE_NEWNET: u64      = 0x40000000;
-pub const CLONE_IO: u64          = 0x80000000;
+pub const CLONE_NEWCGROUP: u64 = 0x02000000;
+pub const CLONE_NEWUTS: u64 = 0x04000000;
+pub const CLONE_NEWIPC: u64 = 0x08000000;
+pub const CLONE_NEWUSER: u64 = 0x10000000;
+pub const CLONE_NEWPID: u64 = 0x20000000;
+pub const CLONE_NEWNET: u64 = 0x40000000;
+pub const CLONE_IO: u64 = 0x80000000;
 
 /// Convenience: all NEW* namespace flags.
 pub const CLONE_NEW_ALL: u64 = CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNET;
@@ -324,7 +324,12 @@ impl NsProxy {
                 parent.pid_ns.clone()
             },
             mnt_ns: if flags & CLONE_NEWNS != 0 {
-                Some(parent.mnt_ns.as_ref().map_or_else(MountNamespace::new, |ns| ns.fork()))
+                Some(
+                    parent
+                        .mnt_ns
+                        .as_ref()
+                        .map_or_else(MountNamespace::new, |ns| ns.fork()),
+                )
             } else {
                 parent.mnt_ns.clone()
             },
@@ -508,7 +513,7 @@ mod tests {
     #[test]
     fn user_namespace_reverse_mapping() {
         let mut ns = UserNamespace::new();
-        ns.add_uid_map(0, 1000, 1);   // outside uid 0 → inside uid 1000
+        ns.add_uid_map(0, 1000, 1); // outside uid 0 → inside uid 1000
         ns.add_uid_map(1000, 1001, 100); // outside 1000..1099 → inside 1001..1100
         ns.add_gid_map(0, 500, 1);
 
@@ -543,7 +548,12 @@ mod tests {
         // Allocate a PID so the namespace has entries
         let local = child.pid_ns.as_mut().unwrap().alloc_pid(ProcessId(100));
         assert_eq!(local, 1);
-        assert!(child.effective_pid_ns().global_to_local(ProcessId(100)).is_some());
+        assert!(
+            child
+                .effective_pid_ns()
+                .global_to_local(ProcessId(100))
+                .is_some()
+        );
         assert!(child.effective_pid_ns().local_to_global(1).is_some());
     }
 
@@ -563,7 +573,14 @@ mod tests {
         let p_local = parent2.pid_ns.as_mut().unwrap().alloc_pid(ProcessId(200));
         assert_eq!(p_local, 1);
         // Child's PID 100 should not conflict with parent2's PID 200
-        assert!(parent2.pid_ns.as_ref().unwrap().global_to_local(ProcessId(100)).is_none());
+        assert!(
+            parent2
+                .pid_ns
+                .as_ref()
+                .unwrap()
+                .global_to_local(ProcessId(100))
+                .is_none()
+        );
     }
 
     #[test]

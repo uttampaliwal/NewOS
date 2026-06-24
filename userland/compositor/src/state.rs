@@ -2,16 +2,15 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, Ordering};
-use libturnix::{print, println, InputEvent};
+use libturnix::{InputEvent, print, println};
 use turnix_abi::input::*;
 
 use crate::drm::DrmBackend;
 use crate::input::InputManager;
 use crate::protocol::{
-    self, KeyEventPayload, MessageHeader, PointerButtonPayload, PointerMotionPayload,
-    ServerOpcode,
+    self, KeyEventPayload, MessageHeader, PointerButtonPayload, PointerMotionPayload, ServerOpcode,
 };
-use crate::render::{composite_surfaces, ClipRect};
+use crate::render::{ClipRect, composite_surfaces};
 
 pub type SurfaceId = u64;
 
@@ -51,12 +50,8 @@ impl Surface {
     pub fn clip_rect(&self, screen_w: u32, screen_h: u32) -> Option<ClipRect> {
         let sx = self.x.max(0) as u32;
         let sy = self.y.max(0) as u32;
-        let ex = (self.x + self.width as i32)
-            .min(screen_w as i32)
-            .max(0) as u32;
-        let ey = (self.y + self.height as i32)
-            .min(screen_h as i32)
-            .max(0) as u32;
+        let ex = (self.x + self.width as i32).min(screen_w as i32).max(0) as u32;
+        let ey = (self.y + self.height as i32).min(screen_h as i32).max(0) as u32;
         if sx >= ex || sy >= ey {
             return None;
         }
@@ -105,12 +100,7 @@ impl TurnixCompositor {
         })
     }
 
-    pub fn create_surface(
-        &mut self,
-        client_pid: u64,
-        width: u32,
-        height: u32,
-    ) -> SurfaceId {
+    pub fn create_surface(&mut self, client_pid: u64, width: u32, height: u32) -> SurfaceId {
         let id = NEXT_SURFACE_ID.fetch_add(1, Ordering::Relaxed);
         let z = self.surfaces.len() as u32;
         let mut surface = Surface::new(id, client_pid, width, height);
@@ -289,11 +279,7 @@ impl TurnixCompositor {
             Some(&fd) => fd,
             None => return,
         };
-        let header = MessageHeader::new(
-            ServerOpcode::KeyEvent as u32,
-            8,
-            surface_id as u32,
-        );
+        let header = MessageHeader::new(ServerOpcode::KeyEvent as u32, 8, surface_id as u32);
         let payload = KeyEventPayload {
             key_code: ev.code,
             state: ev.value as u32,
@@ -316,11 +302,8 @@ impl TurnixCompositor {
 
         if ev.kind == turnix_abi::input::INPUT_KIND_REL {
             // Pointer motion
-            let header = MessageHeader::new(
-                ServerOpcode::PointerMotion as u32,
-                8,
-                surface_id as u32,
-            );
+            let header =
+                MessageHeader::new(ServerOpcode::PointerMotion as u32, 8, surface_id as u32);
             let payload = PointerMotionPayload {
                 x: self.input.pointer_x,
                 y: self.input.pointer_y,
@@ -330,11 +313,8 @@ impl TurnixCompositor {
             protocol::send_server_message(fd, &header, payload_bytes);
         } else {
             // Pointer button (left/middle/right)
-            let header = MessageHeader::new(
-                ServerOpcode::PointerButton as u32,
-                8,
-                surface_id as u32,
-            );
+            let header =
+                MessageHeader::new(ServerOpcode::PointerButton as u32, 8, surface_id as u32);
             let payload = PointerButtonPayload {
                 button: ev.code as u32,
                 state: ev.value as u32,

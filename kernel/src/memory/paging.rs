@@ -19,8 +19,7 @@ unsafe impl<'a, A: x86_64::structures::paging::FrameAllocator<Size4KiB>>
     fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
         let frame = self.inner.allocate_frame()?;
         // Zero the frame through the physical-memory window before use.
-        let ptr = (self.physical_memory_offset + frame.start_address().as_u64())
-            .as_mut_ptr::<u8>();
+        let ptr = (self.physical_memory_offset + frame.start_address().as_u64()).as_mut_ptr::<u8>();
         // SAFETY: ptr is derived from a valid physical frame address plus the
         // physical-memory offset, which maps to a mapped page. The frame was
         // just allocated and is therefore valid for 4096 bytes of writes.

@@ -8,9 +8,13 @@
 //! - [`rcu`] — read-copy-update for lock-free read-side access
 //! - [`workqueue`] — deferred work execution
 //! - [`percpu`] — per-CPU data framework
+//! - [`completion`] — one-shot event signalling
+//! - [`lockdep`] — lock dependency tracker / deadlock detector
 
-pub mod seqlock;
-pub mod rwlock;
-pub mod rcu;
-pub mod workqueue;
+pub mod completion;
+pub mod lockdep;
 pub mod percpu;
+pub mod rcu;
+pub mod rwlock;
+pub mod seqlock;
+pub mod workqueue;

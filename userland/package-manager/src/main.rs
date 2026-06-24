@@ -134,23 +134,21 @@ async fn main() {
                 }
             }
         }
-        "list" => {
-            match pipeline.list_installed() {
-                Ok(packages) => {
-                    if packages.is_empty() {
-                        println!("No packages installed.");
-                    } else {
-                        for pkg in &packages {
-                            println!("{} v{}", pkg.name, pkg.version);
-                        }
+        "list" => match pipeline.list_installed() {
+            Ok(packages) => {
+                if packages.is_empty() {
+                    println!("No packages installed.");
+                } else {
+                    for pkg in &packages {
+                        println!("{} v{}", pkg.name, pkg.version);
                     }
                 }
-                Err(e) => {
-                    eprintln!("Error listing packages: {e}");
-                    std::process::exit(1);
-                }
             }
-        }
+            Err(e) => {
+                eprintln!("Error listing packages: {e}");
+                std::process::exit(1);
+            }
+        },
         "search" if args.len() >= 3 => {
             let query = &args[2];
             match pipeline.search(query) {
@@ -169,23 +167,21 @@ async fn main() {
                 }
             }
         }
-        "list-snapshots" => {
-            match snap_mgr.list_snapshots() {
-                Ok(snapshots) => {
-                    if snapshots.is_empty() {
-                        println!("No snapshots found.");
-                    } else {
-                        for snap_id in &snapshots {
-                            println!("{snap_id}");
-                        }
+        "list-snapshots" => match snap_mgr.list_snapshots() {
+            Ok(snapshots) => {
+                if snapshots.is_empty() {
+                    println!("No snapshots found.");
+                } else {
+                    for snap_id in &snapshots {
+                        println!("{snap_id}");
                     }
                 }
-                Err(e) => {
-                    eprintln!("Error listing snapshots: {e}");
-                    std::process::exit(1);
-                }
             }
-        }
+            Err(e) => {
+                eprintln!("Error listing snapshots: {e}");
+                std::process::exit(1);
+            }
+        },
         "rollback" if args.len() >= 3 => {
             let snap_id = package_manager::snapshot::SnapshotId::new(&args[2]);
             match snap_mgr.rollback(&snap_id) {
@@ -213,9 +209,9 @@ fn build_pipeline() -> Result<InstallPipeline, String> {
     let target_url = url::Url::parse("https://packages.turnix.org/tuf/targets")
         .map_err(|e| format!("invalid targets URL: {e}"))?;
 
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| format!("cannot create runtime: {e}"))?;
-    let client = rt.block_on(RepositoryClient::new(root_metadata, meta_url, target_url))
+    let rt = tokio::runtime::Runtime::new().map_err(|e| format!("cannot create runtime: {e}"))?;
+    let client = rt
+        .block_on(RepositoryClient::new(root_metadata, meta_url, target_url))
         .map_err(|e| format!("cannot connect to TUF repository: {e}"))?;
 
     let fetcher = PackageFetcher::new(client);

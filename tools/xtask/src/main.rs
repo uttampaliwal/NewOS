@@ -48,7 +48,9 @@ fn main() {
 fn print_status(workspace_root: &Path) {
     println!("Turnix workspace is ready at {}.", workspace_root.display());
     println!("Current milestone: stabilized higher-half kernel bring-up.");
-    println!("Useful commands: cargo xtask doctor, cargo xtask build-uefi, cargo xtask run-uefi, cargo xtask ci-boot, cargo xtask ci-test, cargo xtask ci-driver-tests");
+    println!(
+        "Useful commands: cargo xtask doctor, cargo xtask build-uefi, cargo xtask run-uefi, cargo xtask ci-boot, cargo xtask ci-test, cargo xtask ci-driver-tests"
+    );
     println!("Compatibility alias: cargo xtask uefi-loader");
 }
 
@@ -130,7 +132,6 @@ fn build_uefi(workspace_root: &Path) -> PathBuf {
     run_or_die(
         "cargo",
         [
-            "+nightly",
             "build",
             "-p",
             "turnix-uefi-loader",
@@ -173,7 +174,6 @@ fn build_userland(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
-            "+nightly",
             "build",
             "-p",
             "init",
@@ -207,7 +207,6 @@ fn build_shell(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
-            "+nightly",
             "build",
             "-p",
             "shell",
@@ -241,7 +240,6 @@ fn build_fault_tester(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
-            "+nightly",
             "build",
             "-p",
             "fault-tester",
@@ -275,7 +273,6 @@ fn build_benchmarks(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
-            "+nightly",
             "build",
             "-p",
             "benchmarks",
@@ -309,7 +306,6 @@ fn build_compositor(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
-            "+nightly",
             "build",
             "-p",
             "compositor",
@@ -343,7 +339,6 @@ fn build_display_manager(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
-            "+nightly",
             "build",
             "-p",
             "display-manager",
@@ -377,7 +372,6 @@ fn build_desktop_shell(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
-            "+nightly",
             "build",
             "-p",
             "desktop-shell",
@@ -411,7 +405,6 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
-            "+nightly",
             "build",
             "-p",
             "turnix-kernel",
@@ -461,8 +454,7 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
         fs::read(&fault_tester_bin).expect("failed to read fault-tester binary");
 
     let compositor_bin = build_compositor(workspace_root);
-    let compositor_data =
-        fs::read(&compositor_bin).expect("failed to read compositor binary");
+    let compositor_data = fs::read(&compositor_bin).expect("failed to read compositor binary");
 
     let display_manager_bin = build_display_manager(workspace_root);
     let display_manager_data =
@@ -473,8 +465,7 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
         fs::read(&desktop_shell_bin).expect("failed to read desktop-shell binary");
 
     let benchmarks_bin = build_benchmarks(workspace_root);
-    let benchmarks_data =
-        fs::read(&benchmarks_bin).expect("failed to read benchmarks binary");
+    let benchmarks_data = fs::read(&benchmarks_bin).expect("failed to read benchmarks binary");
 
     let mut ramdisk = Vec::new();
 
@@ -532,8 +523,7 @@ pub fn rebuild_initramfs_excluding(workspace_root: &Path, exclude: &[&str]) {
         fs::read(&fault_tester_bin).expect("failed to read fault-tester binary");
 
     let compositor_bin = build_compositor(workspace_root);
-    let compositor_data =
-        fs::read(&compositor_bin).expect("failed to read compositor binary");
+    let compositor_data = fs::read(&compositor_bin).expect("failed to read compositor binary");
 
     let display_manager_bin = build_display_manager(workspace_root);
     let display_manager_data =
@@ -544,8 +534,7 @@ pub fn rebuild_initramfs_excluding(workspace_root: &Path, exclude: &[&str]) {
         fs::read(&desktop_shell_bin).expect("failed to read desktop-shell binary");
 
     let benchmarks_bin = build_benchmarks(workspace_root);
-    let benchmarks_data =
-        fs::read(&benchmarks_bin).expect("failed to read benchmarks binary");
+    let benchmarks_data = fs::read(&benchmarks_bin).expect("failed to read benchmarks binary");
 
     let mut ramdisk = Vec::new();
 
@@ -603,8 +592,7 @@ pub fn rebuild_initramfs_bench(workspace_root: &Path) {
     fs::create_dir_all(&staged_dir).expect("creating kernel staging directory should succeed");
 
     let benchmarks_bin = build_benchmarks(workspace_root);
-    let benchmarks_data =
-        fs::read(&benchmarks_bin).expect("failed to read benchmarks binary");
+    let benchmarks_data = fs::read(&benchmarks_bin).expect("failed to read benchmarks binary");
 
     let mut ramdisk = Vec::new();
 

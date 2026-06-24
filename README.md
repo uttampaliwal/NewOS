@@ -15,9 +15,9 @@
 
 *   **Virtual Memory Management**: Higher-Half Direct Mapping (HHDM) paging, dynamic kernel/user heap layout, thread stack isolation, strict **W^X** memory enforcement, demand paging, `mmap`/`munmap`/`mmap2`/`mprotect` system calls, slab allocator for kernel object caching, and **KASAN** (Kernel Address Sanitizer) with shadow memory poisoning.
 *   **Security & Hardening**: POSIX Capabilities, PID/Mount/Network/User namespaces, Seccomp-BPF filters, Linux Security Module (LSM) hooks with DAC, IMA/EVM integrity measurement, stack canaries, ASLR & KASLR.
-*   **POSIX Services**: Full process table, `fork`/`exec`/`waitpid`, VFS mounts (tmpfs + ext4 read-write), pipes, Unix domain sockets, POSIX message queues, POSIX shared memory, futex synchronization, epoll event-driven I/O multiplexing, `eventfd`/`timerfd`, file descriptor tables with `dup`/`dup2`, `lseek`, `open` with flags, and **io_uring** async I/O.
+*   **POSIX Services**: Full process table, `fork`/`exec`/`waitpid`, VFS mounts (tmpfs plus in-memory ext4 state), pipes, Unix domain sockets, POSIX message queues, POSIX shared memory, futex synchronization, epoll event-driven I/O multiplexing, `eventfd`/`timerfd`, file descriptor tables with `dup`/`dup2`, `lseek`, `open` with flags, and **io_uring** async I/O.
 *   **Scheduling & Resource Management**: EEVDF (Earliest Eligible Virtual Deadline First) scheduler with 40 nice levels, scheduler classes (SCHED_NORMAL/BATCH/FIFO/RR/IDLE), cgroups v2 (CPU quota, memory limits, OOM-kill, PID limits), SMP with per-CPU scheduling.
-*   **Concurrency Primitives**: SeqLock, RwLock, RCU (read-copy-update), work queues, softirq (8 vectors), per-CPU counters.
+*   **Concurrency Primitives**: SeqLock, RwLock, RCU (read-copy-update), work queues, softirq (8 vectors), completion variables, lockdep, per-CPU counters.
 *   **Device Drivers**: ACPI (RSDP/XSDT/MCFG/DSDT/SSDT + AML interpreter), PCI/PCIe ECAM, VirtIO-Net, NVMe, XHCI USB keyboard, DRM/KMS graphics.
 
 ---
@@ -103,8 +103,8 @@ graph TD
 | **7** | **Desktop Environment** | Window compositor, input routing, desktop session management | Done |
 | **8** | **SMP & Scheduler** | EEVDF scheduler, scheduler classes, cgroups v2, SMP AP bring-up, slab allocator | Done |
 | **10** | **Async I/O** | epoll, futex, POSIX message queues, POSIX shared memory, eventfd, timerfd | Done |
-| **12** | **Scalability** | SeqLock, RwLock, RCU, work queues, softirq, per-CPU counters | Done |
-| **13** | **Advanced I/O** | io_uring (3 syscalls, 12 ops), VFS read/write, networking send/recv | Done |
+| **12** | **Scalability** | SeqLock, RwLock, RCU, work queues, softirq, completion, lockdep, per-CPU counters | Done |
+| **13** | **Advanced I/O** | io_uring (3 syscalls, 12 ops), eventfd, timerfd, core async I/O | Partial |
 
 See [docs/roadmap.md](docs/roadmap.md) for the full 22-phase roadmap. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for known limitations.
 
@@ -147,7 +147,7 @@ cargo xtask build-kernel          # freestanding kernel
 ## Testing
 
 ```bash
-cargo test --workspace            # all host + kernel tests (~1077)
+cargo test --workspace            # all host + kernel tests
 cargo test -p turnix-kernel       # kernel-specific tests
 cargo clippy -- -D warnings       # lint (zero warnings)
 cargo fmt --check                 # format check

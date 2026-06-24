@@ -401,14 +401,20 @@ mod tests {
         UnixSocketState::bind(&sock, path).unwrap();
         UnixSocketState::listen(&sock, 5).unwrap();
         let found = lookup_bind(path);
-        assert!(found.is_some(), "socket must be in BOUND_SOCKETS after bind");
+        assert!(
+            found.is_some(),
+            "socket must be in BOUND_SOCKETS after bind"
+        );
     }
 
     #[test]
     fn socket_connect_nonexistent_path_fails() {
         let client = Arc::new(UnixSocketState::new());
         let result = UnixSocketState::connect(&client, "/tmp/nonexistent_socket");
-        assert!(result.is_err(), "connect to non-existent path must return Err");
+        assert!(
+            result.is_err(),
+            "connect to non-existent path must return Err"
+        );
     }
 
     #[test]
@@ -421,7 +427,10 @@ mod tests {
 
         // Server accepts.
         let accepted = UnixSocketState::accept(&listener);
-        assert!(accepted.is_some(), "accept must return a connected endpoint");
+        assert!(
+            accepted.is_some(),
+            "accept must return a connected endpoint"
+        );
 
         let accepted = accepted.unwrap();
         assert!(accepted.is_peer_open(), "peer must be open after accept");

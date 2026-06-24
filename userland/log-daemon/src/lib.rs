@@ -4,9 +4,9 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use hmac::{Hmac, Mac};
 
 // ---------------------------------------------------------------------------
 // Log level
@@ -92,8 +92,7 @@ impl LogEntry {
 
     /// Seal this entry with an HMAC-SHA256 using the given key.
     pub fn seal(&mut self, key: &[u8]) {
-        let mut mac = Hmac::<Sha256>::new_from_slice(key)
-            .expect("HMAC key should be valid");
+        let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC key should be valid");
         mac.update(&self.canonical_bytes());
         let result = mac.finalize();
         self.hmac = Some(hex::encode(result.into_bytes()));
@@ -110,8 +109,7 @@ impl LogEntry {
             Err(_) => return false,
         };
 
-        let mut mac = Hmac::<Sha256>::new_from_slice(key)
-            .expect("HMAC key should be valid");
+        let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC key should be valid");
         mac.update(&self.canonical_bytes());
         mac.verify_slice(&expected_bytes).is_ok()
     }
@@ -144,9 +142,7 @@ impl LogRotator {
             .open(&log_path)
             .map_err(|e| format!("cannot open log file {:?}: {e}", log_path))?;
 
-        let current_size = fs::metadata(&log_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let current_size = fs::metadata(&log_path).map(|m| m.len()).unwrap_or(0);
 
         Ok(Self {
             base_path: base_path.to_path_buf(),
@@ -174,7 +170,11 @@ impl LogRotator {
         if self.current_size >= ROTATION_SIZE {
             return true;
         }
-        if self.created_at.elapsed().is_ok_and(|elapsed| elapsed >= ROTATION_AGE) {
+        if self
+            .created_at
+            .elapsed()
+            .is_ok_and(|elapsed| elapsed >= ROTATION_AGE)
+        {
             return true;
         }
         false
@@ -300,7 +300,11 @@ impl KernelLogSource for FileKernelLogSource {
 }
 
 fn parse_kernel_log_level(line: &str) -> LogLevel {
-    if line.contains("error") || line.contains("ERROR") || line.contains("panic") || line.contains("PANIC") {
+    if line.contains("error")
+        || line.contains("ERROR")
+        || line.contains("panic")
+        || line.contains("PANIC")
+    {
         LogLevel::Error
     } else if line.contains("warn") || line.contains("WARN") {
         LogLevel::Warn
@@ -356,8 +360,7 @@ mod tests {
     #[test]
     fn test_tampered_fields_fails_verification() {
         let key = b"secret-key";
-        let mut entry = LogEntry::new(LogLevel::Error, "db", "timeout")
-            .with_field("user", "alice");
+        let mut entry = LogEntry::new(LogLevel::Error, "db", "timeout").with_field("user", "alice");
         entry.seal(key);
         assert!(entry.verify(key));
 
@@ -403,8 +406,8 @@ mod tests {
     #[test]
     fn test_json_round_trip_with_hmac() {
         let key = b"json-test-key";
-        let mut entry = LogEntry::new(LogLevel::Info, "test", "json round-trip")
-            .with_field("pid", "42");
+        let mut entry =
+            LogEntry::new(LogLevel::Info, "test", "json round-trip").with_field("pid", "42");
         entry.seal(key);
 
         let json = entry.to_json().unwrap();
@@ -475,7 +478,9 @@ mod tests {
             rotator.current_size = ROTATION_SIZE + 1; // force rotation
             rotator.rotate().unwrap();
             // Write a marker so we can identify this generation
-            rotator.write(format!("generation {i}\n").as_bytes()).unwrap();
+            rotator
+                .write(format!("generation {i}\n").as_bytes())
+                .unwrap();
         }
 
         // Count rotated files
@@ -486,7 +491,10 @@ mod tests {
                 count += 1;
             }
         }
-        assert!(count <= MAX_ROTATED_FILES, "at most {MAX_ROTATED_FILES} rotated files, got {count}");
+        assert!(
+            count <= MAX_ROTATED_FILES,
+            "at most {MAX_ROTATED_FILES} rotated files, got {count}"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

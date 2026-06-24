@@ -180,8 +180,8 @@ impl SnapshotManager {
                 .unwrap_or(0),
             "paths": relative_paths,
         });
-        let manifest_bytes =
-            serde_json::to_vec_pretty(&manifest).map_err(|e| SnapshotError::IoError(e.to_string()))?;
+        let manifest_bytes = serde_json::to_vec_pretty(&manifest)
+            .map_err(|e| SnapshotError::IoError(e.to_string()))?;
         fs::write(&manifest_path, manifest_bytes)?;
 
         Ok(snap)
@@ -196,10 +196,10 @@ impl SnapshotManager {
         }
 
         let manifest_path = snap_path.join(".snapshot.json");
-        let manifest_bytes =
-            fs::read_to_string(&manifest_path).map_err(|e| SnapshotError::IoError(e.to_string()))?;
-        let manifest: serde_json::Value =
-            serde_json::from_str(&manifest_bytes).map_err(|e| SnapshotError::IoError(e.to_string()))?;
+        let manifest_bytes = fs::read_to_string(&manifest_path)
+            .map_err(|e| SnapshotError::IoError(e.to_string()))?;
+        let manifest: serde_json::Value = serde_json::from_str(&manifest_bytes)
+            .map_err(|e| SnapshotError::IoError(e.to_string()))?;
 
         let paths = manifest["paths"]
             .as_array()

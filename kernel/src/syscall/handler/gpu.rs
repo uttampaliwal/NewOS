@@ -1,7 +1,7 @@
 use super::SyscallResult;
-use turnix_abi::syscall::SyscallArgs;
 use crate::drivers::gpu;
 use turnix_abi::input::InputEvent;
+use turnix_abi::syscall::SyscallArgs;
 
 pub fn handle_input_read(args: SyscallArgs) -> SyscallResult {
     // arg0: destination buffer pointer

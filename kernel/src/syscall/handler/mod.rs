@@ -1,18 +1,18 @@
 mod fs;
-mod process;
+mod gpu;
+mod io_uring;
+mod ipc;
+mod misc;
 mod mm;
 mod net;
-mod ipc;
-mod gpu;
+mod process;
 mod sched;
-mod misc;
-mod io_uring;
 #[cfg(test)]
 mod tests;
 
 use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
 
-pub use process::{handle_fork_with_frame, handle_clone_with_frame};
+pub use process::{handle_clone_with_frame, handle_fork_with_frame};
 
 #[derive(Debug)]
 pub enum SyscallResult {
@@ -38,9 +38,16 @@ const FSTYPE_TMPFS: u64 = 0;
 const FSTYPE_EXT2: u64 = 1;
 const FSTYPE_EXT4: u64 = 2;
 
-fn helper_alloc_fd(process: &crate::process::Process, fd_entry: crate::vfs::FileDescriptor) -> usize {
+fn helper_alloc_fd(
+    process: &crate::process::Process,
+    fd_entry: crate::vfs::FileDescriptor,
+) -> usize {
     let mut inner = process.inner.lock();
-    let fd = inner.fd_table.iter().position(|s| s.is_none()).unwrap_or(inner.fd_table.len());
+    let fd = inner
+        .fd_table
+        .iter()
+        .position(|s| s.is_none())
+        .unwrap_or(inner.fd_table.len());
     if fd >= inner.fd_table.len() {
         inner.fd_table.resize_with(fd + 1, || None);
     }

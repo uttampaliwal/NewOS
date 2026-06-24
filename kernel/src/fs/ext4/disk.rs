@@ -341,10 +341,10 @@ impl DirEntry2 {
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 pub struct ExtentHeader {
-    pub eh_magic: u16,       // Should be 0xF30A
+    pub eh_magic: u16, // Should be 0xF30A
     pub eh_entries: u16,
     pub eh_max: u16,
-    pub eh_depth: u16,       // 0 = leaf, >0 = index node
+    pub eh_depth: u16, // 0 = leaf, >0 = index node
     pub eh_generation: u32,
 }
 
@@ -364,9 +364,9 @@ impl ExtentHeader {
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 pub struct ExtentIdx {
-    pub ei_block: u32,       // Logical block number covered
-    pub ei_leaf_lo: u32,     // Low 32 bits of physical block of child node
-    pub ei_leaf_hi: u16,     // High 16 bits of physical block
+    pub ei_block: u32,   // Logical block number covered
+    pub ei_leaf_lo: u32, // Low 32 bits of physical block of child node
+    pub ei_leaf_hi: u16, // High 16 bits of physical block
     pub ei_unused: u16,
 }
 
@@ -374,10 +374,10 @@ pub struct ExtentIdx {
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 pub struct Extent {
-    pub ee_block: u32,       // First logical block
-    pub ee_len: u16,         // Number of blocks
-    pub ee_start_hi: u16,    // High 16 bits of physical start block
-    pub ee_start_lo: u32,    // Low 32 bits of physical start block
+    pub ee_block: u32,    // First logical block
+    pub ee_len: u16,      // Number of blocks
+    pub ee_start_hi: u16, // High 16 bits of physical start block
+    pub ee_start_lo: u32, // Low 32 bits of physical start block
 }
 
 impl Extent {

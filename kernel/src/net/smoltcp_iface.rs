@@ -1,6 +1,6 @@
-use alloc::vec::Vec;
-use alloc::vec;
 use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use smoltcp::iface::{Interface, SocketHandle, SocketSet};
 use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
@@ -47,8 +47,14 @@ impl TxToken for VirtioNetTxToken {
 }
 
 impl Device for VirtioNetPhyDevice {
-    type RxToken<'a> = VirtioNetRxToken where Self: 'a;
-    type TxToken<'a> = VirtioNetTxToken where Self: 'a;
+    type RxToken<'a>
+        = VirtioNetRxToken
+    where
+        Self: 'a;
+    type TxToken<'a>
+        = VirtioNetTxToken
+    where
+        Self: 'a;
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
@@ -124,7 +130,8 @@ impl NetworkStack {
     }
 
     pub fn poll(&mut self, timestamp: Instant) -> bool {
-        self.interface.poll(timestamp, &mut self.device, &mut self.sockets)
+        self.interface
+            .poll(timestamp, &mut self.device, &mut self.sockets)
     }
 
     pub fn poll_delay(&mut self, timestamp: Instant) -> Option<smoltcp::time::Duration> {
@@ -132,8 +139,10 @@ impl NetworkStack {
     }
 
     pub fn add_tcp_socket(&mut self) -> SocketHandle {
-        let rx_buffer = smoltcp::socket::tcp::SocketBuffer::new(vec_to_static_slice(vec![0u8; 65536]));
-        let tx_buffer = smoltcp::socket::tcp::SocketBuffer::new(vec_to_static_slice(vec![0u8; 65536]));
+        let rx_buffer =
+            smoltcp::socket::tcp::SocketBuffer::new(vec_to_static_slice(vec![0u8; 65536]));
+        let tx_buffer =
+            smoltcp::socket::tcp::SocketBuffer::new(vec_to_static_slice(vec![0u8; 65536]));
         let socket = smoltcp::socket::tcp::Socket::new(rx_buffer, tx_buffer);
         self.sockets.add(socket)
     }
@@ -163,7 +172,11 @@ impl NetworkStack {
         port
     }
 
-    pub fn connect_tcp(&mut self, handle: SocketHandle, remote: IpEndpoint) -> Result<(), smoltcp::socket::tcp::ConnectError> {
+    pub fn connect_tcp(
+        &mut self,
+        handle: SocketHandle,
+        remote: IpEndpoint,
+    ) -> Result<(), smoltcp::socket::tcp::ConnectError> {
         let local_port = self.alloc_ephemeral_port();
         let socket = self.sockets.get_mut::<smoltcp::socket::tcp::Socket>(handle);
         let cx = self.interface.context();
@@ -187,7 +200,12 @@ pub fn init() {
     };
     crate::serial::println!(
         "[NET] smoltcp stack initialized, MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+        mac[0],
+        mac[1],
+        mac[2],
+        mac[3],
+        mac[4],
+        mac[5]
     );
 }
 

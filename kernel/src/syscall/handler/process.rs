@@ -1,6 +1,6 @@
 use super::SyscallResult;
-use turnix_abi::syscall::SyscallArgs;
 use crate::process::SignalAction;
+use turnix_abi::syscall::SyscallArgs;
 
 pub fn handle_getuid(_args: SyscallArgs) -> SyscallResult {
     let ctx = crate::security::current_context();
@@ -19,7 +19,10 @@ pub fn handle_setuid(args: SyscallArgs) -> SyscallResult {
         None => return SyscallResult::Error(-1),
     };
     let mut inner = current.inner.lock();
-    if !inner.sec_ctx.has_effective(crate::security::capabilities::Capability::Setuid) {
+    if !inner
+        .sec_ctx
+        .has_effective(crate::security::capabilities::Capability::Setuid)
+    {
         return SyscallResult::Error(-1);
     }
     inner.sec_ctx.uid = new_uid;
@@ -33,7 +36,10 @@ pub fn handle_setgid(args: SyscallArgs) -> SyscallResult {
         None => return SyscallResult::Error(-1),
     };
     let mut inner = current.inner.lock();
-    if !inner.sec_ctx.has_effective(crate::security::capabilities::Capability::Setgid) {
+    if !inner
+        .sec_ctx
+        .has_effective(crate::security::capabilities::Capability::Setgid)
+    {
         return SyscallResult::Error(-1);
     }
     inner.sec_ctx.gid = new_gid;
@@ -97,7 +103,10 @@ pub fn handle_capset(args: SyscallArgs) -> SyscallResult {
     }
 
     // CAP_SETPCAP is required to change capability sets.
-    if !inner.sec_ctx.has_capability(crate::security::capabilities::Capability::Setpcap) {
+    if !inner
+        .sec_ctx
+        .has_capability(crate::security::capabilities::Capability::Setpcap)
+    {
         return SyscallResult::Error(-1); // EPERM
     }
 
@@ -143,7 +152,8 @@ pub fn handle_prctl(args: SyscallArgs) -> SyscallResult {
     // Read filter pointer (u64) at offset 2 (with alignment padding on x86_64, typically 8)
     // The sock_fprog struct has: len: u16, padding: [u8; 6], filter: *const sock_filter
     let filter_ptr = unsafe {
-        let ptr_ptr = (sock_fprog_ptr as usize + 8) as *const *const crate::security::seccomp::BpfInstruction;
+        let ptr_ptr =
+            (sock_fprog_ptr as usize + 8) as *const *const crate::security::seccomp::BpfInstruction;
         core::ptr::read(ptr_ptr)
     };
 
@@ -243,9 +253,7 @@ pub fn handle_exit(args: SyscallArgs) -> SyscallResult {
             for pcb_arc in table.values() {
                 let mut pcb = pcb_arc.lock();
                 if pcb.ppid == my_pid {
-                    crate::serial::println!(
-                        "[exit] reparenting PID {:?} → init", pcb.id
-                    );
+                    crate::serial::println!("[exit] reparenting PID {:?} → init", pcb.id);
                     pcb.ppid = crate::process::ProcessId(1);
                 }
             }
@@ -572,7 +580,7 @@ pub fn handle_wait(args: SyscallArgs) -> SyscallResult {
 /// * `pid == -1`  — wait for any child (same as `wait`)
 /// * `pid  >  0`  — wait for the specific child PID
 pub fn handle_waitpid(args: SyscallArgs) -> SyscallResult {
-    let pid       = args.arg0 as i64;
+    let pid = args.arg0 as i64;
     let status_ptr = args.arg1 as *mut i32;
     let options = args.arg2 as u32;
     let nohang = options & 1 != 0;
@@ -586,7 +594,7 @@ pub fn handle_waitpid(args: SyscallArgs) -> SyscallResult {
 pub fn handle_wait_impl(target_pid: i32, status_ptr: *mut i32, nohang: bool) -> SyscallResult {
     let my_pid = match crate::task::scheduler::get_current_process_id() {
         Some(p) => p,
-        None    => return SyscallResult::Error(3), // ESRCH – no current process
+        None => return SyscallResult::Error(3), // ESRCH – no current process
     };
 
     // -----------------------------------------------------------------------
@@ -634,7 +642,9 @@ pub fn handle_wait_impl(target_pid: i32, status_ptr: *mut i32, nohang: bool) -> 
                 table.remove(&zpid);
                 #[cfg(not(test))]
                 crate::serial::println!(
-                    "[wait] reaped child PID {:?} exit_code={}", zpid, zombie_exit_code
+                    "[wait] reaped child PID {:?} exit_code={}",
+                    zpid,
+                    zombie_exit_code
                 );
                 Some((zpid, zombie_exit_code))
             } else {
@@ -647,7 +657,9 @@ pub fn handle_wait_impl(target_pid: i32, status_ptr: *mut i32, nohang: bool) -> 
             if !status_ptr.is_null() {
                 // POSIX encodes exit status as (exit_code & 0xff) << 8.
                 let encoded = (exit_code & 0xff) << 8;
-                unsafe { status_ptr.write(encoded); }
+                unsafe {
+                    status_ptr.write(encoded);
+                }
             }
             return SyscallResult::Success(child_pid.0 as u64);
         }
@@ -703,7 +715,9 @@ pub fn handle_sigaction(args: SyscallArgs) -> SyscallResult {
             SignalAction::Ignore => [1u64, 0, 0],
             SignalAction::Handler(addr) => [*addr, 0, 0],
         };
-        unsafe { old_ptr.write(old_val); }
+        unsafe {
+            old_ptr.write(old_val);
+        }
     }
 
     // Set the new action.
@@ -736,7 +750,9 @@ pub fn handle_sigprocmask(args: SyscallArgs) -> SyscallResult {
 
     // Return the old mask if requested.
     if !old_ptr.is_null() {
-        unsafe { old_ptr.write(inner.signal_mask.0); }
+        unsafe {
+            old_ptr.write(inner.signal_mask.0);
+        }
     }
 
     if !new_ptr.is_null() {
@@ -776,9 +792,11 @@ pub fn handle_kill(args: SyscallArgs) -> SyscallResult {
     // Check CAP_KILL for cross-user signals
     if target_pid != crate::task::scheduler::get_current_process_id().unwrap_or_default()
         && let Some(current) = crate::task::scheduler::get_current_process()
-        && !current.inner.lock().sec_ctx.has_capability(
-            crate::security::capabilities::Capability::Kill
-        )
+        && !current
+            .inner
+            .lock()
+            .sec_ctx
+            .has_capability(crate::security::capabilities::Capability::Kill)
     {
         return SyscallResult::Error(1); // EPERM
     }

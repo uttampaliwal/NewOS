@@ -146,7 +146,13 @@ impl MessageQueue {
 static MQUEUES: Mutex<alloc::collections::BTreeMap<String, Arc<MessageQueue>>> =
     Mutex::new(alloc::collections::BTreeMap::new());
 
-pub fn mq_open(name: &str, flags: i32, _mode: u32, max_msgs: usize, max_msg_size: usize) -> Result<Arc<MessageQueue>, i32> {
+pub fn mq_open(
+    name: &str,
+    flags: i32,
+    _mode: u32,
+    max_msgs: usize,
+    max_msg_size: usize,
+) -> Result<Arc<MessageQueue>, i32> {
     let mut queues = MQUEUES.lock();
     if let Some(q) = queues.get(name) {
         let q = Arc::clone(q);

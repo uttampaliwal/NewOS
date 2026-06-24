@@ -1,10 +1,10 @@
-use super::{SyscallResult, FSTYPE_TMPFS, FSTYPE_EXT2, FSTYPE_EXT4};
-use turnix_abi::syscall::SyscallArgs;
+use super::{FSTYPE_EXT2, FSTYPE_EXT4, FSTYPE_TMPFS, SyscallResult};
 use crate::fs::ext4::Ext4Backend;
 use crate::fs::tmpfs::TmpfsBackend;
 use crate::fs::vfs::{FsBackend, MountFlags};
 use crate::vfs::VFS;
 use alloc::sync::Arc;
+use turnix_abi::syscall::SyscallArgs;
 
 pub fn handle_mkdir(args: SyscallArgs) -> SyscallResult {
     let path_ptr = args.arg0 as *const u8;
@@ -75,22 +75,22 @@ pub fn handle_seek(args: SyscallArgs) -> SyscallResult {
     let mut vfs = VFS.lock();
 
     let new_offset = match whence {
-        0 => offset as u64,                                // SEEK_SET
+        0 => offset as u64, // SEEK_SET
         1 => {
             let cur = match vfs.get_fd_offset(fd) {
                 Some(o) => o,
-                None => return SyscallResult::Error(9),    // EBADF
+                None => return SyscallResult::Error(9), // EBADF
             };
-            cur.wrapping_add(offset as u64)                // SEEK_CUR
+            cur.wrapping_add(offset as u64) // SEEK_CUR
         }
         2 => {
             let size = match vfs.stat_fd(fd) {
                 Some(s) => s,
-                None => return SyscallResult::Error(9),    // EBADF
+                None => return SyscallResult::Error(9), // EBADF
             };
-            size.wrapping_add(offset as u64)               // SEEK_END
+            size.wrapping_add(offset as u64) // SEEK_END
         }
-        _ => return SyscallResult::Error(22),              // EINVAL
+        _ => return SyscallResult::Error(22), // EINVAL
     };
 
     if vfs.seek(fd, new_offset) {
@@ -202,7 +202,9 @@ pub fn handle_pipe(args: SyscallArgs) -> SyscallResult {
     let (read_idx, write_idx) = vfs.create_pipe();
 
     let pipefds = [read_idx as u64, write_idx as u64];
-    unsafe { pipefd_ptr.write(pipefds); }
+    unsafe {
+        pipefd_ptr.write(pipefds);
+    }
 
     SyscallResult::Success(0)
 }
@@ -239,9 +241,11 @@ pub fn handle_mount(args: SyscallArgs) -> SyscallResult {
 
     // Check CAP_SYS_ADMIN
     if let Some(current) = crate::task::scheduler::get_current_process()
-        && !current.inner.lock().sec_ctx.has_capability(
-            crate::security::capabilities::Capability::SysAdmin
-        )
+        && !current
+            .inner
+            .lock()
+            .sec_ctx
+            .has_capability(crate::security::capabilities::Capability::SysAdmin)
     {
         return SyscallResult::Error(1); // EPERM
     }
@@ -389,9 +393,11 @@ pub fn handle_xattr_set(args: SyscallArgs) -> SyscallResult {
 
     // Check CAP_SETFCAP for setting security xattrs
     if let Some(current) = crate::task::scheduler::get_current_process()
-        && !current.inner.lock().sec_ctx.has_capability(
-            crate::security::capabilities::Capability::Setfcap,
-        )
+        && !current
+            .inner
+            .lock()
+            .sec_ctx
+            .has_capability(crate::security::capabilities::Capability::Setfcap)
     {
         return SyscallResult::Error(1); // EPERM
     }

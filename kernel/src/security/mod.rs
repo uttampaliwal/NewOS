@@ -2,10 +2,10 @@
 //! Implements POSIX 64-bit capabilities and basic security context.
 
 pub mod capabilities;
+pub mod ima;
+pub mod lsm;
 pub mod namespaces;
 pub mod seccomp;
-pub mod lsm;
-pub mod ima;
 
 use capabilities::CapabilitySet;
 

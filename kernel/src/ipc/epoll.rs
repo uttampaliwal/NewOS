@@ -214,9 +214,8 @@ pub fn epoll_wait(epfd: usize, max_events: usize, timeout_ms: i32) -> Vec<EpollR
 /// Wake all epoll instances that are monitoring any fd.
 /// Called from pipe/socket/mqueue after state changes.
 pub fn notify_all_epoll_waiters() {
-    let instances: Vec<alloc::sync::Arc<EpollInstance>> = {
-        EPOLL_INSTANCES.lock().values().cloned().collect()
-    };
+    let instances: Vec<alloc::sync::Arc<EpollInstance>> =
+        { EPOLL_INSTANCES.lock().values().cloned().collect() };
     for inst in instances {
         inst.notify();
     }

@@ -4,9 +4,9 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
 use super::allocator::{AllocError, GroupAllocator};
 use super::disk::{DirEntry2, Ext4Inode};
+use alloc::vec::Vec;
 
 /// Write operations for ext2 files.
 pub struct Ext2Writer {
@@ -123,12 +123,18 @@ impl Ext2Writer {
 
     /// Calculate total free blocks across all groups.
     pub fn total_free_blocks(&self) -> u32 {
-        self.groups.iter().map(|g| g.block_bitmap.free_count()).sum()
+        self.groups
+            .iter()
+            .map(|g| g.block_bitmap.free_count())
+            .sum()
     }
 
     /// Calculate total free inodes across all groups.
     pub fn total_free_inodes(&self) -> u32 {
-        self.groups.iter().map(|g| g.inode_bitmap.free_count()).sum()
+        self.groups
+            .iter()
+            .map(|g| g.inode_bitmap.free_count())
+            .sum()
     }
 }
 

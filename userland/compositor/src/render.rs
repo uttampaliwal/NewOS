@@ -24,12 +24,7 @@ pub struct ClipRect {
 /// Surfaces are rendered in Z-order (lowest first), clipped to the display
 /// bounds. Each surface's pixels are copied from its GBM buffer to the
 /// output buffer. The output buffer is cleared to a background colour first.
-pub fn composite_surfaces(
-    output_phys: u64,
-    screen_w: u32,
-    screen_h: u32,
-    surfaces: &[Surface],
-) {
+pub fn composite_surfaces(output_phys: u64, screen_w: u32, screen_h: u32, surfaces: &[Surface]) {
     let stride = screen_w as usize * 4;
     let size = (screen_h as usize) * stride;
 
@@ -98,15 +93,7 @@ fn get_phys_mem_offset() -> u64 {
 mod tests {
     use super::*;
 
-    fn make_surface(
-        id: u64,
-        x: i32,
-        y: i32,
-        w: u32,
-        h: u32,
-        z: u32,
-        buffer_id: u64,
-    ) -> Surface {
+    fn make_surface(id: u64, x: i32, y: i32, w: u32, h: u32, z: u32, buffer_id: u64) -> Surface {
         Surface {
             id,
             client_pid: 1,

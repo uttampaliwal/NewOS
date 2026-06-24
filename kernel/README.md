@@ -13,7 +13,7 @@ The `kernel` crate is the core of Turnix OS — a no_std, higher-half, x86_64 mo
 | `cgroup` | cgroups v2 hierarchy with CPU, memory, and PIDs controllers |
 | `drivers` | Device drivers: PCI/PCIe, VirtIO-Net, NVMe, XHCI USB, GPU/DRM, TPM |
 | `elf` | ELF binary loader for userspace processes |
-| `fs` | Virtual File System (VFS), tmpfs, ext4 (read-only), mount management |
+| `fs` | Virtual File System (VFS), tmpfs, in-memory ext4 state, mount management |
 | `ipc` | Pipes, Unix domain sockets, epoll, futex, POSIX message queues, shared memory |
 | `log_ring` | Kernel log ring buffer with dmesg syscall |
 | `memory` | VMM, page tables, heap allocator, page cache, swap, OOM killer, slab allocator |
@@ -36,7 +36,7 @@ cargo test -p turnix-kernel
 ## Known Limitations
 
 See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for all tracked issues. Key kernel-specific items:
-- **#1** ext4 writes are in-memory only (no block allocator, no journal)
+- **#1** ext4 writes are in-memory only (no block allocator, no journal, no disk flush)
 - **#3** GP fault during fork/clone (mitigated with RFLAGS sanitization)
 - **#20** No performance tracing (ftrace, kprobes)
 - **#22** No crash dump / reliability engineering

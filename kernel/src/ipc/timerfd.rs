@@ -12,8 +12,8 @@ use alloc::collections::VecDeque;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use spin::Mutex;
 
-use crate::task::scheduler::{block_current, get_current_task_id, wake_task_by_id};
 use crate::task::TaskId;
+use crate::task::scheduler::{block_current, get_current_task_id, wake_task_by_id};
 
 /// Timer flags.
 pub const TFD_TIMER_ABSTIME: u32 = 1;
@@ -155,8 +155,7 @@ impl Default for TimerFd {
 }
 
 /// Global list of active timerfds for tick processing.
-static TIMER_FDS: Mutex<VecDeque<alloc::sync::Arc<TimerFd>>> =
-    Mutex::new(VecDeque::new());
+static TIMER_FDS: Mutex<VecDeque<alloc::sync::Arc<TimerFd>>> = Mutex::new(VecDeque::new());
 
 /// Register a timerfd for tick processing.
 pub fn register_timerfd(tfd: alloc::sync::Arc<TimerFd>) {

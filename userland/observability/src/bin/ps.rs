@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use libturnix::{exit, getuid, getpid, println, uptime};
+use libturnix::{exit, getpid, getuid, println, uptime};
 
 #[cfg(not(test))]
 use core::panic::PanicInfo;
@@ -18,7 +18,10 @@ pub extern "C" fn _start() -> ! {
 
     // Write PID (up to 5 digits)
     pos = write_u64(&mut line, pos, pid);
-    while pos < 5 { shift_right(&mut line, pos); pos += 1; }
+    while pos < 5 {
+        shift_right(&mut line, pos);
+        pos += 1;
+    }
     pos = 5;
     line[pos] = b' ';
     pos += 1;
@@ -27,7 +30,10 @@ pub extern "C" fn _start() -> ! {
 
     // Write UID
     pos = write_u64(&mut line, pos, uid);
-    while pos < 11 { shift_right(&mut line, pos); pos += 1; }
+    while pos < 11 {
+        shift_right(&mut line, pos);
+        pos += 1;
+    }
     pos = 11;
     line[pos] = b' ';
     pos += 1;

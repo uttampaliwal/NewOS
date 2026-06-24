@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use serde::{Deserialize, Serialize};
-use smoltcp::wire::{DhcpPacket, DhcpRepr, Ipv4Address, DnsPacket};
+use smoltcp::wire::{DhcpPacket, DhcpRepr, DnsPacket, Ipv4Address};
 
 pub mod dhcp;
 pub mod netconfig;
@@ -49,11 +49,18 @@ pub struct NetworkConfig {
     pub dhcp_lease_file: Option<String>,
 }
 
-fn default_dhcp() -> bool { true }
+fn default_dhcp() -> bool {
+    true
+}
 
 impl Default for NetworkConfig {
     fn default() -> Self {
-        Self { dhcp: true, static_config: None, dns_servers: vec![], dhcp_lease_file: None }
+        Self {
+            dhcp: true,
+            static_config: None,
+            dns_servers: vec![],
+            dhcp_lease_file: None,
+        }
     }
 }
 
@@ -84,7 +91,12 @@ pub struct StaticIpConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InterfaceState {
     Down,
-    Up { ip: Ipv4Addr, gateway: Ipv4Addr, subnet_mask: Ipv4Addr, dns: Vec<Ipv4Addr> },
+    Up {
+        ip: Ipv4Addr,
+        gateway: Ipv4Addr,
+        subnet_mask: Ipv4Addr,
+        dns: Vec<Ipv4Addr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,22 +127,40 @@ pub fn parse_dhcp_offer(packet: &[u8]) -> Result<DhcpLease, NetworkError> {
     let repr = DhcpRepr::parse(&dhcp_packet)
         .map_err(|e| NetworkError::DhcpError(format!("DHCP parse failed: {e}")))?;
 
-    let to_ipv4 = |addr: &Ipv4Address| Ipv4Addr::new(
-        addr.as_bytes()[0], addr.as_bytes()[1],
-        addr.as_bytes()[2], addr.as_bytes()[3],
-    );
+    let to_ipv4 = |addr: &Ipv4Address| {
+        Ipv4Addr::new(
+            addr.as_bytes()[0],
+            addr.as_bytes()[1],
+            addr.as_bytes()[2],
+            addr.as_bytes()[3],
+        )
+    };
 
     let ip = to_ipv4(&repr.your_ip);
-    let gateway = repr.router.as_ref().map(to_ipv4).unwrap_or(Ipv4Addr::UNSPECIFIED);
-    let subnet_mask = repr.subnet_mask.as_ref().map(to_ipv4)
+    let gateway = repr
+        .router
+        .as_ref()
+        .map(to_ipv4)
+        .unwrap_or(Ipv4Addr::UNSPECIFIED);
+    let subnet_mask = repr
+        .subnet_mask
+        .as_ref()
+        .map(to_ipv4)
         .unwrap_or(Ipv4Addr::from([255, 255, 255, 0]));
-    let dns_servers: Vec<Ipv4Addr> = repr.dns_servers
+    let dns_servers: Vec<Ipv4Addr> = repr
+        .dns_servers
         .as_ref()
         .map(|v| v.iter().map(to_ipv4).collect())
         .unwrap_or_default();
     let lease_seconds = repr.lease_duration.unwrap_or(3600);
 
-    Ok(DhcpLease { ip, gateway, subnet_mask, dns_servers, lease_seconds })
+    Ok(DhcpLease {
+        ip,
+        gateway,
+        subnet_mask,
+        dns_servers,
+        lease_seconds,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -157,10 +187,12 @@ impl DnsTransport for UdpDnsTransport {
         use std::net::UdpSocket;
         let socket = UdpSocket::bind("0.0.0.0:0")
             .map_err(|e| NetworkError::DnsError(format!("bind failed: {e}")))?;
-        socket.send_to(query, (self.server, self.port))
+        socket
+            .send_to(query, (self.server, self.port))
             .map_err(|e| NetworkError::DnsError(format!("send failed: {e}")))?;
         let mut buf = vec![0u8; 4096];
-        let n = socket.recv_from(&mut buf)
+        let n = socket
+            .recv_from(&mut buf)
             .map_err(|e| NetworkError::DnsError(format!("recv failed: {e}")))?;
         buf.truncate(n.0);
         Ok(buf)
@@ -282,8 +314,10 @@ fn parse_a_record_response(response: &[u8]) -> Result<Ipv4Addr, NetworkError> {
         // type 1 = A record
         if rtype == 1 && rdlen == 4 {
             return Ok(Ipv4Addr::new(
-                response[offset], response[offset + 1],
-                response[offset + 2], response[offset + 3],
+                response[offset],
+                response[offset + 1],
+                response[offset + 2],
+                response[offset + 3],
             ));
         }
         offset += rdlen;
@@ -306,7 +340,9 @@ impl MockDhcpClient {
     }
 
     pub fn discover(&mut self) -> Result<DhcpLease, NetworkError> {
-        self.lease.clone().ok_or_else(|| NetworkError::DhcpError("no lease".into()))
+        self.lease
+            .clone()
+            .ok_or_else(|| NetworkError::DhcpError("no lease".into()))
     }
 }
 
@@ -350,7 +386,11 @@ mod tests {
             relay_agent_ip: Ipv4Address::UNSPECIFIED,
             router: router.map(to_ipv4_addr),
             subnet_mask: mask.map(to_ipv4_addr),
-            dns_servers: if dns_vec.is_empty() { None } else { Some(dns_vec) },
+            dns_servers: if dns_vec.is_empty() {
+                None
+            } else {
+                Some(dns_vec)
+            },
             requested_ip: None,
             client_identifier: None,
             server_identifier: None,
@@ -374,7 +414,8 @@ mod tests {
             Ipv4Addr::new(192, 168, 1, 100),
             Some(Ipv4Addr::new(192, 168, 1, 1)),
             Some(Ipv4Addr::new(255, 255, 255, 0)),
-            &[Ipv4Addr::new(8, 8, 8, 8)], 3600,
+            &[Ipv4Addr::new(8, 8, 8, 8)],
+            3600,
         );
         let lease = parse_dhcp_offer(&packet).unwrap();
         assert_eq!(lease.ip, Ipv4Addr::new(192, 168, 1, 100));
@@ -386,7 +427,8 @@ mod tests {
             Ipv4Addr::new(10, 0, 0, 50),
             Some(Ipv4Addr::new(10, 0, 0, 1)),
             Some(Ipv4Addr::new(255, 0, 0, 0)),
-            &[], 7200,
+            &[],
+            7200,
         );
         let lease = parse_dhcp_offer(&packet).unwrap();
         assert_eq!(lease.gateway, Ipv4Addr::new(10, 0, 0, 1));
@@ -398,7 +440,8 @@ mod tests {
             Ipv4Addr::new(172, 16, 0, 10),
             Some(Ipv4Addr::new(172, 16, 0, 1)),
             Some(Ipv4Addr::new(255, 255, 0, 0)),
-            &[], 1800,
+            &[],
+            1800,
         );
         let lease = parse_dhcp_offer(&packet).unwrap();
         assert_eq!(lease.subnet_mask, Ipv4Addr::new(255, 255, 0, 0));
@@ -410,7 +453,8 @@ mod tests {
             Ipv4Addr::new(192, 168, 1, 100),
             Some(Ipv4Addr::new(192, 168, 1, 1)),
             Some(Ipv4Addr::new(255, 255, 255, 0)),
-            &[Ipv4Addr::new(8, 8, 8, 8), Ipv4Addr::new(8, 8, 4, 4)], 3600,
+            &[Ipv4Addr::new(8, 8, 8, 8), Ipv4Addr::new(8, 8, 4, 4)],
+            3600,
         );
         let lease = parse_dhcp_offer(&packet).unwrap();
         assert_eq!(lease.dns_servers.len(), 2);
@@ -424,7 +468,8 @@ mod tests {
             Ipv4Addr::new(10, 0, 0, 5),
             Some(Ipv4Addr::new(10, 0, 0, 1)),
             Some(Ipv4Addr::new(255, 0, 0, 0)),
-            &[], 86400,
+            &[],
+            86400,
         );
         let lease = parse_dhcp_offer(&packet).unwrap();
         assert_eq!(lease.lease_seconds, 86400);
@@ -432,10 +477,7 @@ mod tests {
 
     #[test]
     fn test_dhcp_offer_no_optional_fields() {
-        let packet = build_dhcp_offer_packet(
-            Ipv4Addr::new(10, 0, 0, 5),
-            None, None, &[], 3600,
-        );
+        let packet = build_dhcp_offer_packet(Ipv4Addr::new(10, 0, 0, 5), None, None, &[], 3600);
         let lease = parse_dhcp_offer(&packet).unwrap();
         assert_eq!(lease.ip, Ipv4Addr::new(10, 0, 0, 5));
     }

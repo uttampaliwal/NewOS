@@ -301,8 +301,7 @@ unsafe fn setup_mappings(
         let seg_pages = seg.memory_size.div_ceil(4096);
         let page_flags = phdr_to_page_flags(seg.flags);
         for i in 0..seg_pages {
-            let page: Page<Size4KiB> =
-                Page::containing_address(VirtAddr::new(seg_va + i * 4096));
+            let page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(seg_va + i * 4096));
             let frame = PhysFrame::containing_address(x86_64::PhysAddr::new(
                 kernel.physical_base + offset + i * 4096,
             ));

@@ -59,6 +59,10 @@ impl SimpleRng {
 fn rdrand_u64() -> Option<u64> {
     let val: u64;
     let ret: u8;
+    // SAFETY: `rdrand` is a safe, non-privileged x86_64 instruction that
+    // reads a hardware random number into the output register. No memory is
+    // accessed. `setc` writes the carry flag (success indicator) to a byte
+    // register. Both outputs are fully initialised by the asm block.
     unsafe {
         asm!(
             "rdrand {val}",
@@ -112,6 +116,9 @@ fn tsc_jitter_seed() -> u64 {
     for _ in 0..16 {
         let lo: u32;
         let hi: u32;
+        // SAFETY: `rdtsc` is a safe, non-privileged instruction on x86_64
+        // that reads the 64-bit time-stamp counter into `eax:edx`. No memory
+        // is read or written; all outputs are fully initialised by the asm.
         unsafe {
             core::arch::asm!(
                 "rdtsc",
@@ -405,20 +412,42 @@ mod tests {
     #[test]
     fn stack_base_above_minimum() {
         let addr = randomise_stack_base().as_u64();
-        assert!(addr >= STACK_BASE_MIN, "stack base {:#x} must be >= {:#x}", addr, STACK_BASE_MIN);
+        assert!(
+            addr >= STACK_BASE_MIN,
+            "stack base {:#x} must be >= {:#x}",
+            addr,
+            STACK_BASE_MIN
+        );
     }
 
     #[test]
     fn heap_base_above_minimum() {
         let addr = randomise_heap_base().as_u64();
-        assert!(addr >= HEAP_BASE_MIN, "heap base {:#x} must be >= {:#x}", addr, HEAP_BASE_MIN);
+        assert!(
+            addr >= HEAP_BASE_MIN,
+            "heap base {:#x} must be >= {:#x}",
+            addr,
+            HEAP_BASE_MIN
+        );
     }
 
     #[test]
     fn pie_base_minimum_aligned() {
-        assert_eq!(PIE_LOAD_BASE_MIN & 0xFFF, 0, "PIE_LOAD_BASE_MIN must be page-aligned");
-        assert_eq!(STACK_BASE_MIN & 0xFFF, 0, "STACK_BASE_MIN must be page-aligned");
-        assert_eq!(HEAP_BASE_MIN & 0xFFF, 0, "HEAP_BASE_MIN must be page-aligned");
+        assert_eq!(
+            PIE_LOAD_BASE_MIN & 0xFFF,
+            0,
+            "PIE_LOAD_BASE_MIN must be page-aligned"
+        );
+        assert_eq!(
+            STACK_BASE_MIN & 0xFFF,
+            0,
+            "STACK_BASE_MIN must be page-aligned"
+        );
+        assert_eq!(
+            HEAP_BASE_MIN & 0xFFF,
+            0,
+            "HEAP_BASE_MIN must be page-aligned"
+        );
     }
 
     #[test]
@@ -426,10 +455,19 @@ mod tests {
     fn stack_and_heap_do_not_overlap_with_pie() {
         let pie_max = PIE_LOAD_BASE_MIN + ASLR_RANGE_PAGES * 4096;
         // 1 GiB margin between pie max and heap min
-        assert!(HEAP_BASE_MIN > pie_max, "HEAP_BASE_MIN must be above max PIE range");
+        assert!(
+            HEAP_BASE_MIN > pie_max,
+            "HEAP_BASE_MIN must be above max PIE range"
+        );
         let heap_max = HEAP_BASE_MIN + ASLR_RANGE_PAGES * 4096;
-        assert!(STACK_BASE_MIN > heap_max, "STACK_BASE_MIN must be above max heap range");
+        assert!(
+            STACK_BASE_MIN > heap_max,
+            "STACK_BASE_MIN must be above max heap range"
+        );
         // KASLR kernel offset does not overlap with user ranges
-        assert!(KERNEL_BASE > 0xffff_0000_0000_0000, "KERNEL_BASE must be in kernel space");
+        assert!(
+            KERNEL_BASE > 0xffff_0000_0000_0000,
+            "KERNEL_BASE must be in kernel space"
+        );
     }
 }

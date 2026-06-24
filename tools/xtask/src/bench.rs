@@ -50,8 +50,16 @@ fn build_bench_qemu_command(workspace_root: &Path) -> ProcessCommand {
     let fat_root = crate::ci::normalize_path(&esp_dir);
 
     // Stage firmware to writable location
-    let staged_code = crate::ci::stage_ovmf(workspace_root, "edk2-x86_64-code.fd", &crate::ci::find_ovmf_code());
-    let staged_vars = crate::ci::stage_ovmf(workspace_root, "edk2-x86_64-vars.fd", &crate::ci::find_ovmf_vars());
+    let staged_code = crate::ci::stage_ovmf(
+        workspace_root,
+        "edk2-x86_64-code.fd",
+        &crate::ci::find_ovmf_code(),
+    );
+    let staged_vars = crate::ci::stage_ovmf(
+        workspace_root,
+        "edk2-x86_64-vars.fd",
+        &crate::ci::find_ovmf_vars(),
+    );
 
     let mut cmd = ProcessCommand::new("qemu-system-x86_64");
     cmd.arg("-cpu").arg("max");
@@ -113,7 +121,8 @@ fn boot_qemu_bench(workspace_root: &Path, timeout_secs: u64) -> BootResult {
     let _ = std::fs::write(&log_path, b"");
 
     let mut cmd = build_bench_qemu_command(workspace_root);
-    cmd.arg("-serial").arg(format!("file:{}", log_path.display()));
+    cmd.arg("-serial")
+        .arg(format!("file:{}", log_path.display()));
 
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(timeout_secs);

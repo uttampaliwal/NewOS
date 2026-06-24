@@ -380,7 +380,8 @@ impl From<u8> for IoUringOp {
     }
 }
 
-static IO_URING_INSTANCES: Mutex<BTreeMap<usize, Arc<IoUringInstance>>> = Mutex::new(BTreeMap::new());
+static IO_URING_INSTANCES: Mutex<BTreeMap<usize, Arc<IoUringInstance>>> =
+    Mutex::new(BTreeMap::new());
 
 pub fn uring_setup(sq_entries: u32, cq_entries: u32, owner: ProcessId) -> Result<usize, i32> {
     let sq_entries = sq_entries.clamp(1, 4096);
@@ -390,7 +391,11 @@ pub fn uring_setup(sq_entries: u32, cq_entries: u32, owner: ProcessId) -> Result
 
     let process = crate::task::scheduler::get_current_process().ok_or(-14)?;
     let mut inner = process.inner.lock();
-    let fd = inner.fd_table.iter().position(|s| s.is_none()).unwrap_or(inner.fd_table.len());
+    let fd = inner
+        .fd_table
+        .iter()
+        .position(|s| s.is_none())
+        .unwrap_or(inner.fd_table.len());
     if fd >= inner.fd_table.len() {
         inner.fd_table.resize_with(fd + 1, || None);
     }

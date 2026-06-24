@@ -77,9 +77,7 @@ impl GbmManager {
     }
 
     pub fn get_phys_addr(&self, id: GbmBufferId) -> Option<u64> {
-        self.buffers
-            .get(&id)
-            .map(|buf| buf.frames[0].start_address)
+        self.buffers.get(&id).map(|buf| buf.frames[0].start_address)
     }
 
     pub fn destroy(&mut self, id: GbmBufferId) {
@@ -130,11 +128,11 @@ mod tests {
         F: FnOnce() -> R,
     {
         let _guard = TEST_MUTEX.lock();
+        use core::mem::size_of;
         use turnix_abi::boot::{
             BootEnvironment, BootInfo, BootLoaderKind, BootMemoryDescriptor, BootMemoryMap,
             MEMORY_TYPE_CONVENTIONAL,
         };
-        use core::mem::size_of;
 
         fn descriptor(ty: u32, phys_start: u64, page_count: u64) -> BootMemoryDescriptor {
             BootMemoryDescriptor {
@@ -147,9 +145,7 @@ mod tests {
             }
         }
 
-        let descriptors = [
-            descriptor(MEMORY_TYPE_CONVENTIONAL, 0x100000, 8192),
-        ];
+        let descriptors = [descriptor(MEMORY_TYPE_CONVENTIONAL, 0x100000, 8192)];
 
         let boot_info = alloc::boxed::Box::new(BootInfo {
             abi_version: 2,

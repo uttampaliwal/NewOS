@@ -37,8 +37,16 @@ fn build_driver_test_qemu_command(workspace_root: &Path) -> ProcessCommand {
     let fat_root = crate::ci::normalize_path(&esp_dir);
 
     // Stage firmware to writable location
-    let staged_code = crate::ci::stage_ovmf(workspace_root, "edk2-x86_64-code.fd", &crate::ci::find_ovmf_code());
-    let staged_vars = crate::ci::stage_ovmf(workspace_root, "edk2-x86_64-vars.fd", &crate::ci::find_ovmf_vars());
+    let staged_code = crate::ci::stage_ovmf(
+        workspace_root,
+        "edk2-x86_64-code.fd",
+        &crate::ci::find_ovmf_code(),
+    );
+    let staged_vars = crate::ci::stage_ovmf(
+        workspace_root,
+        "edk2-x86_64-vars.fd",
+        &crate::ci::find_ovmf_vars(),
+    );
 
     let mut cmd = ProcessCommand::new("qemu-system-x86_64");
     cmd.arg("-cpu").arg("max");
@@ -135,7 +143,8 @@ pub fn boot_qemu_driver_test(workspace_root: &Path, timeout_secs: u64) -> BootRe
     let _ = std::fs::write(&log_path, b"");
 
     let mut cmd = build_driver_test_qemu_command(workspace_root);
-    cmd.arg("-serial").arg(format!("file:{}", log_path.display()));
+    cmd.arg("-serial")
+        .arg(format!("file:{}", log_path.display()));
 
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(timeout_secs);
@@ -231,14 +240,13 @@ pub fn run_driver_test_suite(workspace_root: &Path) -> DriverSuiteResult {
         detail: if pcie_device_count >= 1 {
             format!("{pcie_device_count} PCIe device functions discovered")
         } else {
-            format!(
-                "expected >= 1 device functions, found {pcie_device_count}"
-            )
+            format!("expected >= 1 device functions, found {pcie_device_count}")
         },
     });
 
     // Test 3: VirtIO-Net detected (probe may succeed or fail depending on driver state)
-    let virtio_detected = output.contains("[VIRTIO]") && (output.contains("virtio") || output.contains("VIRTIO"));
+    let virtio_detected =
+        output.contains("[VIRTIO]") && (output.contains("virtio") || output.contains("VIRTIO"));
     results.push(DriverTestResult {
         name: "virtio_net_detected".to_string(),
         passed: virtio_detected,
@@ -250,8 +258,8 @@ pub fn run_driver_test_suite(workspace_root: &Path) -> DriverSuiteResult {
     });
 
     // Test 4: VirtIO-Net MAC address (check if MAC was negotiated, not all zeros)
-    let mac_not_all_zeros = !output.contains("MAC: 00:00:00:00:00:00")
-        && !output.contains("mac: 00:00:00:00:00:00");
+    let mac_not_all_zeros =
+        !output.contains("MAC: 00:00:00:00:00:00") && !output.contains("mac: 00:00:00:00:00:00");
     // If no explicit MAC log, check that probe succeeded (implies MAC was set)
     let virtio_probe_ok = output.contains("[VIRTIO] Re-initialisation succeeded")
         || output.contains("[VIRTIO] Feature negotiation");
@@ -275,7 +283,8 @@ pub fn run_driver_test_suite(workspace_root: &Path) -> DriverSuiteResult {
         name: "nvme_namespace".to_string(),
         passed: true, // info-only: no NVMe drive attached in this config
         detail: if nvme_detected {
-            let skipped = output.lines()
+            let skipped = output
+                .lines()
                 .filter(|l| l.contains("[NVMe]") && l.contains("Probe skipped"))
                 .count();
             format!("NVMe detected ({skipped} probe skips, no drive attached)")

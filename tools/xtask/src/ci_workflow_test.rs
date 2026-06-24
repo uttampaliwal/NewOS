@@ -20,8 +20,8 @@ fn workflow_path() -> std::path::PathBuf {
 
 fn load_workflow() -> Workflow {
     let path = workflow_path();
-    let contents =
-        fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    let contents = fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     serde_yaml::from_str(&contents).unwrap_or_else(|e| panic!("failed to parse ci.yml: {e}"))
 }
 
@@ -116,7 +116,12 @@ fn ci_yml_all_jobs_require_qemu_for_hardware_tests() {
     let path = workflow_path();
     let contents = fs::read_to_string(&path).expect("read ci.yml");
     // boot-gate, driver-tests, security-regression, performance-benchmarks need QEMU
-    for job in &["boot-gate", "driver-tests", "security-regression", "performance-benchmarks"] {
+    for job in &[
+        "boot-gate",
+        "driver-tests",
+        "security-regression",
+        "performance-benchmarks",
+    ] {
         // Find the job section and verify it installs QEMU
         let section_start = contents
             .find(&format!("{job}:"))

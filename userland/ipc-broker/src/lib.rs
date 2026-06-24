@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use turnix_ipc_proto::{encode_message, decode_message, IpcError, IpcMessage, IpcValue};
+use turnix_ipc_proto::{IpcError, IpcMessage, IpcValue, decode_message, encode_message};
 
 // ---------------------------------------------------------------------------
 // BrokerError
@@ -70,8 +70,7 @@ impl Transport for ChannelTransport {
     }
 
     fn recv(&mut self) -> Result<IpcMessage, BrokerError> {
-        smol::block_on(self.rx.recv())
-            .map_err(|e| BrokerError::TransportError(e.to_string()))
+        smol::block_on(self.rx.recv()).map_err(|e| BrokerError::TransportError(e.to_string()))
     }
 
     fn close(&mut self) -> Result<(), BrokerError> {
@@ -93,7 +92,8 @@ impl SocketTransport {
     pub fn connect(path: &str) -> Result<Self, BrokerError> {
         let stream = std::os::unix::net::UnixStream::connect(path)
             .map_err(|e| BrokerError::TransportError(format!("connect failed: {e}")))?;
-        let write_stream = stream.try_clone()
+        let write_stream = stream
+            .try_clone()
             .map_err(|e| BrokerError::TransportError(format!("clone failed: {e}")))?;
         Ok(Self {
             stream: std::io::BufReader::new(stream),
@@ -113,8 +113,7 @@ impl SocketTransport {
 impl Transport for SocketTransport {
     fn send(&mut self, msg: &IpcMessage) -> Result<(), BrokerError> {
         use std::io::Write;
-        let bytes = encode_message(msg)
-            .map_err(BrokerError::TransportError)?;
+        let bytes = encode_message(msg).map_err(BrokerError::TransportError)?;
         self.write_stream
             .write_all(&bytes)
             .map_err(|e| BrokerError::TransportError(format!("write failed: {e}")))?;
@@ -143,8 +142,7 @@ impl Transport for SocketTransport {
         full.extend_from_slice(&len_buf);
         full.extend_from_slice(&payload);
 
-        let (msg, _) = decode_message(&full)
-            .map_err(BrokerError::ProtocolError)?;
+        let (msg, _) = decode_message(&full).map_err(BrokerError::ProtocolError)?;
         Ok(msg)
     }
 
@@ -394,10 +392,7 @@ impl Broker {
 
     /// Accept a new connection via the given transport.
     /// Returns the connection ID.
-    pub fn accept(
-        &mut self,
-        tx: Option<smol::channel::Sender<IpcMessage>>,
-    ) -> u64 {
+    pub fn accept(&mut self, tx: Option<smol::channel::Sender<IpcMessage>>) -> u64 {
         let id = self.next_conn_id;
         self.next_conn_id += 1;
         self.connections.insert(
@@ -417,10 +412,13 @@ impl Broker {
         conn_id: u64,
         registration: ServiceRegistration,
     ) -> Result<(), BrokerError> {
-        let conn = self.connections.get_mut(&conn_id)
+        let conn = self
+            .connections
+            .get_mut(&conn_id)
             .ok_or(BrokerError::ConnectionClosed(conn_id))?;
         conn.registration = Some(registration.clone());
-        self.registry.insert(registration.interface.clone(), conn_id);
+        self.registry
+            .insert(registration.interface.clone(), conn_id);
         Ok(())
     }
 
@@ -432,21 +430,31 @@ impl Broker {
         msg: IpcMessage,
     ) -> Result<Vec<(u64, IpcMessage)>, BrokerError> {
         match msg {
-            IpcMessage::MethodCall { id, interface, method, args } => {
-                self.route_method_call(conn_id, id, &interface, &method, args)
-            }
+            IpcMessage::MethodCall {
+                id,
+                interface,
+                method,
+                args,
+            } => self.route_method_call(conn_id, id, &interface, &method, args),
             IpcMessage::MethodReturn { id, result } => {
                 self.route_method_return(conn_id, id, result)
             }
-            IpcMessage::Signal { interface, name, args } => {
-                self.broadcast_signal(conn_id, interface, name, args)
-            }
-            IpcMessage::PropertyGet { id, interface, name } => {
-                self.route_property_get(conn_id, id, &interface, &name)
-            }
-            IpcMessage::PropertySet { id, interface, name, value } => {
-                self.route_property_set(conn_id, id, &interface, &name, value)
-            }
+            IpcMessage::Signal {
+                interface,
+                name,
+                args,
+            } => self.broadcast_signal(conn_id, interface, name, args),
+            IpcMessage::PropertyGet {
+                id,
+                interface,
+                name,
+            } => self.route_property_get(conn_id, id, &interface, &name),
+            IpcMessage::PropertySet {
+                id,
+                interface,
+                name,
+                value,
+            } => self.route_property_set(conn_id, id, &interface, &name, value),
         }
     }
 
@@ -476,13 +484,16 @@ impl Broker {
         method: &str,
         args: Vec<IpcValue>,
     ) -> Result<Vec<(u64, IpcMessage)>, BrokerError> {
-        let target_id = self.registry.get(interface)
+        let target_id = self
+            .registry
+            .get(interface)
             .ok_or_else(|| BrokerError::ServiceNotFound(interface.to_string()))?;
 
         // Check the service has that method
         if let Some(conn) = self.connections.get(target_id)
             && let Some(ref reg) = conn.registration
-            && !reg.methods.is_empty() && !reg.methods.contains(&method.to_string())
+            && !reg.methods.is_empty()
+            && !reg.methods.contains(&method.to_string())
         {
             return Err(BrokerError::MethodNotFound(method.to_string()));
         }
@@ -503,7 +514,9 @@ impl Broker {
         call_id: u64,
         result: Result<IpcValue, IpcError>,
     ) -> Result<Vec<(u64, IpcMessage)>, BrokerError> {
-        let caller_id = self.pending_calls.remove(&call_id)
+        let caller_id = self
+            .pending_calls
+            .remove(&call_id)
             .ok_or_else(|| BrokerError::ProtocolError(format!("unknown call id {call_id}")))?;
         let reply = IpcMessage::MethodReturn {
             id: call_id,
@@ -536,7 +549,9 @@ impl Broker {
         interface: &str,
         _name: &str,
     ) -> Result<Vec<(u64, IpcMessage)>, BrokerError> {
-        let target_id = self.registry.get(interface)
+        let target_id = self
+            .registry
+            .get(interface)
             .ok_or_else(|| BrokerError::ServiceNotFound(interface.to_string()))?;
         self.pending_calls.insert(call_id, caller_id);
         let forward = IpcMessage::PropertyGet {
@@ -555,7 +570,9 @@ impl Broker {
         _name: &str,
         value: IpcValue,
     ) -> Result<Vec<(u64, IpcMessage)>, BrokerError> {
-        let target_id = self.registry.get(interface)
+        let target_id = self
+            .registry
+            .get(interface)
             .ok_or_else(|| BrokerError::ServiceNotFound(interface.to_string()))?;
         self.pending_calls.insert(call_id, caller_id);
         let forward = IpcMessage::PropertySet {
@@ -596,7 +613,10 @@ mod tests {
         // Service connects
         let svc_id = broker.accept(None);
         broker
-            .register_service(svc_id, make_service_registration("com.test.Echo", &["ping"]))
+            .register_service(
+                svc_id,
+                make_service_registration("com.test.Echo", &["ping"]),
+            )
             .unwrap();
 
         // Client connects and sends a method call
@@ -686,7 +706,11 @@ mod tests {
 
         // Subscribe a second connection to the interface
         let sub_id = broker.accept(None);
-        broker.subscribers.entry("com.test.Events".into()).or_default().push(sub_id);
+        broker
+            .subscribers
+            .entry("com.test.Events".into())
+            .or_default()
+            .push(sub_id);
 
         // Send a signal from the service
         let signal = IpcMessage::Signal {

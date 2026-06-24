@@ -87,7 +87,12 @@ pub fn wait(status: *mut i32) -> u64 {
 }
 
 pub fn waitpid(pid: i32, status: *mut i32, options: i32) -> u64 {
-    syscall3(Syscall::Waitpid as u64, pid as u64, status as u64, options as u64)
+    syscall3(
+        Syscall::Waitpid as u64,
+        pid as u64,
+        status as u64,
+        options as u64,
+    )
 }
 
 pub fn kill(pid: i32, sig: u8) -> u64 {
@@ -95,11 +100,21 @@ pub fn kill(pid: i32, sig: u8) -> u64 {
 }
 
 pub fn sigaction(sig: u8, new: *const [u64; 3], old: *mut [u64; 3]) -> u64 {
-    syscall3(Syscall::Sigaction as u64, sig as u64, new as u64, old as u64)
+    syscall3(
+        Syscall::Sigaction as u64,
+        sig as u64,
+        new as u64,
+        old as u64,
+    )
 }
 
 pub fn sigprocmask(how: i32, new: *const u64, old: *mut u64) -> u64 {
-    syscall3(Syscall::Sigprocmask as u64, how as u64, new as u64, old as u64)
+    syscall3(
+        Syscall::Sigprocmask as u64,
+        how as u64,
+        new as u64,
+        old as u64,
+    )
 }
 
 pub fn shutdown() -> ! {
@@ -168,7 +183,10 @@ pub fn capset(header: &turnix_abi::syscall::CapHeader, data: &turnix_abi::syscal
     ) as i64
 }
 
-pub fn capget(header: &turnix_abi::syscall::CapHeader, data: &mut turnix_abi::syscall::CapData) -> i64 {
+pub fn capget(
+    header: &turnix_abi::syscall::CapHeader,
+    data: &mut turnix_abi::syscall::CapData,
+) -> i64 {
     syscall2(
         Syscall::Capget as u64,
         header as *const _ as u64,
@@ -200,7 +218,11 @@ pub fn dmesg(buf: &mut [u8]) -> Result<usize, i64> {
         buf.as_mut_ptr() as u64,
         buf.len() as u64,
     );
-    if (res as i64) < 0 { Err(res as i64) } else { Ok(res as usize) }
+    if (res as i64) < 0 {
+        Err(res as i64)
+    } else {
+        Ok(res as usize)
+    }
 }
 
 /// Get the size of an extended attribute value from a file.
@@ -212,7 +234,11 @@ pub fn xattr_get(path: &str, name: &str) -> Result<usize, i64> {
         name.as_ptr() as u64,
         name.len() as u64,
     );
-    if (res as i64) < 0 { Err(res as i64) } else { Ok(res as usize) }
+    if (res as i64) < 0 {
+        Err(res as i64)
+    } else {
+        Ok(res as usize)
+    }
 }
 
 /// Set an extended attribute on a file.
@@ -224,7 +250,11 @@ pub fn xattr_set(path: &str, name: &str, _value: &[u8]) -> Result<(), i64> {
         name.as_ptr() as u64,
         name.len() as u64,
     );
-    if (res as i64) < 0 { Err(res as i64) } else { Ok(()) }
+    if (res as i64) < 0 {
+        Err(res as i64)
+    } else {
+        Ok(())
+    }
 }
 
 fn syscall0(num: u64) -> u64 {
@@ -388,10 +418,7 @@ pub fn net_set_addr(iface_id: u32, addr: [u8; 4], netmask: [u8; 4], gateway: [u8
 
 /// Set the default gateway for interface 0.
 pub fn net_set_route(gateway: [u8; 4]) -> i64 {
-    syscall1(
-        Syscall::NetSetRoute as u64,
-        gateway.as_ptr() as u64,
-    ) as i64
+    syscall1(Syscall::NetSetRoute as u64, gateway.as_ptr() as u64) as i64
 }
 
 /// Query the current configuration of a network interface.
@@ -409,11 +436,7 @@ pub fn net_query(iface_id: u32) -> Option<turnix_abi::NetQueryResp> {
         iface_id as u64,
         &mut resp as *mut turnix_abi::NetQueryResp as u64,
     );
-    if (res as i64) < 0 {
-        None
-    } else {
-        Some(resp)
-    }
+    if (res as i64) < 0 { None } else { Some(resp) }
 }
 
 fn syscall4(num: u64, arg0: u64, arg1: u64, arg2: u64, arg3: u64) -> u64 {

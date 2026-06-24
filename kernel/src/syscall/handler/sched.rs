@@ -22,7 +22,9 @@ pub fn handle_sched_set_scheduler(args: SyscallArgs) -> SyscallResult {
 
 pub fn handle_sched_get_scheduler(_args: SyscallArgs) -> SyscallResult {
     match crate::task::scheduler::get_current_policy() {
-        Some((policy, priority)) => SyscallResult::Success(((priority as u64) << 8) | (policy as u8 as u64)),
+        Some((policy, priority)) => {
+            SyscallResult::Success(((priority as u64) << 8) | (policy as u8 as u64))
+        }
         None => SyscallResult::Error(1),
     }
 }

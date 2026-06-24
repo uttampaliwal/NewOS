@@ -55,10 +55,7 @@ impl PerCpuCounter {
 
     /// Sum all CPU counters.
     pub fn sum_all(&self) -> usize {
-        self.values
-            .iter()
-            .map(|v| v.load(Ordering::Relaxed))
-            .sum()
+        self.values.iter().map(|v| v.load(Ordering::Relaxed)).sum()
     }
 
     /// Reset all CPU counters to zero.
@@ -108,10 +105,7 @@ impl PerCpuAtomicCounter {
 
     /// Sum all CPU counters.
     pub fn sum_all(&self) -> u64 {
-        self.values
-            .iter()
-            .map(|v| v.load(Ordering::Relaxed))
-            .sum()
+        self.values.iter().map(|v| v.load(Ordering::Relaxed)).sum()
     }
 }
 

@@ -20,7 +20,14 @@ impl std::fmt::Display for SolverError {
         match self {
             SolverError::Conflict(msg) => write!(f, "dependency conflict: {msg}"),
             SolverError::Cycle(pkgs) => {
-                write!(f, "dependency cycle: {}", pkgs.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(" -> "))
+                write!(
+                    f,
+                    "dependency cycle: {}",
+                    pkgs.iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" -> ")
+                )
             }
             SolverError::NotFound(name) => write!(f, "package not found: {name}"),
             SolverError::Internal(msg) => write!(f, "internal solver error: {msg}"),
@@ -177,17 +184,17 @@ impl DependencySolver {
         }
 
         // Solve.
-        let sat = solver.solve().map_err(|e| {
-            SolverError::Internal(format!("solver error: {e}"))
-        })?;
+        let sat = solver
+            .solve()
+            .map_err(|e| SolverError::Internal(format!("solver error: {e}")))?;
         if !sat {
             return Err(SolverError::Conflict(
                 "constraints are unsatisfiable".into(),
             ));
         }
-        let model = solver.model().ok_or_else(|| {
-            SolverError::Internal("no model returned despite SAT result".into())
-        })?;
+        let model = solver
+            .model()
+            .ok_or_else(|| SolverError::Internal("no model returned despite SAT result".into()))?;
 
         // Build set of true variables from the model.
         let true_vars: BTreeSet<varisat::Var> = model
@@ -270,7 +277,14 @@ fn topological_sort(
         if let Some(deps) = dependencies.get(&(entry.name.clone(), entry.version.clone())) {
             for (dep_name, _) in deps {
                 if let Some(dep_entry) = entry_map.get(dep_name) {
-                    visit(dep_entry, entry_map, dependencies, visited, in_stack, result)?;
+                    visit(
+                        dep_entry,
+                        entry_map,
+                        dependencies,
+                        visited,
+                        in_stack,
+                        result,
+                    )?;
                 }
             }
         }
@@ -282,7 +296,14 @@ fn topological_sort(
 
     for entry in entries {
         if !visited.contains(&entry.name) {
-            visit(entry, &entry_map, dependencies, &mut visited, &mut in_stack, &mut result)?;
+            visit(
+                entry,
+                &entry_map,
+                dependencies,
+                &mut visited,
+                &mut in_stack,
+                &mut result,
+            )?;
         }
     }
 
@@ -317,31 +338,40 @@ mod tests {
     }
 
     #[allow(clippy::type_complexity)]
-    fn arb_dep_graph() -> impl Strategy<Value = (DependencySolver, BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>>)> {
+    fn arb_dep_graph() -> impl Strategy<
+        Value = (
+            DependencySolver,
+            BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>>,
+        ),
+    > {
         let pkg_names = proptest::collection::vec(arb_package_name(), 2..=5);
-        pkg_names.prop_flat_map(|names| {
-            let ver_strats: Vec<Vec<Version>> = names.iter()
-                .map(|_| vec![Version::new(0, 0, 0), Version::new(1, 0, 0)])
-                .collect();
-            (Just(names), Just(ver_strats))
-        }).prop_map(|(names, version_lists)| {
-            let mut solver = DependencySolver::new();
-            let mut deps: BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>> = BTreeMap::new();
+        pkg_names
+            .prop_flat_map(|names| {
+                let ver_strats: Vec<Vec<Version>> = names
+                    .iter()
+                    .map(|_| vec![Version::new(0, 0, 0), Version::new(1, 0, 0)])
+                    .collect();
+                (Just(names), Just(ver_strats))
+            })
+            .prop_map(|(names, version_lists)| {
+                let mut solver = DependencySolver::new();
+                let mut deps: BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>> =
+                    BTreeMap::new();
 
-            for (i, name) in names.iter().enumerate() {
-                for ver in &version_lists[i] {
-                    solver.add_package_version(name.clone(), ver.clone());
-                    if i > 0 {
-                        let dep_name = names[(i - 1) % names.len()].clone();
-                        let req = VersionReq::parse(">=0.0.0").unwrap();
-                        deps.entry((name.clone(), ver.clone()))
-                            .or_default()
-                            .push((dep_name, req));
+                for (i, name) in names.iter().enumerate() {
+                    for ver in &version_lists[i] {
+                        solver.add_package_version(name.clone(), ver.clone());
+                        if i > 0 {
+                            let dep_name = names[(i - 1) % names.len()].clone();
+                            let req = VersionReq::parse(">=0.0.0").unwrap();
+                            deps.entry((name.clone(), ver.clone()))
+                                .or_default()
+                                .push((dep_name, req));
+                        }
                     }
                 }
-            }
-            (solver, deps)
-        })
+                (solver, deps)
+            })
     }
 
     // -----------------------------------------------------------------------
@@ -433,13 +463,19 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[allow(clippy::type_complexity)]
-    fn arb_cyclic_graph() -> impl Strategy<Value = (DependencySolver, BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>>)> {
+    fn arb_cyclic_graph() -> impl Strategy<
+        Value = (
+            DependencySolver,
+            BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>>,
+        ),
+    > {
         (arb_package_name(), arb_package_name(), arb_version()).prop_map(|(name_a, name_b, ver)| {
             let mut solver = DependencySolver::new();
             solver.add_package_version(name_a.clone(), ver.clone());
             solver.add_package_version(name_b.clone(), ver.clone());
 
-            let mut deps: BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>> = BTreeMap::new();
+            let mut deps: BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>> =
+                BTreeMap::new();
             let req = VersionReq::parse(">=0.0.0").unwrap();
 
             deps.entry((name_a.clone(), ver.clone()))
@@ -543,7 +579,8 @@ mod tests {
         solver.add_package_version(a.clone(), Version::new(1, 0, 0));
         solver.add_package_version(b.clone(), Version::new(1, 0, 0));
 
-        let mut deps: BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>> = BTreeMap::new();
+        let mut deps: BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>> =
+            BTreeMap::new();
         deps.insert(
             (a.clone(), Version::new(1, 0, 0)),
             vec![(b.clone(), ">=1.0.0".parse().unwrap())],
@@ -573,7 +610,8 @@ mod tests {
         solver.add_package_version(a.clone(), Version::new(1, 0, 0));
         solver.add_package_version(b.clone(), Version::new(1, 0, 0));
 
-        let mut deps: BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>> = BTreeMap::new();
+        let mut deps: BTreeMap<(PackageName, Version), Vec<(PackageName, VersionReq)>> =
+            BTreeMap::new();
         deps.insert(
             (b.clone(), Version::new(1, 0, 0)),
             vec![(a.clone(), ">=1.0.0".parse().unwrap())],

@@ -147,8 +147,8 @@ pub fn sys_socket(domain: i32, sock_type: i32) -> Result<usize, i64> {
     }
 
     let net_type = match sock_type {
-        1 => NetSocketType::Tcp,  // SOCK_STREAM
-        2 => NetSocketType::Udp,  // SOCK_DGRAM
+        1 => NetSocketType::Tcp, // SOCK_STREAM
+        2 => NetSocketType::Udp, // SOCK_DGRAM
         _ => return Err(EPROTONOSUPPORT),
     };
 
@@ -195,12 +195,16 @@ pub fn sys_bind(fd: usize, addr: IpAddress, port: u16) -> Result<(), i64> {
     let mut stack = NET_STACK.lock();
     match sock_type {
         NetSocketType::Tcp => {
-            let socket = stack.sockets.get_mut::<smoltcp::socket::tcp::Socket>(handle);
+            let socket = stack
+                .sockets
+                .get_mut::<smoltcp::socket::tcp::Socket>(handle);
             let endpoint = IpEndpoint::new(addr, port);
             socket.listen(endpoint).map_err(|_| EADDRINUSE)?;
         }
         NetSocketType::Udp => {
-            let socket = stack.sockets.get_mut::<smoltcp::socket::udp::Socket>(handle);
+            let socket = stack
+                .sockets
+                .get_mut::<smoltcp::socket::udp::Socket>(handle);
             let endpoint = IpEndpoint::new(addr, port);
             socket.bind(endpoint).map_err(|_| EADDRINUSE)?;
         }
@@ -249,7 +253,9 @@ pub fn sys_connect(fd: usize, addr: IpAddress, port: u16) -> Result<(), i64> {
     match sock_type {
         NetSocketType::Tcp => {
             let endpoint = IpEndpoint::new(addr, port);
-            stack.connect_tcp(handle, endpoint).map_err(|_| ECONNREFUSED)?;
+            stack
+                .connect_tcp(handle, endpoint)
+                .map_err(|_| ECONNREFUSED)?;
         }
         NetSocketType::Udp => {
             // UDP is connectionless, but we store the default remote endpoint
@@ -286,16 +292,16 @@ pub fn sys_accept(fd: usize) -> Result<usize, i64> {
 
     let mut stack = NET_STACK.lock();
 
-    let listener = stack.sockets.get_mut::<smoltcp::socket::tcp::Socket>(handle);
+    let listener = stack
+        .sockets
+        .get_mut::<smoltcp::socket::tcp::Socket>(handle);
 
     if !listener.is_open() {
         return Err(ECONNRESET);
     }
 
     match listener.state() {
-        smoltcp::socket::tcp::State::Listen => {
-            Err(EAGAIN)
-        }
+        smoltcp::socket::tcp::State::Listen => Err(EAGAIN),
         smoltcp::socket::tcp::State::SynReceived | smoltcp::socket::tcp::State::Established => {
             // The listening socket has transitioned to an established connection.
             // We need to:
@@ -304,7 +310,9 @@ pub fn sys_accept(fd: usize) -> Result<usize, i64> {
 
             let new_listener_handle = stack.add_tcp_socket();
             {
-                let new_listener = stack.sockets.get_mut::<smoltcp::socket::tcp::Socket>(new_listener_handle);
+                let new_listener = stack
+                    .sockets
+                    .get_mut::<smoltcp::socket::tcp::Socket>(new_listener_handle);
                 let local = (smoltcp::wire::IpAddress::v4(0, 0, 0, 0), local_port);
                 if new_listener.listen(local).is_err() {
                     stack.remove_socket(new_listener_handle);
@@ -361,7 +369,9 @@ pub fn sys_recv(fd: usize, buf: &mut [u8]) -> Result<usize, i64> {
     let mut stack = NET_STACK.lock();
     match sock_type {
         NetSocketType::Tcp => {
-            let socket = stack.sockets.get_mut::<smoltcp::socket::tcp::Socket>(handle);
+            let socket = stack
+                .sockets
+                .get_mut::<smoltcp::socket::tcp::Socket>(handle);
             if !socket.may_recv() {
                 return Err(EAGAIN);
             }
@@ -371,7 +381,9 @@ pub fn sys_recv(fd: usize, buf: &mut [u8]) -> Result<usize, i64> {
             })
         }
         NetSocketType::Udp => {
-            let socket = stack.sockets.get_mut::<smoltcp::socket::udp::Socket>(handle);
+            let socket = stack
+                .sockets
+                .get_mut::<smoltcp::socket::udp::Socket>(handle);
             if !socket.can_recv() {
                 return Err(EAGAIN);
             }
@@ -397,7 +409,9 @@ pub fn sys_send(fd: usize, buf: &[u8]) -> Result<usize, i64> {
     let mut stack = NET_STACK.lock();
     match sock_type {
         NetSocketType::Tcp => {
-            let socket = stack.sockets.get_mut::<smoltcp::socket::tcp::Socket>(handle);
+            let socket = stack
+                .sockets
+                .get_mut::<smoltcp::socket::tcp::Socket>(handle);
             if !socket.may_send() {
                 return Err(EAGAIN);
             }
@@ -406,7 +420,9 @@ pub fn sys_send(fd: usize, buf: &[u8]) -> Result<usize, i64> {
             })
         }
         NetSocketType::Udp => {
-            let socket = stack.sockets.get_mut::<smoltcp::socket::udp::Socket>(handle);
+            let socket = stack
+                .sockets
+                .get_mut::<smoltcp::socket::udp::Socket>(handle);
             // For UDP, we need a remote endpoint
             let table = SOCKET_TABLE.lock();
             let entry = table.get(fd).ok_or(EBADF)?;
@@ -478,9 +494,15 @@ mod tests {
         let h2 = stack.add_udp_socket();
         let h3 = stack.add_tcp_socket();
         let mut table = SocketTable::new();
-        let fd1 = table.insert(NetSocketEntry::new(h1, NetSocketType::Tcp, 2)).unwrap();
-        let fd2 = table.insert(NetSocketEntry::new(h2, NetSocketType::Udp, 2)).unwrap();
-        let fd3 = table.insert(NetSocketEntry::new(h3, NetSocketType::Tcp, 2)).unwrap();
+        let fd1 = table
+            .insert(NetSocketEntry::new(h1, NetSocketType::Tcp, 2))
+            .unwrap();
+        let fd2 = table
+            .insert(NetSocketEntry::new(h2, NetSocketType::Udp, 2))
+            .unwrap();
+        let fd3 = table
+            .insert(NetSocketEntry::new(h3, NetSocketType::Tcp, 2))
+            .unwrap();
         assert!(fd2 > fd1);
         assert!(fd3 > fd2);
         assert_eq!(table.fds.len(), 3);
@@ -505,7 +527,9 @@ mod tests {
         let mut table = SocketTable::new();
         for _i in 0..10 {
             let handle = stack.add_udp_socket();
-            let fd = table.insert(NetSocketEntry::new(handle, NetSocketType::Tcp, 2)).unwrap();
+            let fd = table
+                .insert(NetSocketEntry::new(handle, NetSocketType::Tcp, 2))
+                .unwrap();
             assert!(fd >= 256, "FD {} should be >= 256", fd);
         }
         drop(stack);

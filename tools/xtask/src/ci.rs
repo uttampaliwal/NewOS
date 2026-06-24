@@ -12,9 +12,18 @@ const LOG_POLL_INTERVAL_MS: u64 = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BootResult {
-    Success { output: String, elapsed: Duration },
-    Timeout { output: String, elapsed: Duration },
-    Failed { output: String, exit_code: Option<i32> },
+    Success {
+        output: String,
+        elapsed: Duration,
+    },
+    Timeout {
+        output: String,
+        elapsed: Duration,
+    },
+    Failed {
+        output: String,
+        exit_code: Option<i32>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,12 +98,16 @@ pub fn build_qemu_command(workspace_root: &Path, headless: bool) -> ProcessComma
 
     // Firmware
     if let Some(code) = find_ovmf_code() {
-        cmd.arg("-drive")
-            .arg(format!("if=pflash,format=raw,readonly=on,file={}", normalize_path(&code)));
+        cmd.arg("-drive").arg(format!(
+            "if=pflash,format=raw,readonly=on,file={}",
+            normalize_path(&code)
+        ));
     }
     if let Some(vars) = find_ovmf_vars() {
-        cmd.arg("-drive")
-            .arg(format!("if=pflash,format=raw,file={}", normalize_path(&vars)));
+        cmd.arg("-drive").arg(format!(
+            "if=pflash,format=raw,file={}",
+            normalize_path(&vars)
+        ));
     }
 
     // ESP FAT drive
@@ -177,12 +190,16 @@ pub fn boot_qemu_with_sentinel(
 
     // Firmware
     if let Some(code) = staged_code {
-        cmd.arg("-drive")
-            .arg(format!("if=pflash,format=raw,readonly=on,file={}", normalize_path(&code)));
+        cmd.arg("-drive").arg(format!(
+            "if=pflash,format=raw,readonly=on,file={}",
+            normalize_path(&code)
+        ));
     }
     if let Some(vars) = staged_vars {
-        cmd.arg("-drive")
-            .arg(format!("if=pflash,format=raw,file={}", normalize_path(&vars)));
+        cmd.arg("-drive").arg(format!(
+            "if=pflash,format=raw,file={}",
+            normalize_path(&vars)
+        ));
     }
 
     // ESP FAT drive
@@ -549,8 +566,16 @@ mod tests {
     fn suite_result_all_passed() {
         let suite = SuiteResult {
             results: vec![
-                TestResult { name: "a".into(), passed: true, detail: "".into() },
-                TestResult { name: "b".into(), passed: true, detail: "".into() },
+                TestResult {
+                    name: "a".into(),
+                    passed: true,
+                    detail: "".into(),
+                },
+                TestResult {
+                    name: "b".into(),
+                    passed: true,
+                    detail: "".into(),
+                },
             ],
         };
         assert!(suite.all_passed());
@@ -562,8 +587,16 @@ mod tests {
     fn suite_result_not_all_passed() {
         let suite = SuiteResult {
             results: vec![
-                TestResult { name: "a".into(), passed: true, detail: "".into() },
-                TestResult { name: "b".into(), passed: false, detail: "".into() },
+                TestResult {
+                    name: "a".into(),
+                    passed: true,
+                    detail: "".into(),
+                },
+                TestResult {
+                    name: "b".into(),
+                    passed: false,
+                    detail: "".into(),
+                },
             ],
         };
         assert!(!suite.all_passed());

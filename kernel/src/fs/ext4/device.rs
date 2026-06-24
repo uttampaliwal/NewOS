@@ -5,12 +5,10 @@
 
 extern crate alloc;
 
+use super::disk::{BlockGroupDescriptor, DirEntry2, EXT4_ROOT_INO, Ext4Inode, Ext4Superblock};
+use crate::block::{BlockDevice, SECTOR_SIZE};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use crate::block::{BlockDevice, SECTOR_SIZE};
-use super::disk::{
-    BlockGroupDescriptor, DirEntry2, Ext4Inode, Ext4Superblock, EXT4_ROOT_INO,
-};
 
 /// Adapter that reads ext4 structures from a block device.
 pub struct Ext4Device {
@@ -40,8 +38,7 @@ impl Ext4Device {
 
         let sb = unsafe { core::ptr::read(sb_buf.as_ptr() as *const Ext4Superblock) };
 
-        sb.validate()
-            .map_err(Ext4DeviceError::Superblock)?;
+        sb.validate().map_err(Ext4DeviceError::Superblock)?;
 
         let block_size = sb.block_size();
         let desc_size = sb.desc_size();
@@ -163,12 +160,8 @@ impl Ext4Device {
                     break;
                 }
 
-                let rec_inode = u32::from_le_bytes([
-                    remaining[0],
-                    remaining[1],
-                    remaining[2],
-                    remaining[3],
-                ]);
+                let rec_inode =
+                    u32::from_le_bytes([remaining[0], remaining[1], remaining[2], remaining[3]]);
                 let rec_len = u16::from_le_bytes([remaining[4], remaining[5]]);
                 let name_len = remaining[6];
                 let file_type = remaining[7];

@@ -16,7 +16,9 @@ pub fn handle_dmesg(args: SyscallArgs) -> SyscallResult {
         let s = crate::memory::kasan::stats();
         let line = alloc::format!(
             "[KASAN] allocs={} frees={} errors={}\n",
-            s.allocs, s.frees, s.errors
+            s.allocs,
+            s.frees,
+            s.errors
         );
         output.extend_from_slice(line.as_bytes());
         written += line.len();

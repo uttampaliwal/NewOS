@@ -131,10 +131,7 @@ pub fn remove_task(task_id: TaskId) {
             return;
         }
         for queue in &mut sched.cpu_queues {
-            let deadline_to_remove = queue
-                .iter()
-                .find(|(_, t)| t.id == task_id)
-                .map(|(d, _)| *d);
+            let deadline_to_remove = queue.iter().find(|(_, t)| t.id == task_id).map(|(d, _)| *d);
             if let Some(d) = deadline_to_remove {
                 queue.remove(&d);
                 sched.task_count -= 1;
@@ -277,15 +274,24 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
             if let Some(mut next_task) = next_task {
                 if was_running && should_preempt {
                     prev_task.state = super::TaskState::Ready;
-                    prev_task.time_slice = super::scheduler_class::default_timeslice(prev_task.policy);
+                    prev_task.time_slice =
+                        super::scheduler_class::default_timeslice(prev_task.policy);
                     let min_vr = sched.min_vruntime;
-                    let deadline = compute_deadline(prev_task.vruntime, prev_task.time_slice, prev_task.weight);
+                    let deadline = compute_deadline(
+                        prev_task.vruntime,
+                        prev_task.time_slice,
+                        prev_task.weight,
+                    );
                     prev_task.deadline = deadline;
                     prev_task.eligible = prev_task.vruntime <= min_vr;
                     sched.cpu_queues[cpu].insert(deadline, prev_task);
                 } else if was_running {
                     let min_vr = sched.min_vruntime;
-                    let deadline = compute_deadline(next_task.vruntime, next_task.time_slice, next_task.weight);
+                    let deadline = compute_deadline(
+                        next_task.vruntime,
+                        next_task.time_slice,
+                        next_task.weight,
+                    );
                     next_task.deadline = deadline;
                     next_task.eligible = next_task.vruntime <= min_vr;
                     sched.cpu_queues[cpu].insert(deadline, next_task);
@@ -319,7 +325,11 @@ pub fn exit_current_task() -> ! {
         let mut sched = SCHEDULER.lock();
         let cpu = sched.current_cpu_id();
         if let Some(ref mut task) = sched.cpu_current[cpu] {
-            crate::serial::println!("[scheduler] CPU {} Task {} exited/terminated.", cpu, task.id.0);
+            crate::serial::println!(
+                "[scheduler] CPU {} Task {} exited/terminated.",
+                cpu,
+                task.id.0
+            );
             task.state = super::TaskState::Zombie;
         }
     });
@@ -348,7 +358,9 @@ pub fn get_current_task_id() -> Option<TaskId> {
 pub fn get_current_process() -> Option<Process> {
     let sched = SCHEDULER.lock();
     let cpu = sched.current_cpu_id();
-    sched.cpu_current[cpu].as_ref().map(|task| task.process.clone())
+    sched.cpu_current[cpu]
+        .as_ref()
+        .map(|task| task.process.clone())
 }
 
 pub fn with_current_task_mut<F, R>(f: F) -> Option<R>
@@ -378,7 +390,9 @@ pub fn get_current_policy() -> Option<(super::scheduler_class::SchedulingPolicy,
     x86_64::instructions::interrupts::without_interrupts(|| {
         let sched = SCHEDULER.lock();
         let cpu = sched.current_cpu_id();
-        sched.cpu_current[cpu].as_ref().map(|t| (t.policy, t.priority))
+        sched.cpu_current[cpu]
+            .as_ref()
+            .map(|t| (t.policy, t.priority))
     })
 }
 
@@ -486,7 +500,9 @@ pub fn test_reset() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::process::{Process, ProcessControlBlock, ProcessId, ProcessState, SignalAction, SignalSet};
+    use crate::process::{
+        Process, ProcessControlBlock, ProcessId, ProcessState, SignalAction, SignalSet,
+    };
     use crate::task::{Task, TaskState};
     use alloc::sync::Arc;
     use spin::Mutex;

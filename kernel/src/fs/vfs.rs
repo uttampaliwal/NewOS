@@ -809,12 +809,7 @@ impl Vfs {
             let mut hmac_bytes = [0u8; 32];
             hmac_bytes.copy_from_slice(&evm_hmac);
             let attrs = backend.stat(inode).unwrap_or_default();
-            if !crate::security::ima::evm_verify(
-                inode.0,
-                attrs.size,
-                attrs.mtime,
-                &hmac_bytes,
-            ) {
+            if !crate::security::ima::evm_verify(inode.0, attrs.size, attrs.mtime, &hmac_bytes) {
                 return Err(FsError::PermissionDenied);
             }
         }
@@ -968,7 +963,10 @@ impl Vfs {
     }
 
     /// Create a socket fd wrapping an already‑connected `ConnectedEnd`.
-    pub fn create_connected_socket_fd(&mut self, end: crate::ipc::unix_socket::ConnectedEnd) -> usize {
+    pub fn create_connected_socket_fd(
+        &mut self,
+        end: crate::ipc::unix_socket::ConnectedEnd,
+    ) -> usize {
         let sock = Arc::new(UnixSocketState::from_connected_end(end));
         let fd = FileDescriptor::new(
             InodeId(0),
@@ -1020,28 +1018,24 @@ impl Vfs {
                 // Sockets don't use file offset.
                 Some(n)
             }
-            FdKind::EventFd(efd) => {
-                match efd.read_value() {
-                    Ok(val) => {
-                        let bytes = val.to_ne_bytes();
-                        let len = buf.len().min(8);
-                        buf[..len].copy_from_slice(&bytes[..len]);
-                        Some(len)
-                    }
-                    Err(_) => None,
+            FdKind::EventFd(efd) => match efd.read_value() {
+                Ok(val) => {
+                    let bytes = val.to_ne_bytes();
+                    let len = buf.len().min(8);
+                    buf[..len].copy_from_slice(&bytes[..len]);
+                    Some(len)
                 }
-            }
-            FdKind::TimerFd(tfd) => {
-                match tfd.read_expirations() {
-                    Ok(exps) => {
-                        let bytes = exps.to_ne_bytes();
-                        let len = buf.len().min(8);
-                        buf[..len].copy_from_slice(&bytes[..len]);
-                        Some(len)
-                    }
-                    Err(_) => None,
+                Err(_) => None,
+            },
+            FdKind::TimerFd(tfd) => match tfd.read_expirations() {
+                Ok(exps) => {
+                    let bytes = exps.to_ne_bytes();
+                    let len = buf.len().min(8);
+                    buf[..len].copy_from_slice(&bytes[..len]);
+                    Some(len)
                 }
-            }
+                Err(_) => None,
+            },
             _ => {
                 let inode = fd.inode;
                 let offset = fd.get_offset();
@@ -1143,11 +1137,8 @@ impl Vfs {
                 // After a successful write, update the EVM HMAC if present.
                 if let Ok(Some(_)) = backend.xattr_get(inode, "security.evm") {
                     let attrs = backend.stat(inode).unwrap_or_default();
-                    let new_hmac = crate::security::ima::evm_compute_hmac(
-                        inode.0,
-                        attrs.size,
-                        attrs.mtime,
-                    );
+                    let new_hmac =
+                        crate::security::ima::evm_compute_hmac(inode.0, attrs.size, attrs.mtime);
                     let _ = backend.xattr_set(inode, "security.evm", &new_hmac);
                 }
 
@@ -1307,7 +1298,11 @@ impl Vfs {
     /// closed first.  `dup2(oldfd, oldfd)` is a no-op that returns `oldfd`.
     pub fn dup2_fd(&mut self, oldfd: usize, newfd: usize) -> Option<usize> {
         if oldfd == newfd {
-            return if self.open_files.contains_key(&oldfd) { Some(oldfd) } else { None };
+            return if self.open_files.contains_key(&oldfd) {
+                Some(oldfd)
+            } else {
+                None
+            };
         }
         let entry = self.open_files.get(&oldfd)?.clone();
         // Close newfd if it's open (ignore failure).
@@ -2112,12 +2107,7 @@ mod tests {
 
         // Create file via CREAT flag
         let _fd = vfs
-            .open_with_creds(
-                "/evm_test.txt",
-                OpenFlags::CREAT | OpenFlags::RDWR,
-                0,
-                0,
-            )
+            .open_with_creds("/evm_test.txt", OpenFlags::CREAT | OpenFlags::RDWR, 0, 0)
             .unwrap();
 
         let evm = vfs.xattr_get("/evm_test.txt", "security.evm").unwrap();
@@ -2142,9 +2132,7 @@ mod tests {
             inner.create_file(root, "evm_valid.txt", 0o644).unwrap()
         };
         let stat = tmpfs.stat(inode).unwrap();
-        let evm_hmac = crate::security::ima::evm_compute_hmac(
-            inode.0, stat.size, stat.mtime,
-        );
+        let evm_hmac = crate::security::ima::evm_compute_hmac(inode.0, stat.size, stat.mtime);
         tmpfs.xattr_set(inode, "security.evm", &evm_hmac).unwrap();
 
         // Open should succeed (EVM verification passes)
@@ -2166,9 +2154,7 @@ mod tests {
             inner.create_file(root, "evm_tamper.txt", 0o644).unwrap()
         };
         let stat = tmpfs.stat(inode).unwrap();
-        let evm_hmac = crate::security::ima::evm_compute_hmac(
-            inode.0, stat.size, stat.mtime,
-        );
+        let evm_hmac = crate::security::ima::evm_compute_hmac(inode.0, stat.size, stat.mtime);
         tmpfs.xattr_set(inode, "security.evm", &evm_hmac).unwrap();
 
         // Tamper with the EVM HMAC
@@ -2194,12 +2180,12 @@ mod tests {
             inner.create_file(root, "evm_write.txt", 0o644).unwrap()
         };
         let stat = tmpfs.stat(inode).unwrap();
-        let evm_hmac = crate::security::ima::evm_compute_hmac(
-            inode.0, stat.size, stat.mtime,
-        );
+        let evm_hmac = crate::security::ima::evm_compute_hmac(inode.0, stat.size, stat.mtime);
         tmpfs.xattr_set(inode, "security.evm", &evm_hmac).unwrap();
 
-        let fd = vfs.open_with_creds("/evm_write.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let fd = vfs
+            .open_with_creds("/evm_write.txt", OpenFlags::RDWR, 0, 0)
+            .unwrap();
 
         let initial_hmac = vfs
             .xattr_get("/evm_write.txt", "security.evm")
@@ -2213,10 +2199,16 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_ne!(initial_hmac, updated_hmac, "EVM HMAC should update after write");
+        assert_ne!(
+            initial_hmac, updated_hmac,
+            "EVM HMAC should update after write"
+        );
 
         let fd2 = vfs.open_with_creds("/evm_write.txt", OpenFlags::RDONLY, 0, 0);
-        assert!(fd2.is_ok(), "Re-open after write should pass EVM verification");
+        assert!(
+            fd2.is_ok(),
+            "Re-open after write should pass EVM verification"
+        );
     }
 }
 
@@ -2600,7 +2592,9 @@ mod prop_tests {
         let b: Arc<dyn FsBackend> = tmpfs.clone();
         vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
         create_tmpfs_file(&tmpfs, "test.txt");
-        let fd = vfs.open_with_creds("/test.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let fd = vfs
+            .open_with_creds("/test.txt", OpenFlags::RDWR, 0, 0)
+            .unwrap();
         let n = vfs.write_fd(fd, b"hello world").unwrap();
         assert_eq!(n, 11);
         let mut buf = [0u8; 32];
@@ -2617,7 +2611,9 @@ mod prop_tests {
         let b: Arc<dyn FsBackend> = tmpfs.clone();
         vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
         create_tmpfs_file(&tmpfs, "log.txt");
-        let fd = vfs.open_with_creds("/log.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let fd = vfs
+            .open_with_creds("/log.txt", OpenFlags::RDWR, 0, 0)
+            .unwrap();
         vfs.write_fd(fd, b"line1\n").unwrap();
         vfs.write_fd(fd, b"line2\n").unwrap();
         let mut buf = [0u8; 32];
@@ -2634,7 +2630,9 @@ mod prop_tests {
         let b: Arc<dyn FsBackend> = tmpfs.clone();
         vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
         create_tmpfs_file(&tmpfs, "seek.txt");
-        let fd = vfs.open_with_creds("/seek.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let fd = vfs
+            .open_with_creds("/seek.txt", OpenFlags::RDWR, 0, 0)
+            .unwrap();
         vfs.write_fd(fd, b"abcdefghij").unwrap();
         assert!(vfs.seek_fd(fd, 3));
         let mut buf = [0u8; 4];
@@ -2650,7 +2648,9 @@ mod prop_tests {
         let b: Arc<dyn FsBackend> = tmpfs.clone();
         vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
         create_tmpfs_file(&tmpfs, "short.txt");
-        let fd = vfs.open_with_creds("/short.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let fd = vfs
+            .open_with_creds("/short.txt", OpenFlags::RDWR, 0, 0)
+            .unwrap();
         vfs.write_fd(fd, b"hi").unwrap();
         assert!(vfs.seek_fd(fd, 100));
         let mut buf = [0u8; 4];
@@ -2665,7 +2665,9 @@ mod prop_tests {
         let b: Arc<dyn FsBackend> = tmpfs.clone();
         vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
         create_tmpfs_file(&tmpfs, "dup.txt");
-        let fd = vfs.open_with_creds("/dup.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let fd = vfs
+            .open_with_creds("/dup.txt", OpenFlags::RDWR, 0, 0)
+            .unwrap();
         vfs.write_fd(fd, b"original").unwrap();
         let newfd = vfs.dup_fd(fd).unwrap();
         assert_ne!(fd, newfd);
@@ -2683,8 +2685,12 @@ mod prop_tests {
         vfs.mount("/", b.clone(), MountFlags::default()).unwrap();
         create_tmpfs_file(&tmpfs, "src.txt");
         create_tmpfs_file(&tmpfs, "dst.txt");
-        let fd = vfs.open_with_creds("/src.txt", OpenFlags::RDWR, 0, 0).unwrap();
-        let target = vfs.open_with_creds("/dst.txt", OpenFlags::RDWR, 0, 0).unwrap();
+        let fd = vfs
+            .open_with_creds("/src.txt", OpenFlags::RDWR, 0, 0)
+            .unwrap();
+        let target = vfs
+            .open_with_creds("/dst.txt", OpenFlags::RDWR, 0, 0)
+            .unwrap();
         let result = vfs.dup2_fd(fd, target).unwrap();
         assert_eq!(result, target);
         assert!(vfs.seek_fd(target, 0));

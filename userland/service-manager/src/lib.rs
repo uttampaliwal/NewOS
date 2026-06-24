@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -115,8 +115,15 @@ impl ServiceUnit {
 pub enum ServiceState {
     Stopped,
     Starting,
-    Running { pid: u64, started_at: u64 },
-    Failed { exit_code: Option<i32>, retry_count: u32, message: String },
+    Running {
+        pid: u64,
+        started_at: u64,
+    },
+    Failed {
+        exit_code: Option<i32>,
+        retry_count: u32,
+        message: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -193,10 +200,10 @@ pub fn resolve_order(
                 .chain(unit.requires.iter())
                 .any(|d| d == name);
             if depends && let Some(count) = unmet.get_mut(other.as_str()) {
-                    *count = count.saturating_sub(1);
-                    if *count == 0 {
-                        queue.push_back(other.as_str());
-                    }
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    queue.push_back(other.as_str());
+                }
             }
         }
     }
@@ -216,10 +223,7 @@ pub fn resolve_order(
     Ok(sorted)
 }
 
-fn find_cycle(
-    units: &HashMap<String, ServiceUnit>,
-    remaining: &[&str],
-) -> Vec<String> {
+fn find_cycle(units: &HashMap<String, ServiceUnit>, remaining: &[&str]) -> Vec<String> {
     // Standard DFS cycle detection using path tracking.
     let mut unvisited: HashSet<&str> = remaining.iter().copied().collect();
     let mut in_stack: HashSet<&str> = HashSet::new();
@@ -246,8 +250,10 @@ fn find_cycle(
                     let cycle: Vec<String> = path[idx..].iter().map(|s| s.to_string()).collect();
                     return Some(cycle);
                 }
-                if unvisited.contains(dep.as_str()) && let Some(cycle) = visit(dep.as_str(), units, unvisited, in_stack, path) {
-                        return Some(cycle);
+                if unvisited.contains(dep.as_str())
+                    && let Some(cycle) = visit(dep.as_str(), units, unvisited, in_stack, path)
+                {
+                    return Some(cycle);
                 }
             }
         }
@@ -286,10 +292,7 @@ impl ServiceManager {
     }
 
     /// Load service units from a list of parsed units.
-    pub fn load_units(
-        &mut self,
-        units: Vec<ServiceUnit>,
-    ) -> Result<(), ServiceManagerError> {
+    pub fn load_units(&mut self, units: Vec<ServiceUnit>) -> Result<(), ServiceManagerError> {
         for unit in units {
             let name = unit.name.clone();
             self.units.insert(name, unit);
@@ -297,7 +300,9 @@ impl ServiceManager {
         self.ordered = resolve_order(&self.units)?;
         // Initialise all states to Stopped
         for name in self.units.keys() {
-            self.states.entry(name.clone()).or_insert(ServiceState::Stopped);
+            self.states
+                .entry(name.clone())
+                .or_insert(ServiceState::Stopped);
         }
         Ok(())
     }
@@ -323,7 +328,12 @@ impl ServiceManager {
     }
 
     /// Transition a service to Running.
-    pub fn mark_running(&mut self, name: &str, pid: u64, now: u64) -> Result<(), ServiceManagerError> {
+    pub fn mark_running(
+        &mut self,
+        name: &str,
+        pid: u64,
+        now: u64,
+    ) -> Result<(), ServiceManagerError> {
         match self.states.get(name) {
             Some(ServiceState::Starting) | Some(ServiceState::Stopped) => {}
             Some(state) => {
@@ -333,7 +343,13 @@ impl ServiceManager {
             }
             None => return Err(ServiceManagerError::ServiceNotFound(name.to_string())),
         }
-        self.states.insert(name.to_string(), ServiceState::Running { pid, started_at: now });
+        self.states.insert(
+            name.to_string(),
+            ServiceState::Running {
+                pid,
+                started_at: now,
+            },
+        );
         Ok(())
     }
 
@@ -572,11 +588,7 @@ impl Supervisor {
     }
 
     /// Report that a service process has exited.
-    pub fn process_exited(
-        &mut self,
-        name: &str,
-        exit_status: i32,
-    ) -> Result<(), SupervisorError> {
+    pub fn process_exited(&mut self, name: &str, exit_status: i32) -> Result<(), SupervisorError> {
         let service = self
             .services
             .get_mut(name)
@@ -776,10 +788,13 @@ path = "/bin/x"
     #[test]
     fn test_requires_also_orders() {
         let mut map = HashMap::new();
-        map.insert("a".into(), ServiceUnit {
-            requires: vec!["b".into()],
-            ..make_unit("a", "/bin/a", &[])
-        });
+        map.insert(
+            "a".into(),
+            ServiceUnit {
+                requires: vec!["b".into()],
+                ..make_unit("a", "/bin/a", &[])
+            },
+        );
         map.insert("b".into(), make_unit("b", "/bin/b", &[]));
         let order = resolve_order(&map).unwrap();
         let a_pos = order.iter().position(|s| s == "a").unwrap();
@@ -803,13 +818,20 @@ path = "/bin/x"
         mgr.mark_running("test-svc", 42, 1000).unwrap();
         assert_eq!(
             mgr.state("test-svc"),
-            Some(&ServiceState::Running { pid: 42, started_at: 1000 })
+            Some(&ServiceState::Running {
+                pid: 42,
+                started_at: 1000
+            })
         );
 
-        mgr.mark_failed("test-svc", Some(1), "crashed".into()).unwrap();
+        mgr.mark_failed("test-svc", Some(1), "crashed".into())
+            .unwrap();
         assert!(matches!(
             mgr.state("test-svc"),
-            Some(ServiceState::Failed { exit_code: Some(1), .. })
+            Some(ServiceState::Failed {
+                exit_code: Some(1),
+                ..
+            })
         ));
     }
 
@@ -823,10 +845,7 @@ path = "/bin/x"
         }
 
         let mut mgr = ServiceManager::new();
-        mgr.load_units(vec![
-            unit(RestartPolicy::Never),
-        ])
-        .unwrap();
+        mgr.load_units(vec![unit(RestartPolicy::Never)]).unwrap();
         // Rename for clarity
         let mut mgr_always = ServiceManager::new();
         mgr_always
@@ -879,8 +898,7 @@ path = "/bin/x"
     #[test]
     fn test_retry_count_increments() {
         let mut mgr = ServiceManager::new();
-        mgr.load_units(vec![make_unit("x", "/bin/x", &[])])
-            .unwrap();
+        mgr.load_units(vec![make_unit("x", "/bin/x", &[])]).unwrap();
 
         mgr.mark_failed("x", Some(1), "first fail".into()).unwrap();
         assert_eq!(

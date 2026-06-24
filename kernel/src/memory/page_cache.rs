@@ -585,9 +585,9 @@ mod tests {
         assert_eq!(cache.total_pages(), 10);
         let evicted = cache.evict_lru(3);
         assert_eq!(evicted.len(), 3);
-        assert_eq!(evicted[0].0 .1, 0);
-        assert_eq!(evicted[1].0 .1, 1);
-        assert_eq!(evicted[2].0 .1, 2);
+        assert_eq!(evicted[0].0.1, 0);
+        assert_eq!(evicted[1].0.1, 1);
+        assert_eq!(evicted[2].0.1, 2);
         assert_eq!(cache.total_pages(), 7);
     }
 

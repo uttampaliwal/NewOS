@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use libturnix::{exit, print, uptime, getpid, getuid, getgid, yielder, fork};
+use libturnix::{exit, fork, getgid, getpid, getuid, print, uptime, yielder};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
@@ -55,7 +55,11 @@ fn bench_syscall_latency_getpid() {
         getpid();
     }
     let elapsed = uptime().saturating_sub(start);
-    let latency_us = if elapsed > 0 { (elapsed * 10_000) / iters } else { 0 };
+    let latency_us = if elapsed > 0 {
+        (elapsed * 10_000) / iters
+    } else {
+        0
+    };
     let status = if latency_us < 50_000 { "PASS" } else { "FAIL" };
     print("{\"benchmark\":\"syscall_latency_getpid\",\"value\":");
     print_num(latency_us);
@@ -72,7 +76,11 @@ fn bench_syscall_latency_getuid() {
         getuid();
     }
     let elapsed = uptime().saturating_sub(start);
-    let latency_us = if elapsed > 0 { (elapsed * 10_000) / iters } else { 0 };
+    let latency_us = if elapsed > 0 {
+        (elapsed * 10_000) / iters
+    } else {
+        0
+    };
     let status = if latency_us < 50_000 { "PASS" } else { "FAIL" };
     print("{\"benchmark\":\"syscall_latency_getuid\",\"value\":");
     print_num(latency_us);
@@ -89,7 +97,11 @@ fn bench_syscall_latency_getgid() {
         getgid();
     }
     let elapsed = uptime().saturating_sub(start);
-    let latency_us = if elapsed > 0 { (elapsed * 10_000) / iters } else { 0 };
+    let latency_us = if elapsed > 0 {
+        (elapsed * 10_000) / iters
+    } else {
+        0
+    };
     let status = if latency_us < 50_000 { "PASS" } else { "FAIL" };
     print("{\"benchmark\":\"syscall_latency_getgid\",\"value\":");
     print_num(latency_us);
@@ -106,7 +118,11 @@ fn bench_syscall_latency_uptime() {
         uptime();
     }
     let elapsed = uptime().saturating_sub(start);
-    let latency_us = if elapsed > 0 { (elapsed * 10_000) / iters } else { 0 };
+    let latency_us = if elapsed > 0 {
+        (elapsed * 10_000) / iters
+    } else {
+        0
+    };
     let status = if latency_us < 50_000 { "PASS" } else { "FAIL" };
     print("{\"benchmark\":\"syscall_latency_uptime\",\"value\":");
     print_num(latency_us);
@@ -123,7 +139,11 @@ fn bench_yield_latency() {
         yielder();
     }
     let elapsed = uptime().saturating_sub(start);
-    let latency_us = if elapsed > 0 { (elapsed * 10_000) / iters } else { 0 };
+    let latency_us = if elapsed > 0 {
+        (elapsed * 10_000) / iters
+    } else {
+        0
+    };
     let status = if latency_us < 100_000 { "PASS" } else { "FAIL" };
     print("{\"benchmark\":\"yield_latency\",\"value\":");
     print_num(latency_us);
@@ -154,7 +174,13 @@ fn bench_fork_latency() {
     } else {
         0
     };
-    let status_str = if successes == 0 { "SKIP" } else if latency_us < 200_000 { "PASS" } else { "FAIL" };
+    let status_str = if successes == 0 {
+        "SKIP"
+    } else if latency_us < 200_000 {
+        "PASS"
+    } else {
+        "FAIL"
+    };
     print("{\"benchmark\":\"fork_latency\",\"value\":");
     print_num(latency_us);
     print(",\"unit\":\"us\",\"successes\":");
@@ -224,7 +250,11 @@ fn bench_nested_syscall() {
         getuid();
     }
     let elapsed = uptime().saturating_sub(start);
-    let latency_us = if elapsed > 0 { (elapsed * 10_000) / (iters * 3) } else { 0 };
+    let latency_us = if elapsed > 0 {
+        (elapsed * 10_000) / (iters * 3)
+    } else {
+        0
+    };
     let status = if latency_us < 50_000 { "PASS" } else { "FAIL" };
     print("{\"benchmark\":\"nested_syscall_latency\",\"value\":");
     print_num(latency_us);
@@ -241,8 +271,16 @@ fn bench_context_switch_yield() {
         yielder();
     }
     let elapsed = uptime().saturating_sub(start);
-    let context_switch_us = if elapsed > 0 { (elapsed * 10_000) / iters } else { 0 };
-    let status = if context_switch_us < 200_000 { "PASS" } else { "FAIL" };
+    let context_switch_us = if elapsed > 0 {
+        (elapsed * 10_000) / iters
+    } else {
+        0
+    };
+    let status = if context_switch_us < 200_000 {
+        "PASS"
+    } else {
+        "FAIL"
+    };
     print("{\"benchmark\":\"context_switch_yield\",\"value\":");
     print_num(context_switch_us);
     print(",\"unit\":\"us\",\"note\":\"measures yield-to-resume round trip\",\"status\":\"");

@@ -326,7 +326,10 @@ mod tests {
         data[16..18].copy_from_slice(&ELF_TYPE_EXEC.to_le_bytes());
         data[18..20].copy_from_slice(&ELF_MACHINE_X86_64.to_le_bytes());
         data[54..56].copy_from_slice(&48u16.to_le_bytes()); // wrong phentsize
-        assert_eq!(parse_header(&data), Err(ParseError::InvalidProgramHeaderSize));
+        assert_eq!(
+            parse_header(&data),
+            Err(ParseError::InvalidProgramHeaderSize)
+        );
     }
 
     #[test]

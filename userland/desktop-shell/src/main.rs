@@ -12,10 +12,10 @@ use libturnix::allocator::BumpAllocator;
 #[global_allocator]
 static ALLOCATOR: BumpAllocator = BumpAllocator;
 
-use desktop_shell::{fill_gradient, fill_rect, parse_desktop_entry, DesktopEntry};
+use desktop_shell::{DesktopEntry, fill_gradient, fill_rect, parse_desktop_entry};
 use libturnix::{
-    close, connect, exec, exit, fork, gbm_create, gbm_destroy, gbm_map, open, print, println,
-    read, socket, write, yielder,
+    close, connect, exec, exit, fork, gbm_create, gbm_destroy, gbm_map, open, print, println, read,
+    socket, write, yielder,
 };
 
 const TASKBAR_H: u32 = 40;
@@ -147,12 +147,36 @@ fn create_filled_buffer(width: u32, height: u32, fill: impl Fn(&mut [u8], u32, u
 }
 
 fn render_background(pixels: &mut [u8], width: u32, height: u32) {
-    fill_gradient(pixels, width, height, [0x33, 0x66, 0x99, 0xff], [0x11, 0x22, 0x44, 0xff]);
+    fill_gradient(
+        pixels,
+        width,
+        height,
+        [0x33, 0x66, 0x99, 0xff],
+        [0x11, 0x22, 0x44, 0xff],
+    );
 }
 
 fn render_taskbar(pixels: &mut [u8], width: u32, height: u32, windows: &[WindowState]) {
-    fill_rect(pixels, width, height, 0, 0, width, height, [0x22, 0x22, 0x22, 0xff]);
-    fill_rect(pixels, width, height, 4, 4, 32, height - 8, [0x44, 0x88, 0xcc, 0xff]);
+    fill_rect(
+        pixels,
+        width,
+        height,
+        0,
+        0,
+        width,
+        height,
+        [0x22, 0x22, 0x22, 0xff],
+    );
+    fill_rect(
+        pixels,
+        width,
+        height,
+        4,
+        4,
+        32,
+        height - 8,
+        [0x44, 0x88, 0xcc, 0xff],
+    );
 
     let mut x_offset: u32 = 44;
     let colors: [[u8; 4]; 4] = [
@@ -173,12 +197,39 @@ fn render_taskbar(pixels: &mut [u8], width: u32, height: u32, windows: &[WindowS
 
     let clock_w = 96u32;
     let clock_x = width - clock_w - 4;
-    fill_rect(pixels, width, height, clock_x, 4, clock_w, height - 8, [0x1a, 0x5c, 0x8a, 0xff]);
+    fill_rect(
+        pixels,
+        width,
+        height,
+        clock_x,
+        4,
+        clock_w,
+        height - 8,
+        [0x1a, 0x5c, 0x8a, 0xff],
+    );
 }
 
 fn render_launcher(pixels: &mut [u8], width: u32, height: u32, entries: &[DesktopEntry]) {
-    fill_rect(pixels, width, height, 0, 0, width, height, [0x33, 0x33, 0x33, 0xff]);
-    fill_rect(pixels, width, height, 1, 1, width - 2, height - 2, [0x44, 0x44, 0x44, 0xff]);
+    fill_rect(
+        pixels,
+        width,
+        height,
+        0,
+        0,
+        width,
+        height,
+        [0x33, 0x33, 0x33, 0xff],
+    );
+    fill_rect(
+        pixels,
+        width,
+        height,
+        1,
+        1,
+        width - 2,
+        height - 2,
+        [0x44, 0x44, 0x44, 0xff],
+    );
     for (i, _entry) in entries.iter().enumerate() {
         if i >= 10 {
             break;
@@ -187,7 +238,16 @@ fn render_launcher(pixels: &mut [u8], width: u32, height: u32, entries: &[Deskto
         if y + 32 > height {
             break;
         }
-        fill_rect(pixels, width, height, 4, y, width - 8, 32, [0x55, 0x55, 0x66, 0xff]);
+        fill_rect(
+            pixels,
+            width,
+            height,
+            4,
+            y,
+            width - 8,
+            32,
+            [0x55, 0x55, 0x66, 0xff],
+        );
     }
 }
 
@@ -197,9 +257,8 @@ fn tile_focused_left(fd: u64, windows: &[WindowState], screen_w: u32, screen_h: 
         let new_y: i32 = TASKBAR_H as i32;
         let new_w: u32 = screen_w / 2;
         let new_h: u32 = screen_h - TASKBAR_H;
-        let payload: [u8; 16] = unsafe {
-            core::mem::transmute((new_x as u32, new_y as u32, new_w, new_h))
-        };
+        let payload: [u8; 16] =
+            unsafe { core::mem::transmute((new_x as u32, new_y as u32, new_w, new_h)) };
         send_msg(fd, 7, win.surface_id, &payload);
     }
 }
@@ -210,9 +269,8 @@ fn tile_focused_right(fd: u64, windows: &[WindowState], screen_w: u32, screen_h:
         let new_y: i32 = TASKBAR_H as i32;
         let new_w: u32 = screen_w / 2;
         let new_h: u32 = screen_h - TASKBAR_H;
-        let payload: [u8; 16] = unsafe {
-            core::mem::transmute((new_x as u32, new_y as u32, new_w, new_h))
-        };
+        let payload: [u8; 16] =
+            unsafe { core::mem::transmute((new_x as u32, new_y as u32, new_w, new_h)) };
         send_msg(fd, 7, win.surface_id, &payload);
     }
 }
@@ -220,12 +278,18 @@ fn tile_focused_right(fd: u64, windows: &[WindowState], screen_w: u32, screen_h:
 fn load_applications() -> Vec<DesktopEntry> {
     let mut entries = Vec::new();
     let known_apps = [
-        ("/usr/share/turnix/applications/terminal.desktop",
-         "[Desktop Entry]\nType=Application\nName=Terminal\nExec=/bin/terminal\nIcon=terminal\nCategories=System;Terminal;\n"),
-        ("/usr/share/turnix/applications/files.desktop",
-         "[Desktop Entry]\nType=Application\nName=Files\nExec=/bin/files\nIcon=files\nCategories=System;FileManager;\n"),
-        ("/usr/share/turnix/applications/settings.desktop",
-         "[Desktop Entry]\nType=Application\nName=Settings\nExec=/bin/settings\nIcon=settings\nCategories=Settings;\n"),
+        (
+            "/usr/share/turnix/applications/terminal.desktop",
+            "[Desktop Entry]\nType=Application\nName=Terminal\nExec=/bin/terminal\nIcon=terminal\nCategories=System;Terminal;\n",
+        ),
+        (
+            "/usr/share/turnix/applications/files.desktop",
+            "[Desktop Entry]\nType=Application\nName=Files\nExec=/bin/files\nIcon=files\nCategories=System;FileManager;\n",
+        ),
+        (
+            "/usr/share/turnix/applications/settings.desktop",
+            "[Desktop Entry]\nType=Application\nName=Settings\nExec=/bin/settings\nIcon=settings\nCategories=Settings;\n",
+        ),
     ];
 
     for (path, fallback) in &known_apps {
@@ -263,7 +327,13 @@ fn launch_application(entry: &DesktopEntry) {
     }
 }
 
-fn handle_server_message(msg: &[u8], _fd: u64, _surfaces: &ShellSurfaces, _entries: &[DesktopEntry], windows: &mut Vec<WindowState>) {
+fn handle_server_message(
+    msg: &[u8],
+    _fd: u64,
+    _surfaces: &ShellSurfaces,
+    _entries: &[DesktopEntry],
+    windows: &mut Vec<WindowState>,
+) {
     if msg.len() < 12 {
         return;
     }

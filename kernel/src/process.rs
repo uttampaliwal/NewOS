@@ -3,10 +3,10 @@ use crate::memory::aslr;
 use crate::memory::paging;
 use crate::memory::vma::{Vma, VmaBacking, VmaError, VmaFlags, VmaProt, VmaSet};
 use crate::memory::wx;
+use crate::security::SecurityContext;
 use crate::security::capabilities::CapabilitySet;
 use crate::security::namespaces::NsProxy;
 use crate::security::seccomp::SeccompFilter;
-use crate::security::SecurityContext;
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{
     Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB, Translate,
@@ -464,7 +464,9 @@ impl Process {
         // LSM process_create hook for exec
         {
             let inner = self.inner.lock();
-            if crate::security::lsm::check_process_create(inner.sec_ctx.uid, inner.sec_ctx.gid).is_err() {
+            if crate::security::lsm::check_process_create(inner.sec_ctx.uid, inner.sec_ctx.gid)
+                .is_err()
+            {
                 // Hook check — currently advisory for exec
             }
         }
@@ -484,10 +486,10 @@ impl Process {
                 .collect::<Vec<_>>();
             let retained_fd_table: Vec<Option<crate::vfs::FileDescriptor>> = (0..1024)
                 .map(|index| {
-                inner.fd_table[index]
-                    .clone()
-                    .filter(|fd| !fd.flags.is_cloexec())
-            })
+                    inner.fd_table[index]
+                        .clone()
+                        .filter(|fd| !fd.flags.is_cloexec())
+                })
                 .collect();
             (inner.pml4_frame, inner.ppid, retained_fd_table, cloexec_fds)
         };
@@ -767,7 +769,9 @@ impl Process {
         let parent = self.inner.lock();
 
         // LSM process_create hook
-        if crate::security::lsm::check_process_create(parent.sec_ctx.uid, parent.sec_ctx.gid).is_err() {
+        if crate::security::lsm::check_process_create(parent.sec_ctx.uid, parent.sec_ctx.gid)
+            .is_err()
+        {
             // If denied, the fork is aborted.  We still need to return a Process
             // for ABI compatibility, but it won't be added to the process table.
             // For now we continue with the fork; the hook check is advisory.
@@ -890,7 +894,8 @@ impl Process {
             {
                 fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
                     let frame = self.inner.allocate_frame()?;
-                    let ptr = (self.phys_offset + frame.start_address().as_u64()).as_mut_ptr::<u8>();
+                    let ptr =
+                        (self.phys_offset + frame.start_address().as_u64()).as_mut_ptr::<u8>();
                     unsafe { core::ptr::write_bytes(ptr, 0, 4096) };
                     Some(frame)
                 }

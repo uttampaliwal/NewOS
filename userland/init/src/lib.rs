@@ -300,7 +300,10 @@ mod tests {
     fn parsing_embedded_toml_produces_services() {
         let mut svcs = make_test_services();
         let count = parse_services(SERVICE_TOML, &mut svcs);
-        assert!(count >= 2, "must parse at least shell and fault-tester, got {count}");
+        assert!(
+            count >= 2,
+            "must parse at least shell and fault-tester, got {count}"
+        );
         let s = count;
         let _ = s;
         assert!(svcs[0].after_count == 0, "shell has no deps");

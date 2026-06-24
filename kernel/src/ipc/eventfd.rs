@@ -9,8 +9,8 @@ use alloc::collections::VecDeque;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
 
-use crate::task::scheduler::{block_current, get_current_task_id, wake_task_by_id};
 use crate::task::TaskId;
+use crate::task::scheduler::{block_current, get_current_task_id, wake_task_by_id};
 
 /// Maximum value for the eventfd counter (2^64 - 1).
 const EFD_MAX_COUNTER: u64 = u64::MAX - 1;

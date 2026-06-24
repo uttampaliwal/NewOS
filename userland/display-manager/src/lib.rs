@@ -74,10 +74,15 @@ fn hex_nibble(n: u8) -> u8 {
     }
 }
 
-pub fn authenticate<'a>(username: &str, password: &str, passwd_content: &'a str) -> Option<PasswdEntry<'a>> {
+pub fn authenticate<'a>(
+    username: &str,
+    password: &str,
+    passwd_content: &'a str,
+) -> Option<PasswdEntry<'a>> {
     for line in passwd_content.lines() {
         if let Ok(entry) = parse_passwd_entry(line)
-            && entry.username == username && verify_password(password, entry.password_hash)
+            && entry.username == username
+            && verify_password(password, entry.password_hash)
         {
             return Some(entry);
         }

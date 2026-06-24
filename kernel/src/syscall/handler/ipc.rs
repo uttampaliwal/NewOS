@@ -1,7 +1,7 @@
 use super::{SyscallResult, helper_alloc_fd};
-use turnix_abi::syscall::SyscallArgs;
 use crate::vfs::VFS;
 use alloc::sync::Arc;
+use turnix_abi::syscall::SyscallArgs;
 
 // ---------------------------------------------------------------------------
 // POSIX Shared Memory syscalls
@@ -113,10 +113,18 @@ pub fn handle_mq_open(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22);
     }
 
-    let max_msgs = if max_msgs == 0 { crate::ipc::mqueue::MQ_MAX_MSG } else { max_msgs };
-    let max_msg_size = if max_msg_size == 0 { crate::ipc::mqueue::MQ_MSG_SIZE } else { max_msg_size };
+    let max_msgs = if max_msgs == 0 {
+        crate::ipc::mqueue::MQ_MAX_MSG
+    } else {
+        max_msgs
+    };
+    let max_msg_size = if max_msg_size == 0 {
+        crate::ipc::mqueue::MQ_MSG_SIZE
+    } else {
+        max_msg_size
+    };
 
-    let mq =     match crate::ipc::mqueue::mq_open(name, flags, mode, max_msgs, max_msg_size) {
+    let mq = match crate::ipc::mqueue::mq_open(name, flags, mode, max_msgs, max_msg_size) {
         Ok(q) => q,
         Err(e) => return SyscallResult::Error(e as i64),
     };
@@ -127,7 +135,11 @@ pub fn handle_mq_open(args: SyscallArgs) -> SyscallResult {
     };
 
     let mut inner = process.inner.lock();
-    let fd = inner.fd_table.iter().position(|s| s.is_none()).unwrap_or(inner.fd_table.len());
+    let fd = inner
+        .fd_table
+        .iter()
+        .position(|s| s.is_none())
+        .unwrap_or(inner.fd_table.len());
     if fd >= inner.fd_table.len() {
         inner.fd_table.resize_with(fd + 1, || None);
     }
@@ -242,7 +254,9 @@ pub fn handle_mq_receive(args: SyscallArgs) -> SyscallResult {
     let mut buf = alloc::vec![0u8; buf_len];
     match mq.receive(&mut buf) {
         Ok((n, _prio)) => {
-            unsafe { core::ptr::copy_nonoverlapping(buf.as_ptr(), buf_ptr, n); }
+            unsafe {
+                core::ptr::copy_nonoverlapping(buf.as_ptr(), buf_ptr, n);
+            }
             SyscallResult::Success(n as u64)
         }
         Err(e) => SyscallResult::Error(e as i64),
@@ -270,7 +284,11 @@ pub fn handle_epoll_create(_args: SyscallArgs) -> SyscallResult {
     };
 
     let mut inner = process.inner.lock();
-    let fd = inner.fd_table.iter().position(|s| s.is_none()).unwrap_or(inner.fd_table.len());
+    let fd = inner
+        .fd_table
+        .iter()
+        .position(|s| s.is_none())
+        .unwrap_or(inner.fd_table.len());
     if fd >= inner.fd_table.len() {
         inner.fd_table.resize_with(fd + 1, || None);
     }
@@ -503,18 +521,14 @@ pub fn handle_futex(args: SyscallArgs) -> SyscallResult {
     let val = args.arg2 as u32;
 
     match op {
-        crate::ipc::futex::FUTEX_WAIT => {
-            match crate::ipc::futex::futex_wait(uaddr, val) {
-                Ok(()) => SyscallResult::Success(0),
-                Err(e) => SyscallResult::Error(e as i64),
-            }
-        }
-        crate::ipc::futex::FUTEX_WAKE => {
-            match crate::ipc::futex::futex_wake(uaddr, val as usize) {
-                Ok(n) => SyscallResult::Success(n as u64),
-                Err(e) => SyscallResult::Error(e as i64),
-            }
-        }
+        crate::ipc::futex::FUTEX_WAIT => match crate::ipc::futex::futex_wait(uaddr, val) {
+            Ok(()) => SyscallResult::Success(0),
+            Err(e) => SyscallResult::Error(e as i64),
+        },
+        crate::ipc::futex::FUTEX_WAKE => match crate::ipc::futex::futex_wake(uaddr, val as usize) {
+            Ok(n) => SyscallResult::Success(n as u64),
+            Err(e) => SyscallResult::Error(e as i64),
+        },
         _ => SyscallResult::Error(22), // EINVAL
     }
 }

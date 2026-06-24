@@ -11,8 +11,8 @@ use libturnix::allocator::BumpAllocator;
 #[global_allocator]
 static ALLOCATOR: BumpAllocator = BumpAllocator;
 
-use display_manager::{authenticate, PasswdEntry, PASSWD_PATH};
-use libturnix::{exit, fork, print, println, read, setgid, setuid, waitpid, close, open};
+use display_manager::{PASSWD_PATH, PasswdEntry, authenticate};
+use libturnix::{close, exit, fork, open, print, println, read, setgid, setuid, waitpid};
 use turnix_abi::syscall::{CapData, CapHeader, LINUX_CAPABILITY_VERSION};
 
 fn greet() {
@@ -65,7 +65,9 @@ fn load_passwd() -> Option<String> {
     let mut buf = [0u8; 4096];
     let n = read(fd, &mut buf)?;
     close(fd);
-    core::str::from_utf8(&buf[..n as usize]).ok().map(String::from)
+    core::str::from_utf8(&buf[..n as usize])
+        .ok()
+        .map(String::from)
 }
 
 fn launch_session(entry: &PasswdEntry) {
@@ -131,7 +133,8 @@ pub extern "C" fn _start() -> ! {
             let turnix_hash = "35dc5cc5d07a524eb7a7b32cb2f004ba802677843fd39c9f93d26a207e7cf381";
             let fallback = alloc::format!(
                 "root:0:0:/root:/bin/sh:{}\nturnix:1000:1000:/home/turnix:/bin/sh:{}\n",
-                root_hash, turnix_hash
+                root_hash,
+                turnix_hash
             );
             fallback
         }

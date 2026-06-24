@@ -6,10 +6,10 @@
 
 extern crate alloc;
 
+use super::disk::Ext4Inode;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use super::disk::Ext4Inode;
 
 /// In-memory inode representation.
 #[derive(Debug, Clone)]
@@ -192,10 +192,7 @@ impl Ext4State {
                 parent.data[offset + 2],
                 parent.data[offset + 3],
             ]);
-            let rec_len = u16::from_le_bytes([
-                parent.data[offset + 4],
-                parent.data[offset + 5],
-            ]);
+            let rec_len = u16::from_le_bytes([parent.data[offset + 4], parent.data[offset + 5]]);
             let name_len = parent.data[offset + 6];
 
             if rec_len == 0 {
@@ -205,7 +202,8 @@ impl Ext4State {
             let name_start = offset + 8;
             let name_end = name_start + name_len as usize;
             if name_end <= parent.data.len() && rec_inode != 0 {
-                let entry_name = core::str::from_utf8(&parent.data[name_start..name_end]).unwrap_or("");
+                let entry_name =
+                    core::str::from_utf8(&parent.data[name_start..name_end]).unwrap_or("");
                 if entry_name == name {
                     return Some(rec_inode as u64);
                 }
@@ -217,7 +215,13 @@ impl Ext4State {
     }
 
     /// Add a directory entry to a directory inode.
-    pub fn add_dir_entry(&mut self, parent_ino: u64, child_ino: u64, name: &str, file_type: u8) -> Result<(), &'static str> {
+    pub fn add_dir_entry(
+        &mut self,
+        parent_ino: u64,
+        child_ino: u64,
+        name: &str,
+        file_type: u8,
+    ) -> Result<(), &'static str> {
         let parent = self.inodes.get_mut(&parent_ino).ok_or("parent not found")?;
         if !parent.is_dir() {
             return Err("not a directory");
@@ -266,10 +270,7 @@ impl Ext4State {
                 parent.data[offset + 2],
                 parent.data[offset + 3],
             ]);
-            let rec_len = u16::from_le_bytes([
-                parent.data[offset + 4],
-                parent.data[offset + 5],
-            ]);
+            let rec_len = u16::from_le_bytes([parent.data[offset + 4], parent.data[offset + 5]]);
             let entry_name_len = parent.data[offset + 6];
 
             if rec_len == 0 {
@@ -279,7 +280,8 @@ impl Ext4State {
             let name_start = offset + 8;
             let name_end = name_start + entry_name_len as usize;
             if name_end <= parent.data.len() && rec_inode != 0 {
-                let entry_name = core::str::from_utf8(&parent.data[name_start..name_end]).unwrap_or("");
+                let entry_name =
+                    core::str::from_utf8(&parent.data[name_start..name_end]).unwrap_or("");
                 if entry_name == name {
                     found_inode = rec_inode as u64;
                     // Zero out the inode number (mark as deleted), preserve rec_len for traversal
@@ -322,10 +324,7 @@ impl Ext4State {
                 inode.data[offset + 2],
                 inode.data[offset + 3],
             ]);
-            let rec_len = u16::from_le_bytes([
-                inode.data[offset + 4],
-                inode.data[offset + 5],
-            ]);
+            let rec_len = u16::from_le_bytes([inode.data[offset + 4], inode.data[offset + 5]]);
             let name_len = inode.data[offset + 6];
             let file_type = inode.data[offset + 7];
 
