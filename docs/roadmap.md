@@ -293,7 +293,7 @@ assessment.
 
 ### 15d. Memory Safety Detection
 * [x] **KASAN (Kernel Address Sanitizer)**: Heap out-of-bounds, use-after-free detection — shadow memory, poison/free poisoning, violation reporting
-* **KFENCE (Kernel Electric Fence)**: Low-overhead sampling-based memory error detector; prototype exists, allocator integration remains pending
+* **KFENCE (Kernel Electric Fence)**: Low-overhead sampling-based memory error detector; integrated into the fixed-size heap allocator as a sampling path, but still not a full KASAN replacement
 * **Stack Protector**: Canary-based stack overflow detection (stack canaries already in Phase 4)
 * **Memory Poisoning**: Detect uninitialized memory reads
 

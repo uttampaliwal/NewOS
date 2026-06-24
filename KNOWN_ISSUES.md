@@ -266,8 +266,9 @@ heap), poisoning (0x6b alloc, 0xbb redzone), range validation
 command, validate_user_ptr/validate_kernel_buf APIs. Integrated into
 fixed_size_block allocator.
 
-**Remaining:** KFENCE exists as a standalone prototype in `kernel/src/memory/kfence.rs`
-but is not yet wired into the allocator or enabled in production paths.
+**Remaining:** KFENCE is now wired into the fixed-size heap allocator as a
+sampling path, but it is still a low-coverage prototype rather than a full
+allocator-wide replacement for KASAN or production hardened kernels.
 
 ---
 

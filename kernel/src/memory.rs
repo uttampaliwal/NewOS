@@ -10,6 +10,7 @@ pub mod aslr;
 pub mod demand;
 pub mod heap;
 pub mod kasan;
+pub mod kfence;
 pub mod oom;
 pub mod page_cache;
 pub mod paging;

@@ -1,5 +1,6 @@
 use super::linked_list::LinkedListAllocator;
 use core::alloc::{GlobalAlloc, Layout};
+use core::mem::size_of;
 
 struct ListNode {
     next: Option<&'static mut ListNode>,
@@ -48,6 +49,10 @@ fn list_index(layout: &Layout) -> Option<usize> {
 
 unsafe impl GlobalAlloc for super::Locked<FixedSizeBlockAllocator> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if let Some(ptr) = crate::memory::kfence::kfence_alloc(layout.size()) {
+            return ptr;
+        }
+
         let mut allocator = self.lock();
         let ptr = match list_index(&layout) {
             Some(index) => match allocator.list_heads[index].take() {
@@ -73,6 +78,10 @@ unsafe impl GlobalAlloc for super::Locked<FixedSizeBlockAllocator> {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if crate::memory::kfence::kfence_free(ptr) {
+            return;
+        }
+
         let alloc_size = layout.size();
         crate::memory::kasan::free_poison(ptr as usize, alloc_size);
 
@@ -82,7 +91,7 @@ unsafe impl GlobalAlloc for super::Locked<FixedSizeBlockAllocator> {
                 let new_node = ListNode {
                     next: allocator.list_heads[index].take(),
                 };
-                assert!(core::mem::size_of::<ListNode>() <= BLOCK_SIZES[index]);
+                assert!(size_of::<ListNode>() <= BLOCK_SIZES[index]);
                 let new_node_ptr = ptr as *mut ListNode;
                 unsafe {
                     new_node_ptr.write(new_node);

@@ -217,7 +217,7 @@ pub fn kfence_alloc(size: usize) -> Option<*mut u8> {
     let count = ALLOC_COUNTER.fetch_add(1, Ordering::Relaxed);
 
     // Only redirect every KFENCE_SAMPLE_INTERVAL-th allocation.
-    if count % KFENCE_SAMPLE_INTERVAL != 0 {
+    if !count.is_multiple_of(KFENCE_SAMPLE_INTERVAL) {
         return None;
     }
 
@@ -229,10 +229,7 @@ pub fn kfence_alloc(size: usize) -> Option<*mut u8> {
     let mut pool = POOL.lock();
 
     // Find the first free (never-allocated or recycled) slot.
-    let slot_idx = pool
-        .slots
-        .iter()
-        .position(|s| !s.allocated && !s.freed)?;
+    let slot_idx = pool.slots.iter().position(|s| !s.allocated && !s.freed)?;
 
     pool.slots[slot_idx].init_for_alloc(size);
     pool.stats.total_allocated += 1;
@@ -294,32 +291,26 @@ pub fn kfence_check_canaries() -> usize {
         for (slot_idx, slot) in pool.slots.iter().enumerate() {
             // Check allocated slots for redzone corruption.
             if slot.allocated {
-                if !slot.left_redzone_intact() {
-                    if idx < found.len() {
-                        found[idx] = Some(KfenceViolation::RedzoneCorruption {
-                            slot: slot_idx,
-                            side: KfenceSide::Left,
-                        });
-                        idx += 1;
-                    }
+                if !slot.left_redzone_intact() && idx < found.len() {
+                    found[idx] = Some(KfenceViolation::RedzoneCorruption {
+                        slot: slot_idx,
+                        side: KfenceSide::Left,
+                    });
+                    idx += 1;
                 }
-                if !slot.right_redzone_intact() {
-                    if idx < found.len() {
-                        found[idx] = Some(KfenceViolation::RedzoneCorruption {
-                            slot: slot_idx,
-                            side: KfenceSide::Right,
-                        });
-                        idx += 1;
-                    }
+                if !slot.right_redzone_intact() && idx < found.len() {
+                    found[idx] = Some(KfenceViolation::RedzoneCorruption {
+                        slot: slot_idx,
+                        side: KfenceSide::Right,
+                    });
+                    idx += 1;
                 }
             }
 
             // Check freed slots for use-after-free writes.
-            if slot.freed && !slot.freed_data_intact() {
-                if idx < found.len() {
-                    found[idx] = Some(KfenceViolation::UseAfterFree { slot: slot_idx });
-                    idx += 1;
-                }
+            if slot.freed && !slot.freed_data_intact() && idx < found.len() {
+                found[idx] = Some(KfenceViolation::UseAfterFree { slot: slot_idx });
+                idx += 1;
             }
         }
         found
@@ -537,7 +528,10 @@ mod tests {
         }
 
         let violations = kfence_check_canaries();
-        assert!(violations > 0, "expected at least one use-after-free violation");
+        assert!(
+            violations > 0,
+            "expected at least one use-after-free violation"
+        );
 
         let s = kfence_stats();
         assert!(s.violations_detected > 0);
@@ -555,15 +549,11 @@ mod tests {
         let ptr = kfence_alloc(32).expect("alloc should succeed");
 
         // Corrupt the right redzone by writing past the allocation.
-        // SAFETY: We deliberately write into the right redzone to verify that
-        // `kfence_check_canaries` catches the corruption.  Only valid in tests.
-        unsafe {
-            // `ptr` points to `slot.data[0]`.  Writing at offset 32 lands in
-            // the data region (past the used bytes) but still within the 256-byte
-            // data array.  To actually hit the *right_redzone* we write into
-            // the pool slot directly through the pool lock.
-            let _ = ptr; // used above
-        }
+        // `ptr` points to `slot.data[0]`.  Writing at offset 32 lands in the
+        // data region (past the used bytes) but still within the 256-byte data
+        // array.  To actually hit the *right_redzone* we write into the pool
+        // slot directly through the pool lock.
+        let _ = ptr; // used above
 
         // Corrupt the redzone via the pool directly.
         {
@@ -577,7 +567,10 @@ mod tests {
         }
 
         let violations = kfence_check_canaries();
-        assert!(violations > 0, "expected right-redzone corruption to be detected");
+        assert!(
+            violations > 0,
+            "expected right-redzone corruption to be detected"
+        );
     }
 
     #[test]
@@ -599,7 +592,10 @@ mod tests {
         }
 
         let violations = kfence_check_canaries();
-        assert!(violations > 0, "expected left-redzone corruption to be detected");
+        assert!(
+            violations > 0,
+            "expected left-redzone corruption to be detected"
+        );
     }
 
     // -----------------------------------------------------------------------
