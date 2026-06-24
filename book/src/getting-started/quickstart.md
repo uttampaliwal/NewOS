@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Rust nightly toolchain (pinned to `nightly-2026-06-22`)
+- Rust nightly-2026-06-22 toolchain
 - QEMU with x86_64 support
 - Make (optional, for convenience targets)
 

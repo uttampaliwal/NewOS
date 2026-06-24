@@ -114,7 +114,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full 22-phase roadmap. See [KNOWN
 
 ### Prerequisites
 
-- Rust nightly toolchain
+- Rust nightly-2026-06-22 toolchain
 - QEMU (x86_64 with OVMF UEFI firmware)
 
 ```bash

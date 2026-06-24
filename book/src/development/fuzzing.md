@@ -18,8 +18,8 @@ All fuzz targets live in `fuzz/fuzz_targets/`:
 ## Running Fuzz Targets
 
 ```bash
-cargo +nightly fuzz run fuzz_elf_parser
-cargo +nightly fuzz run fuzz_seccomp_bpf
+cargo +nightly-2026-06-22 fuzz run fuzz_elf_parser
+cargo +nightly-2026-06-22 fuzz run fuzz_seccomp_bpf
 ```
 
 Each target is configured with a timeout and memory limit to catch hangs and leaks.

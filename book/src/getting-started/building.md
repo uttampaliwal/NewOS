@@ -2,7 +2,7 @@
 
 ## Toolchain
 
-Turnix requires Rust nightly. The toolchain is pinned in `rust-toolchain.toml`:
+Turnix requires Rust nightly-2026-06-22. The toolchain is pinned in `rust-toolchain.toml`:
 
 ```toml
 [toolchain]

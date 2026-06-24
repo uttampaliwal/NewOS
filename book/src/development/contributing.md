@@ -9,11 +9,11 @@
 
 ## Development Setup
 
-Prerequisites: Rust nightly, QEMU with OVMF, and `cargo xtask` for build automation.
+Prerequisites: Rust nightly-2026-06-22, QEMU with OVMF, and `cargo xtask` for build automation.
 
 ```bash
-rustup install nightly && rustup default nightly
-rustup target add x86_64-unknown-uefi x86_64-unknown-none
+rustup toolchain install nightly-2026-06-22 && rustup default nightly-2026-06-22
+rustup target add x86_64-unknown-uefi x86_64-unknown-none --toolchain nightly-2026-06-22
 cargo xtask doctor   # verify environment
 ```
 

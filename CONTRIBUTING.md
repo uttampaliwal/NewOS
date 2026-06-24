@@ -14,7 +14,7 @@ cargo xtask doctor          # verify environment
 
 ### Prerequisites
 
-- **Rust nightly** (via rustup)
+- **Rust nightly-2026-06-22** (via rustup)
 - **QEMU** with OVMF UEFI firmware
 - **Git**
 
@@ -55,9 +55,9 @@ choco install qemu
 ### Toolchain Setup
 
 ```bash
-rustup install nightly
-rustup default nightly
-rustup target add x86_64-unknown-uefi x86_64-unknown-none --toolchain nightly
+rustup toolchain install nightly-2026-06-22
+rustup default nightly-2026-06-22
+rustup target add x86_64-unknown-uefi x86_64-unknown-none --toolchain nightly-2026-06-22
 ```
 
 ### Verify
