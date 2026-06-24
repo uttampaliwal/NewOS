@@ -184,12 +184,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-deny
+          key: ${{ runner.os }}-deny-${{ hashFiles('deny.toml') }}
       - name: Install cargo-deny
-        run: cargo install cargo-deny
+        run: which cargo-deny || cargo install cargo-deny
       - name: Audit dependencies
         run: cargo deny check
+      - name: Install cargo-audit
+        run: which cargo-audit || cargo install cargo-audit
       - name: Check for known vulnerabilities
-        run: cargo audit 2>/dev/null || (cargo install cargo-audit && cargo audit)
+        run: cargo audit
 
   # ── Job: reproducible build check ──────────────────────────────────
   reproducible:
@@ -204,6 +213,7 @@ jobs:
       - name: First build
         env:
           SOURCE_DATE_EPOCH: "1735689600"
+          CARGO_INCREMENTAL: "0"
         run: cargo build --release --target x86_64-unknown-none -p turnix-kernel
       - name: Copy first binary
         run: cp target/x86_64-unknown-none/release/turnix-kernel /tmp/turnix-kernel-1
@@ -212,12 +222,17 @@ jobs:
       - name: Second build
         env:
           SOURCE_DATE_EPOCH: "1735689600"
+          CARGO_INCREMENTAL: "0"
         run: cargo build --release --target x86_64-unknown-none -p turnix-kernel
       - name: Compare binaries
         run: |
           cp target/x86_64-unknown-none/release/turnix-kernel /tmp/turnix-kernel-2
           sha256sum /tmp/turnix-kernel-1 /tmp/turnix-kernel-2
-          cmp -s /tmp/turnix-kernel-1 /tmp/turnix-kernel-2 && echo "PASS: Reproducible" || echo "FAIL: Not reproducible"
+          if ! cmp -s /tmp/turnix-kernel-1 /tmp/turnix-kernel-2; then
+            echo "FAIL: Binaries differ — build is not reproducible"
+            exit 1
+          fi
+          echo "PASS: Binaries are identical"
 
   # ── Job 8: docs ────────────────────────────────────────────────────────
   docs:
