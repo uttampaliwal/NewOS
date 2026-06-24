@@ -655,6 +655,26 @@ mod tests {
         assert_eq!(get_current_task_count(), 0);
     }
 
+    #[test]
+    fn test_compute_deadline_and_vruntime_updates_are_saturating() {
+        let _guard = crate::test_serial::acquire();
+
+        assert_eq!(compute_deadline(10, 5, 0), 10);
+        assert_eq!(compute_deadline(u64::MAX - 1, u32::MAX, 1), u64::MAX);
+
+        let mut task = make_test_task(321);
+        task.weight = 0;
+        task.vruntime = u64::MAX - 2;
+        update_vruntime(&mut task, 100);
+        assert_eq!(task.vruntime, u64::MAX - 1);
+
+        let mut weighted_task = make_test_task(322);
+        weighted_task.weight = 1024;
+        weighted_task.vruntime = 7;
+        update_vruntime(&mut weighted_task, 3);
+        assert_eq!(weighted_task.vruntime, 10);
+    }
+
     fn get_current_task_count() -> usize {
         get_task_count()
     }
