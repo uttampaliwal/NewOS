@@ -183,6 +183,7 @@ impl SwapDevice for InMemorySwapDevice {
         let phys_addr = self.base_phys + (slot.0 as u64) * PAGE_SIZE;
         let phys_mem_offset = crate::boot::get_phys_mem_offset();
         let src = (phys_mem_offset + phys_addr).as_ptr::<u8>();
+        // Safety: src points to a valid 4096-byte page in mapped physical memory, buffer is 4096 bytes
         unsafe {
             core::ptr::copy_nonoverlapping(src, buffer.as_mut_ptr(), 4096);
         }
@@ -196,6 +197,7 @@ impl SwapDevice for InMemorySwapDevice {
         let phys_addr = self.base_phys + (slot.0 as u64) * PAGE_SIZE;
         let phys_mem_offset = crate::boot::get_phys_mem_offset();
         let dst = (phys_mem_offset + phys_addr).as_mut_ptr::<u8>();
+        // Safety: dst points to a valid 4096-byte page in mapped physical memory, buffer is 4096 bytes
         unsafe {
             core::ptr::copy_nonoverlapping(buffer.as_ptr(), dst, 4096);
         }
@@ -411,6 +413,7 @@ impl SwapManager {
             let phys_mem_offset = crate::boot::get_phys_mem_offset();
             let src_ptr = (phys_mem_offset + phys_addr).as_ptr::<u8>();
             let mut page_data = [0u8; 4096];
+            // Safety: src_ptr points to a valid 4096-byte page in mapped physical memory
             unsafe {
                 core::ptr::copy_nonoverlapping(src_ptr, page_data.as_mut_ptr(), 4096);
             }
@@ -455,6 +458,7 @@ pub(crate) fn read_pte(
     vaddr: VirtAddr,
 ) -> Option<u64> {
     let pml4_ptr = (phys_mem_offset + pml4_frame.start_address().as_u64()).as_ptr::<PageTable>();
+    // Safety: pml4_ptr is derived from a valid physical address + offset, page tables are pinned in memory
     let pml4 = unsafe { &*pml4_ptr };
     let p4e = &pml4[vaddr.p4_index()];
     if p4e.is_unused() {
@@ -463,6 +467,7 @@ pub(crate) fn read_pte(
 
     let p3_ptr =
         (phys_mem_offset + p4e.frame().ok()?.start_address().as_u64()).as_ptr::<PageTable>();
+    // Safety: p3_ptr points to a valid page table frame
     let p3 = unsafe { &*p3_ptr };
     let p3e = &p3[vaddr.p3_index()];
     if p3e.is_unused() {
@@ -471,6 +476,7 @@ pub(crate) fn read_pte(
 
     let p2_ptr =
         (phys_mem_offset + p3e.frame().ok()?.start_address().as_u64()).as_ptr::<PageTable>();
+    // Safety: p2_ptr points to a valid page table frame
     let p2 = unsafe { &*p2_ptr };
     let p2e = &p2[vaddr.p2_index()];
     if p2e.is_unused() {
@@ -482,6 +488,7 @@ pub(crate) fn read_pte(
 
     let p1_ptr =
         (phys_mem_offset + p2e.frame().ok()?.start_address().as_u64()).as_ptr::<PageTable>();
+    // Safety: p1_ptr points to a valid page table frame
     let p1 = unsafe { &*p1_ptr };
     let p1e = &p1[vaddr.p1_index()];
 
@@ -497,6 +504,7 @@ fn write_pte_raw(
 ) {
     let pml4_ptr =
         (phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+    // Safety: pml4_ptr is derived from a valid physical address + offset, page tables are pinned in memory
     let pml4 = unsafe { &mut *pml4_ptr };
 
     if pml4[vaddr.p4_index()].is_unused() {
@@ -509,6 +517,7 @@ fn write_pte_raw(
             .start_address()
             .as_u64())
     .as_mut_ptr::<PageTable>();
+    // Safety: p3_ptr points to a valid page table frame
     let p3 = unsafe { &mut *p3_ptr };
     if p3[vaddr.p3_index()].is_unused() {
         return;
@@ -520,6 +529,7 @@ fn write_pte_raw(
             .start_address()
             .as_u64())
     .as_mut_ptr::<PageTable>();
+    // Safety: p2_ptr points to a valid page table frame
     let p2 = unsafe { &mut *p2_ptr };
     if p2[vaddr.p2_index()].is_unused() {
         return;
@@ -537,6 +547,7 @@ fn write_pte_raw(
             .start_address()
             .as_u64())
     .as_mut_ptr::<PageTable>();
+    // Safety: p1_ptr points to a valid page table frame
     let p1 = unsafe { &mut *p1_ptr };
     p1[vaddr.p1_index()].set_addr(
         x86_64::PhysAddr::new(value & 0x000F_FFFF_FFFF_F000),
@@ -548,6 +559,7 @@ fn write_pte_raw(
 fn clear_accessed_bit(pml4_frame: PhysFrame<Size4KiB>, phys_mem_offset: VirtAddr, vaddr: VirtAddr) {
     let pml4_ptr =
         (phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+    // Safety: pml4_ptr is derived from a valid physical address + offset, page tables are pinned in memory
     let pml4 = unsafe { &mut *pml4_ptr };
     if pml4[vaddr.p4_index()].is_unused() {
         return;
@@ -559,6 +571,7 @@ fn clear_accessed_bit(pml4_frame: PhysFrame<Size4KiB>, phys_mem_offset: VirtAddr
             .start_address()
             .as_u64())
     .as_mut_ptr::<PageTable>();
+    // Safety: p3_ptr points to a valid page table frame
     let p3 = unsafe { &mut *p3_ptr };
     if p3[vaddr.p3_index()].is_unused() {
         return;
@@ -570,6 +583,7 @@ fn clear_accessed_bit(pml4_frame: PhysFrame<Size4KiB>, phys_mem_offset: VirtAddr
             .start_address()
             .as_u64())
     .as_mut_ptr::<PageTable>();
+    // Safety: p2_ptr points to a valid page table frame
     let p2 = unsafe { &mut *p2_ptr };
     if p2[vaddr.p2_index()].is_unused() {
         return;
@@ -587,6 +601,7 @@ fn clear_accessed_bit(pml4_frame: PhysFrame<Size4KiB>, phys_mem_offset: VirtAddr
             .start_address()
             .as_u64())
     .as_mut_ptr::<PageTable>();
+    // Safety: p1_ptr points to a valid page table frame
     let p1 = unsafe { &mut *p1_ptr };
     let mut flags = p1[vaddr.p1_index()].flags();
     flags.remove(PageTableFlags::ACCESSED);
@@ -636,6 +651,7 @@ pub fn swap_in(slot: SwapSlot, device_id: u8) -> Option<u64> {
     let phys_addr = allocate_swappable_frame()?;
     let phys_mem_offset = crate::boot::get_phys_mem_offset();
     let dst = (phys_mem_offset + phys_addr).as_mut_ptr::<u8>();
+    // Safety: dst points to a valid 4096-byte frame in mapped physical memory, page_data is 4096 bytes
     unsafe {
         core::ptr::copy_nonoverlapping(page_data.as_ptr(), dst, 4096);
     }
@@ -820,6 +836,7 @@ mod tests {
         }
         let phys_mem_offset = 0usize as u64;
 
+        // Safety: base_ptr is from a Vec allocation of 4096+ bytes, phys_mem_offset is 0 in test
         unsafe {
             core::ptr::copy_nonoverlapping(
                 data.as_ptr(),
@@ -829,6 +846,7 @@ mod tests {
         }
 
         let mut readback = [0u8; 4096];
+        // Safety: base_ptr is from a Vec allocation of 4096+ bytes, phys_mem_offset is 0 in test
         unsafe {
             core::ptr::copy_nonoverlapping(
                 (phys_mem_offset + base_ptr) as *const u8,

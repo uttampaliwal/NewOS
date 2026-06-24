@@ -41,36 +41,43 @@ const QUEUE_SIZE: u16 = 256;
 const DEVICE_CFG_MAC_OFFSET: u16 = 0x00;
 
 fn mmio_read_u8(base: u64, off: u16) -> u8 {
+    // Safety: base + off points to a valid VirtIO MMIO register.
     unsafe { read_volatile((base + off as u64) as *const u8) }
 }
 
 fn mmio_read_u16(base: u64, off: u16) -> u16 {
+    // Safety: base + off points to a valid VirtIO MMIO register.
     unsafe { read_volatile((base + off as u64) as *const u16) }
 }
 
 fn mmio_read_u32(base: u64, off: u16) -> u32 {
+    // Safety: base + off points to a valid VirtIO MMIO register.
     unsafe { read_volatile((base + off as u64) as *const u32) }
 }
 
 fn mmio_write_u8(base: u64, off: u16, val: u8) {
+    // Safety: base + off points to a valid VirtIO MMIO register.
     unsafe {
         write_volatile((base + off as u64) as *mut u8, val);
     }
 }
 
 fn mmio_write_u16(base: u64, off: u16, val: u16) {
+    // Safety: base + off points to a valid VirtIO MMIO register.
     unsafe {
         write_volatile((base + off as u64) as *mut u16, val);
     }
 }
 
 fn mmio_write_u32(base: u64, off: u16, val: u32) {
+    // Safety: base + off points to a valid VirtIO MMIO register.
     unsafe {
         write_volatile((base + off as u64) as *mut u32, val);
     }
 }
 
 fn mmio_write_u64(base: u64, off: u16, val: u64) {
+    // Safety: base + off points to a valid VirtIO MMIO register.
     unsafe {
         write_volatile((base + off as u64) as *mut u64, val);
     }
@@ -82,6 +89,7 @@ fn pci_cfg_read_u8(bus: u8, dev: u8, func: u8, off: u16) -> u8 {
         | (dev as u32) << 11
         | (func as u32) << 8
         | (off as u32 & 0xFC);
+    // Safety: I/O ports 0xCF8/0xCFC are the standard x86 PCI configuration mechanism.
     unsafe {
         let mut ca: x86_64::instructions::port::Port<u32> =
             x86_64::instructions::port::Port::new(0xCF8);
@@ -98,6 +106,7 @@ fn pci_cfg_read_u32(bus: u8, dev: u8, func: u8, off: u16) -> u32 {
         | (dev as u32) << 11
         | (func as u32) << 8
         | (off as u32 & 0xFC);
+    // Safety: I/O ports 0xCF8/0xCFC are the standard x86 PCI configuration mechanism.
     unsafe {
         let mut ca: x86_64::instructions::port::Port<u32> =
             x86_64::instructions::port::Port::new(0xCF8);
@@ -254,6 +263,7 @@ impl VirtQueue {
         mmio_write_u16(common_cfg_base, COMMON_QUEUE_ENABLE, 1);
 
         let desc_leaked = alloc::boxed::Box::leak(desc_vec.into_boxed_slice());
+        // Safety: desc_leaked points to heap memory of size QUEUE_SIZE * sizeof(Desc), properly aligned.
         let desc_arr =
             unsafe { &mut *(desc_leaked.as_mut_ptr() as *mut [Desc; QUEUE_SIZE as usize]) };
         for i in 0..QUEUE_SIZE - 1 {
@@ -277,19 +287,23 @@ impl VirtQueue {
 
     #[allow(dead_code)]
     fn desc_mut(&mut self) -> &mut [Desc] {
+        // Safety: desc_ptr is valid for QUEUE_SIZE elements, properly aligned, and memory is DMA-mapped.
         unsafe { core::slice::from_raw_parts_mut(self.desc_ptr, QUEUE_SIZE as usize) }
     }
 
     fn avail_mut(&mut self) -> &mut Avail {
+        // Safety: avail_ptr points to a valid heap allocation of sizeof(Avail).
         unsafe { &mut *(self.avail_ptr as *mut Avail) }
     }
 
     fn used_ref(&self) -> &Used {
+        // Safety: used_ptr points to a valid heap allocation of sizeof(Used).
         unsafe { &*(self.used_ptr as *const Used) }
     }
 
     #[allow(dead_code)]
     fn used_mut(&mut self) -> &mut Used {
+        // Safety: used_ptr points to a valid heap allocation of sizeof(Used).
         unsafe { &mut *(self.used_ptr as *mut Used) }
     }
 
@@ -297,6 +311,7 @@ impl VirtQueue {
         if self.free_count < count {
             return None;
         }
+        // Safety: desc_ptr is valid for QUEUE_SIZE elements, properly aligned, and memory is DMA-mapped.
         let desc = unsafe { core::slice::from_raw_parts_mut(self.desc_ptr, QUEUE_SIZE as usize) };
         let head = self.free_head;
         let mut curr = head as usize;
@@ -310,6 +325,7 @@ impl VirtQueue {
     }
 
     fn free_desc(&mut self, head: u16) {
+        // Safety: desc_ptr is valid for QUEUE_SIZE elements, properly aligned, and memory is DMA-mapped.
         let desc = unsafe { core::slice::from_raw_parts_mut(self.desc_ptr, QUEUE_SIZE as usize) };
         let mut curr = head as usize;
         let mut count = 0;
@@ -564,6 +580,7 @@ pub fn transmit_packet(data: &[u8]) -> bool {
     let buf_phys = buf.as_ptr() as u64 - pmo;
     core::mem::forget(buf);
 
+    // Safety: desc_ptr is valid for QUEUE_SIZE elements, properly aligned, and memory is DMA-mapped.
     let desc = unsafe { core::slice::from_raw_parts_mut(tx.desc_ptr, QUEUE_SIZE as usize) };
     desc[head as usize].addr = buf_phys;
     desc[head as usize].len = data.len() as u32;
@@ -596,8 +613,10 @@ pub fn poll_rx<F: FnMut(&[u8])>(mut callback: F) {
     let mut rx = dev.rx_queue.lock();
 
     while let Some((id, len)) = rx.pop_used() {
+        // Safety: desc_ptr is valid for QUEUE_SIZE elements, properly aligned, and memory is DMA-mapped.
         let desc = unsafe { core::slice::from_raw_parts_mut(rx.desc_ptr, QUEUE_SIZE as usize) };
         let virt_ptr = (desc[id as usize].addr + pmo) as *const u8;
+        // Safety: virt_ptr points to a DMA-mapped buffer of at least len bytes, previously submitted to the device.
         let slice = unsafe { core::slice::from_raw_parts(virt_ptr, len as usize) };
         dev.stats.rx_packets += 1;
         callback(slice);
@@ -607,6 +626,7 @@ pub fn poll_rx<F: FnMut(&[u8])>(mut callback: F) {
         core::mem::forget(buf);
         let new_head = rx.alloc_desc(1).unwrap_or(0xFFFF);
         if new_head != 0xFFFF {
+            // Safety: desc_ptr is valid for QUEUE_SIZE elements, properly aligned, and memory is DMA-mapped.
             let rdesc =
                 unsafe { core::slice::from_raw_parts_mut(rx.desc_ptr, QUEUE_SIZE as usize) };
             rdesc[new_head as usize].addr = buf_phys;
@@ -754,6 +774,7 @@ mod tests {
         let desc_len = core::mem::size_of::<Desc>() * QUEUE_SIZE as usize;
 
         let mut desc_mem = alloc::vec![0u8; desc_len];
+        // Safety: desc_mem is a valid allocation of QUEUE_SIZE * sizeof(Desc) bytes, properly aligned.
         let desc = unsafe { &mut *(desc_mem.as_mut_ptr() as *mut [Desc; QUEUE_SIZE as usize]) };
         for i in 0..QUEUE_SIZE - 1 {
             desc[i as usize].next = i + 1;
@@ -858,6 +879,7 @@ mod tests {
     fn test_virtqueue_ring_wraparound() {
         let desc_len = core::mem::size_of::<Desc>() * QUEUE_SIZE as usize;
         let mut desc_mem = alloc::vec![0u8; desc_len];
+        // Safety: desc_mem is a valid allocation of QUEUE_SIZE * sizeof(Desc) bytes, properly aligned.
         let desc = unsafe { &mut *(desc_mem.as_mut_ptr() as *mut [Desc; QUEUE_SIZE as usize]) };
         for i in 0..QUEUE_SIZE - 1 {
             desc[i as usize].next = i + 1;
@@ -910,6 +932,7 @@ mod tests {
     fn test_virtqueue_empty_free_list() {
         let desc_len = core::mem::size_of::<Desc>() * QUEUE_SIZE as usize;
         let mut desc_mem = alloc::vec![0u8; desc_len];
+        // Safety: desc_mem is a valid allocation of QUEUE_SIZE * sizeof(Desc) bytes, properly aligned.
         let desc = unsafe { &mut *(desc_mem.as_mut_ptr() as *mut [Desc; QUEUE_SIZE as usize]) };
         // Initialize with all descriptors in use (self-loop or 0xFFFF)
         for desc_entry in desc.iter_mut().take(QUEUE_SIZE as usize) {

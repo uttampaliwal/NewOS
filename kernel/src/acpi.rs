@@ -147,6 +147,8 @@ impl AcpiHandler for TurnixAcpiHandler {
         size: usize,
     ) -> PhysicalMapping<Self, T> {
         let virtual_address = self.phys_mem_offset + physical_address as u64;
+        // Safety: virtual_address is derived from phys_mem_offset + physical_address,
+        // which maps valid physical memory through the HHDM.
         unsafe {
             PhysicalMapping::new(
                 physical_address,
@@ -210,6 +212,8 @@ impl AmlAcpiHandler {
 
         let mut config_addr_port: Port<u32> = Port::new(0xcf8);
         let mut config_data_port: Port<u32> = Port::new(0xcfc);
+        // Safety: ports 0xcf8 and 0xcfc are standard PCI configuration mechanism 1 ports;
+        // address is a valid PCI config address constructed from bus/device/function/offset.
         unsafe {
             config_addr_port.write(address);
             config_data_port.read()
@@ -231,6 +235,8 @@ impl AmlAcpiHandler {
 
         let mut config_addr_port: Port<u32> = Port::new(0xcf8);
         let mut config_data_port: Port<u32> = Port::new(0xcfc);
+        // Safety: ports 0xcf8 and 0xcfc are standard PCI configuration mechanism 1 ports;
+        // address is a valid PCI config address and value is the data to write.
         unsafe {
             config_addr_port.write(address);
             config_data_port.write(value);
@@ -241,71 +247,85 @@ impl AmlAcpiHandler {
 impl Handler for AmlAcpiHandler {
     fn read_u8(&self, address: usize) -> u8 {
         let ptr = self.translate_address(address) as *const u8;
+        // Safety: ptr is a valid, aligned MMIO address translated from physical_address via phys_mem_offset.
         unsafe { core::ptr::read_volatile(ptr) }
     }
 
     fn read_u16(&self, address: usize) -> u16 {
         let ptr = self.translate_address(address) as *const u16;
+        // Safety: ptr is a valid, aligned MMIO address translated from physical_address via phys_mem_offset.
         unsafe { core::ptr::read_volatile(ptr) }
     }
 
     fn read_u32(&self, address: usize) -> u32 {
         let ptr = self.translate_address(address) as *const u32;
+        // Safety: ptr is a valid, aligned MMIO address translated from physical_address via phys_mem_offset.
         unsafe { core::ptr::read_volatile(ptr) }
     }
 
     fn read_u64(&self, address: usize) -> u64 {
         let ptr = self.translate_address(address) as *const u64;
+        // Safety: ptr is a valid, aligned MMIO address translated from physical_address via phys_mem_offset.
         unsafe { core::ptr::read_volatile(ptr) }
     }
 
     fn write_u8(&mut self, address: usize, value: u8) {
         let ptr = self.translate_address(address) as *mut u8;
+        // Safety: ptr is a valid, aligned MMIO address translated from physical_address via phys_mem_offset.
         unsafe { core::ptr::write_volatile(ptr, value) };
     }
 
     fn write_u16(&mut self, address: usize, value: u16) {
         let ptr = self.translate_address(address) as *mut u16;
+        // Safety: ptr is a valid, aligned MMIO address translated from physical_address via phys_mem_offset.
         unsafe { core::ptr::write_volatile(ptr, value) };
     }
 
     fn write_u32(&mut self, address: usize, value: u32) {
         let ptr = self.translate_address(address) as *mut u32;
+        // Safety: ptr is a valid, aligned MMIO address translated from physical_address via phys_mem_offset.
         unsafe { core::ptr::write_volatile(ptr, value) };
     }
 
     fn write_u64(&mut self, address: usize, value: u64) {
         let ptr = self.translate_address(address) as *mut u64;
+        // Safety: ptr is a valid, aligned MMIO address translated from physical_address via phys_mem_offset.
         unsafe { core::ptr::write_volatile(ptr, value) };
     }
 
     fn read_io_u8(&self, port: u16) -> u8 {
         let mut port = Port::<u8>::new(port);
+        // Safety: port is a valid x86 I/O port address provided by the AML handler.
         unsafe { port.read() }
     }
 
     fn read_io_u16(&self, port: u16) -> u16 {
         let mut port = Port::<u16>::new(port);
+        // Safety: port is a valid x86 I/O port address provided by the AML handler.
         unsafe { port.read() }
     }
 
     fn read_io_u32(&self, port: u16) -> u32 {
         let mut port = Port::<u32>::new(port);
+        // Safety: port is a valid x86 I/O port address provided by the AML handler.
         unsafe { port.read() }
     }
 
     fn write_io_u8(&self, port: u16, value: u8) {
         let mut port = Port::<u8>::new(port);
+        // Safety: port is a valid x86 I/O port address provided by the AML handler.
         unsafe { port.write(value) };
     }
 
     fn write_io_u16(&self, port: u16, value: u16) {
         let mut port = Port::<u16>::new(port);
+        // Safety: port is a valid x86 I/O port address provided by the AML handler.
         unsafe { port.write(value) };
     }
 
     fn write_io_u32(&self, port: u16, value: u32) {
         let mut port = Port::<u32>::new(port);
+        // Safety: port is a valid x86 I/O port address provided by the AML handler.
         unsafe { port.write(value) };
     }
 
@@ -375,19 +395,24 @@ struct HardwareRegisterAccess;
 impl HardwareRegisterAccess {
     fn read_memory_u16(address: u64) -> u16 {
         let virt = crate::boot::get_phys_mem_offset() + address;
+        // Safety: virt points to a valid MMIO register address via the HHDM mapping.
         unsafe { core::ptr::read_volatile(virt.as_ptr::<u16>()) }
     }
 
     fn write_memory_u16(address: u64, value: u16) {
         let virt = crate::boot::get_phys_mem_offset() + address;
+        // Safety: virt points to a valid MMIO register address via the HHDM mapping.
         unsafe { core::ptr::write_volatile(virt.as_mut_ptr::<u16>(), value) };
     }
 
     fn read_memory_timer(address: u64, bit_width: u8) -> u32 {
         let virt = crate::boot::get_phys_mem_offset() + address;
         match bit_width {
+            // Safety: virt points to a valid MMIO timer register via the HHDM mapping.
             24 | 32 => unsafe { core::ptr::read_volatile(virt.as_ptr::<u32>()) },
+            // Safety: virt points to a valid MMIO timer register via the HHDM mapping.
             16 => unsafe { core::ptr::read_volatile(virt.as_ptr::<u16>()) as u32 },
+            // Safety: virt points to a valid MMIO timer register via the HHDM mapping.
             8 => unsafe { core::ptr::read_volatile(virt.as_ptr::<u8>()) as u32 },
             _ => 0,
         }
@@ -400,6 +425,7 @@ impl AcpiRegisterAccess for HardwareRegisterAccess {
             AddressSpace::SystemIo => {
                 let port = u16::try_from(address.address).map_err(|_| "I/O port out of range")?;
                 let mut port = Port::<u16>::new(port);
+                // Safety: port address was validated by try_from and maps to a valid ACPI SystemIo register.
                 Ok(unsafe { port.read() })
             }
             AddressSpace::SystemMemory => Ok(Self::read_memory_u16(address.address)),
@@ -412,6 +438,7 @@ impl AcpiRegisterAccess for HardwareRegisterAccess {
             AddressSpace::SystemIo => {
                 let port = u16::try_from(address.address).map_err(|_| "I/O port out of range")?;
                 let mut port = Port::<u16>::new(port);
+                // Safety: port address was validated by try_from and maps to a valid ACPI SystemIo register.
                 unsafe { port.write(value) };
                 Ok(())
             }
@@ -450,14 +477,17 @@ impl PmTimerClock {
                 match self.register.bit_width {
                     24 | 32 => {
                         let mut port = Port::<u32>::new(port);
+                        // Safety: port was validated by try_from and maps to a valid ACPI PM timer.
                         unsafe { port.read() }
                     }
                     16 => {
                         let mut port = Port::<u16>::new(port);
+                        // Safety: port was validated by try_from and maps to a valid ACPI PM timer.
                         unsafe { port.read() as u32 }
                     }
                     8 => {
                         let mut port = Port::<u8>::new(port);
+                        // Safety: port was validated by try_from and maps to a valid ACPI PM timer.
                         unsafe { port.read() as u32 }
                     }
                     _ => return Err("unsupported PM timer width"),
@@ -731,6 +761,7 @@ pub fn init(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
     acpi_log!("[ACPI] Initializing... RSDP at {:#x}", rsdp_addr);
 
     let handler = TurnixAcpiHandler::new(phys_mem_offset);
+    // Safety: rsdp_addr is a valid RSDP physical address provided by the bootloader.
     let acpi_tables = unsafe { AcpiTables::from_rsdp(handler.clone(), rsdp_addr as usize) };
 
     let tables = match acpi_tables {
@@ -867,8 +898,10 @@ fn parse_aml_table<H>(
 where
     H: AcpiHandler,
 {
+    // Safety: table.address and table.length refer to a valid ACPI AML table in physical memory.
     let mapping =
         unsafe { handler.map_physical_region::<u8>(table.address, table.length as usize) };
+    // Safety: mapping covers exactly table.length bytes at a valid, aligned physical address.
     let data = unsafe {
         core::slice::from_raw_parts(mapping.virtual_start().as_ptr(), table.length as usize)
     };
@@ -1103,11 +1136,14 @@ fn extract_power_management_info(
     tables: &AcpiTables<TurnixAcpiHandler>,
     context: &AmlContext,
 ) -> Option<PowerManagementInfo> {
+    // Safety: tables were parsed from a valid RSDP; FADT is a required ACPI table.
     let fadt = unsafe { tables.get_sdt::<Fadt>(Signature::FADT).ok()?? };
 
     let pm1a_event_block = fadt.pm1a_event_block().ok()?;
     let pm1a_control_block = fadt.pm1a_control_block().ok()?;
+    // Safety: fadt is a valid FADT table mapped from physical memory; fields are readable.
     let flags = unsafe { core::ptr::addr_of!(fadt.flags).read_unaligned() };
+    // Safety: fadt is a valid FADT table mapped from physical memory; fields are readable.
     let sci_interrupt = unsafe { core::ptr::addr_of!(fadt.sci_interrupt).read_unaligned() };
     let power_button_mode = if flags.power_button_is_control_method() {
         PowerButtonMode::ControlMethod
@@ -1451,7 +1487,9 @@ mod tests {
                 "synthetic ACPI mapping outside test image: {physical_address:#x}..{end:#x}",
             );
 
+            // Safety: physical_address is within bounds (checked above); the image covers the region.
             let ptr = unsafe { self.image.as_ptr().add(physical_address) as *mut T };
+            // Safety: physical_address is within bounds (checked above); the image covers the region.
             unsafe {
                 PhysicalMapping::new(
                     physical_address,
@@ -1709,6 +1747,7 @@ mod tests {
         write_blob(&mut image, 0, &build_rsdp_blob(rsdt_address as u32));
         write_blob(&mut image, rsdt_address, &build_rsdt_blob(&[]));
 
+        // Safety: test image contains a valid RSDP at offset 0.
         let tables = unsafe { AcpiTables::from_rsdp(TestAcpiTableHandler::new(image), 0) }.unwrap();
         assert_eq!(tables.revision, 0);
         assert!(tables.sdts.is_empty());
@@ -1721,6 +1760,7 @@ mod tests {
         let mut image = build_rsdp_blob(0x100);
         image[8] = image[8].wrapping_add(1);
 
+        // Safety: test image has a corrupt RSDP checksum; from_rsdp is expected to reject it.
         let error = match unsafe { AcpiTables::from_rsdp(TestAcpiTableHandler::new(image), 0) } {
             Ok(_) => panic!("corrupt RSDP checksum unexpectedly validated"),
             Err(error) => error,
@@ -1954,6 +1994,7 @@ mod tests {
         rsdt[9] = rsdt[9].wrapping_add(1); // corrupt checksum
         write_blob(&mut image, 0, &build_rsdp_blob(rsdt_address as u32));
         write_blob(&mut image, rsdt_address, &rsdt);
+        // Safety: test image has a valid RSDP pointing to a corrupt RSDT.
         let result = unsafe { AcpiTables::from_rsdp(TestAcpiTableHandler::new(image), 0) };
         assert!(result.is_err());
     }
@@ -1965,6 +2006,7 @@ mod tests {
         write_blob(&mut image, 0, &build_rsdp_blob(rsdt_address as u32));
         write_blob(&mut image, rsdt_address, &build_rsdt_blob(&[]));
 
+        // Safety: test image has a valid RSDP pointing to a valid but empty RSDT.
         let tables = unsafe { AcpiTables::from_rsdp(TestAcpiTableHandler::new(image), 0) }.unwrap();
         assert!(tables.sdts.is_empty());
         assert!(tables.dsdt.is_none());

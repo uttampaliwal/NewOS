@@ -52,6 +52,7 @@ pub fn handle_capget(args: SyscallArgs) -> SyscallResult {
     if header_ptr.is_null() || data_ptr.is_null() {
         return SyscallResult::Error(-1);
     }
+    // Safety: header_ptr is a user-space pointer validated by the null check above.
     let header = unsafe { core::ptr::read(header_ptr) };
     if header.version != turnix_abi::syscall::LINUX_CAPABILITY_VERSION {
         return SyscallResult::Error(-1);
@@ -69,6 +70,7 @@ pub fn handle_capget(args: SyscallArgs) -> SyscallResult {
         permitted: caps.permitted,
         inheritable: caps.inheritable,
     };
+    // Safety: data_ptr is a user-space pointer validated by the null check above.
     unsafe { core::ptr::write(data_ptr, data) };
     SyscallResult::Success(0)
 }
@@ -79,10 +81,12 @@ pub fn handle_capset(args: SyscallArgs) -> SyscallResult {
     if header_ptr.is_null() || data_ptr.is_null() {
         return SyscallResult::Error(-1);
     }
+    // Safety: header_ptr is a user-space pointer validated by the null check above.
     let header = unsafe { core::ptr::read(header_ptr) };
     if header.version != turnix_abi::syscall::LINUX_CAPABILITY_VERSION {
         return SyscallResult::Error(-1);
     }
+    // Safety: data_ptr is a user-space pointer validated by the null check above.
     let new_data = unsafe { core::ptr::read(data_ptr) };
 
     let current = match crate::task::scheduler::get_current_process() {
@@ -148,9 +152,11 @@ pub fn handle_prctl(args: SyscallArgs) -> SyscallResult {
     }
 
     // Read len (u16) at offset 0
+    // Safety: sock_fprog_ptr is a user-space pointer validated by the null check above.
     let filter_len = unsafe { core::ptr::read_unaligned(sock_fprog_ptr as *const u16) } as usize;
     // Read filter pointer (u64) at offset 2 (with alignment padding on x86_64, typically 8)
     // The sock_fprog struct has: len: u16, padding: [u8; 6], filter: *const sock_filter
+    // Safety: sock_fprog_ptr is a user-space pointer validated by the null check above.
     let filter_ptr = unsafe {
         let ptr_ptr =
             (sock_fprog_ptr as usize + 8) as *const *const crate::security::seccomp::BpfInstruction;
@@ -172,6 +178,7 @@ pub fn handle_prctl(args: SyscallArgs) -> SyscallResult {
         filter_len
     ];
     for (i, slot) in instructions.iter_mut().enumerate() {
+        // Safety: filter_ptr is a user-space pointer, i is bounded by filter_len (<= 4096).
         unsafe {
             let insn_ptr = filter_ptr.add(i);
             *slot = core::ptr::read_unaligned(insn_ptr);
@@ -306,6 +313,7 @@ pub fn handle_exec(args: SyscallArgs) -> SyscallResult {
     }
 
     // Convert user path to &str
+    // Safety: path_ptr is a user-space pointer validated by null/len checks above.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path = match core::str::from_utf8(path_slice) {
         Ok(p) => p,
@@ -317,18 +325,21 @@ pub fn handle_exec(args: SyscallArgs) -> SyscallResult {
     if !argv_ptr.is_null() {
         let mut i = 0;
         loop {
+            // Safety: argv_ptr is a user-space pointer from syscall args, i is bounded by null terminator.
             let str_ptr = unsafe { *argv_ptr.add(i) };
             if str_ptr.is_null() {
                 break;
             }
             // Get string length (find null terminator)
             let mut len = 0;
+            // Safety: str_ptr is a user-space pointer read from argv, len bounded by 4096 check.
             while unsafe { *str_ptr.add(len) } != 0 {
                 len += 1;
                 if len > 4096 {
                     return SyscallResult::Error(2);
                 }
             }
+            // Safety: str_ptr is a user-space pointer, len is bounded by null terminator search.
             let str_slice = unsafe { core::slice::from_raw_parts(str_ptr, len) };
             argv.push(str_slice);
             i += 1;
@@ -343,18 +354,21 @@ pub fn handle_exec(args: SyscallArgs) -> SyscallResult {
     if !envp_ptr.is_null() {
         let mut i = 0;
         loop {
+            // Safety: envp_ptr is a user-space pointer from syscall args, i bounded by null terminator.
             let str_ptr = unsafe { *envp_ptr.add(i) };
             if str_ptr.is_null() {
                 break;
             }
             // Get string length (find null terminator)
             let mut len = 0;
+            // Safety: str_ptr is a user-space pointer read from envp, len bounded by 4096 check.
             while unsafe { *str_ptr.add(len) } != 0 {
                 len += 1;
                 if len > 4096 {
                     return SyscallResult::Error(2);
                 }
             }
+            // Safety: str_ptr is a user-space pointer, len is bounded by null terminator search.
             let str_slice = unsafe { core::slice::from_raw_parts(str_ptr, len) };
             envp.push(str_slice);
             i += 1;
@@ -470,6 +484,7 @@ pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::Syscall
     // 5. Create a new kernel task for the child process using new_forked_user
     // To get a mapper, we need to get the current kernel page table
     let (kernel_pml4_frame, _) = x86_64::registers::control::Cr3::read();
+    // Safety: kernel_pml4_frame is the current kernel page table from Cr3, phys_mem_offset is valid.
     let mut mapper = unsafe {
         let pml4_ptr = (phys_mem_offset + kernel_pml4_frame.start_address().as_u64())
             .as_mut_ptr::<x86_64::structures::paging::PageTable>();
@@ -524,6 +539,7 @@ pub fn handle_clone_with_frame(frame: &crate::arch::x86_64::syscall_arch::Syscal
     drop(frame_allocator_guard);
 
     let (kernel_pml4_frame, _) = x86_64::registers::control::Cr3::read();
+    // Safety: kernel_pml4_frame is the current kernel page table from Cr3, phys_mem_offset is valid.
     let mut mapper = unsafe {
         let pml4_ptr = (phys_mem_offset + kernel_pml4_frame.start_address().as_u64())
             .as_mut_ptr::<x86_64::structures::paging::PageTable>();
@@ -657,6 +673,7 @@ pub fn handle_wait_impl(target_pid: i32, status_ptr: *mut i32, nohang: bool) -> 
             if !status_ptr.is_null() {
                 // POSIX encodes exit status as (exit_code & 0xff) << 8.
                 let encoded = (exit_code & 0xff) << 8;
+                // Safety: status_ptr is a user-space pointer from syscall arg, null check ensures non-null.
                 unsafe {
                     status_ptr.write(encoded);
                 }
@@ -715,6 +732,7 @@ pub fn handle_sigaction(args: SyscallArgs) -> SyscallResult {
             SignalAction::Ignore => [1u64, 0, 0],
             SignalAction::Handler(addr) => [*addr, 0, 0],
         };
+        // Safety: old_ptr is a user-space pointer from syscall arg, null check ensures non-null.
         unsafe {
             old_ptr.write(old_val);
         }
@@ -722,6 +740,7 @@ pub fn handle_sigaction(args: SyscallArgs) -> SyscallResult {
 
     // Set the new action.
     if !new_ptr.is_null() {
+        // Safety: new_ptr is a user-space pointer from syscall arg, null check ensures non-null.
         let new_action = unsafe { *new_ptr };
         let action = match new_action[0] {
             0 => SignalAction::Default,
@@ -750,12 +769,14 @@ pub fn handle_sigprocmask(args: SyscallArgs) -> SyscallResult {
 
     // Return the old mask if requested.
     if !old_ptr.is_null() {
+        // Safety: old_ptr is a user-space pointer from syscall arg, null check ensures non-null.
         unsafe {
             old_ptr.write(inner.signal_mask.0);
         }
     }
 
     if !new_ptr.is_null() {
+        // Safety: new_ptr is a user-space pointer from syscall arg, null check ensures non-null.
         let new_mask_val = unsafe { *new_ptr };
         // SIGKILL and SIGSTOP can't be masked.
         let new_mask = new_mask_val & !((1u64 << 9) | (1u64 << 19));

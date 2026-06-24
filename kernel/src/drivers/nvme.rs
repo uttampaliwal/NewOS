@@ -85,18 +85,22 @@ const CMD_TIMEOUT_ITER: u64 = 100_000_000;
 // ---------------------------------------------------------------------------
 
 fn mmio_read32(base: u64, offset: u64) -> u32 {
+    // Safety: base + offset points to a valid NVMe controller MMIO register mapped via BAR0.
     unsafe { read_volatile((base + offset) as *const u32) }
 }
 
 fn mmio_write32(base: u64, offset: u64, val: u32) {
+    // Safety: base + offset points to a valid NVMe controller MMIO register mapped via BAR0.
     unsafe { write_volatile((base + offset) as *mut u32, val) }
 }
 
 fn mmio_read64(base: u64, offset: u64) -> u64 {
+    // Safety: base + offset points to a valid NVMe controller MMIO register mapped via BAR0.
     unsafe { read_volatile((base + offset) as *const u64) }
 }
 
 fn mmio_write64(base: u64, offset: u64, val: u64) {
+    // Safety: base + offset points to a valid NVMe controller MMIO register mapped via BAR0.
     unsafe { write_volatile((base + offset) as *mut u64, val) }
 }
 
@@ -303,6 +307,7 @@ impl NvmeController {
         let slt = self.admin_sq_mem.as_mut_ptr() as *mut SubmissionQueueEntry;
 
         let idx = tail as usize % sq_entry_count;
+        // Safety: slt points to admin_sq_mem (properly aligned, heap-allocated), idx is within bounds.
         let entry = unsafe { &mut *slt.add(idx) };
         *entry = SubmissionQueueEntry {
             opcode,
@@ -335,6 +340,7 @@ impl NvmeController {
         let clt = self.admin_cq_mem.as_mut_ptr() as *mut CompletionQueueEntry;
         let cq_head = self.admin_cq_head.load(Ordering::Relaxed);
         let cidx = cq_head as usize % cq_entry_count;
+        // Safety: clt points to admin_cq_mem (properly aligned, heap-allocated), cidx is within bounds.
         let cqe = unsafe { *clt.add(cidx) };
 
         // Advance CQ head; toggle expected phase on wrap-around
@@ -398,6 +404,7 @@ impl NvmeController {
         loop {
             core::sync::atomic::fence(Ordering::Acquire);
             let idx = cq_head as usize % cq_size;
+            // Safety: clt points to the CQ memory buffer (properly aligned, heap-allocated), idx is within bounds.
             let cqe = unsafe { *clt.add(idx) };
 
             let phase = (cqe.status & PHASE_BIT) != 0;
@@ -787,6 +794,7 @@ pub fn read_blocks(nsid: u32, lba: u64, count: u64, buffer: &mut [u8]) -> Result
     let slt = ctrl.io_sq_mem.as_mut_ptr() as *mut SubmissionQueueEntry;
 
     let idx = tail as usize % sq_size;
+    // Safety: slt points to io_sq_mem (properly aligned, heap-allocated), idx is within bounds.
     let entry = unsafe { &mut *slt.add(idx) };
     *entry = SubmissionQueueEntry {
         opcode: NVM_READ,
@@ -817,6 +825,7 @@ pub fn read_blocks(nsid: u32, lba: u64, count: u64, buffer: &mut [u8]) -> Result
             let cq_head = ctrl.io_cq_head.load(Ordering::Relaxed);
             let cq_idx = cq_head as usize % IO_QUEUE_SIZE as usize;
             let clt = ctrl.io_cq_mem.as_ptr() as *const CompletionQueueEntry;
+            // Safety: clt points to io_cq_mem (properly aligned, heap-allocated), cq_idx is within bounds.
             let cqe = unsafe { *clt.add(cq_idx) };
 
             let new_head = cq_head.wrapping_add(1);
@@ -867,6 +876,7 @@ pub fn write_blocks(nsid: u32, lba: u64, count: u64, buffer: &[u8]) -> Result<()
     let slt = ctrl.io_sq_mem.as_mut_ptr() as *mut SubmissionQueueEntry;
 
     let idx = tail as usize % sq_size;
+    // Safety: slt points to io_sq_mem (properly aligned, heap-allocated), idx is within bounds.
     let entry = unsafe { &mut *slt.add(idx) };
     *entry = SubmissionQueueEntry {
         opcode: NVM_WRITE,
@@ -896,6 +906,7 @@ pub fn write_blocks(nsid: u32, lba: u64, count: u64, buffer: &[u8]) -> Result<()
             let cq_head = ctrl.io_cq_head.load(Ordering::Relaxed);
             let cq_idx = cq_head as usize % IO_QUEUE_SIZE as usize;
             let clt = ctrl.io_cq_mem.as_ptr() as *const CompletionQueueEntry;
+            // Safety: clt points to io_cq_mem (properly aligned, heap-allocated), cq_idx is within bounds.
             let cqe = unsafe { *clt.add(cq_idx) };
 
             let new_head = cq_head.wrapping_add(1);
@@ -1261,6 +1272,7 @@ mod tests {
     fn write_admin_cqe(ctrl: &mut NvmeController, idx: usize, command_id: u16, phase: bool) {
         let cq_size = ADMIN_QUEUE_SIZE as usize;
         let clt = ctrl.admin_cq_mem.as_mut_ptr() as *mut CompletionQueueEntry;
+        // Safety: clt points to admin_cq_mem (properly aligned, heap-allocated), idx % cq_size is within bounds.
         let entry = unsafe { &mut *clt.add(idx % cq_size) };
         *entry = CompletionQueueEntry {
             cdw0: 0,
@@ -1277,6 +1289,7 @@ mod tests {
     fn write_io_cqe(ctrl: &mut NvmeController, idx: usize, command_id: u16, phase: bool) {
         let cq_size = IO_QUEUE_SIZE as usize;
         let clt = ctrl.io_cq_mem.as_mut_ptr() as *mut CompletionQueueEntry;
+        // Safety: clt points to io_cq_mem (properly aligned, heap-allocated), idx % cq_size is within bounds.
         let entry = unsafe { &mut *clt.add(idx % cq_size) };
         *entry = CompletionQueueEntry {
             cdw0: 0,
@@ -1307,6 +1320,7 @@ mod tests {
             let idx = tail_before as usize % sq_size;
 
             // Write a submission entry (simulating admin_command internals).
+            // Safety: slt points to admin_sq_mem (properly aligned, heap-allocated), idx is within bounds.
             let entry = unsafe { &mut *slt.add(idx) };
             *entry = SubmissionQueueEntry {
                 opcode: ADMIN_IDENTIFY,
@@ -1338,6 +1352,7 @@ mod tests {
             );
 
             // Verify the entry was placed at the correct slot.
+            // Safety: slt points to admin_sq_mem (properly aligned, heap-allocated), idx is within bounds.
             let read_entry = unsafe { &*slt.add(idx) };
             assert_eq!(read_entry.command_id, (i + 1) as u16);
             assert_eq!(read_entry.opcode, ADMIN_IDENTIFY);
@@ -1359,6 +1374,7 @@ mod tests {
 
         // After 2 full wraps, the last-written slot index should be valid.
         let last_slot = (expected_tail.wrapping_sub(1)) as usize % sq_size;
+        // Safety: slt points to admin_sq_mem (properly aligned, heap-allocated), last_slot is within bounds.
         let read_entry = unsafe { &*slt.add(last_slot) };
         assert_eq!(read_entry.command_id, submissions as u16);
 
@@ -1470,6 +1486,7 @@ mod tests {
             let tail_before = ctrl.io_sq_tail.load(Ordering::Relaxed);
             let idx = tail_before as usize % sq_size;
 
+            // Safety: slt points to io_sq_mem (properly aligned, heap-allocated), idx is within bounds.
             let entry = unsafe { &mut *slt.add(idx) };
             *entry = SubmissionQueueEntry {
                 opcode: NVM_READ,
@@ -1499,6 +1516,7 @@ mod tests {
 
         // Verify entry at the wrapped slot is the latest one.
         let wrapped_idx = final_tail.wrapping_sub(1) as usize % sq_size;
+        // Safety: slt points to io_sq_mem (properly aligned, heap-allocated), wrapped_idx is within bounds.
         let read_entry = unsafe { &*slt.add(wrapped_idx) };
         assert_eq!(read_entry.command_id, (sq_size + 9) as u16);
     }
