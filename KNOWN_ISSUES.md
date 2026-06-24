@@ -243,11 +243,12 @@ No NUMA awareness means poor performance on multi-socket systems.
 |---|---|
 | **Severity** | High |
 | **Component** | `kernel/src/sync/workqueue.rs`, `kernel/src/softirq.rs` |
-| **Status** | Partial |
+| **Status** | Resolved |
 
 **Resolution:** Workqueue and softirq implemented in Phase 12. WorkQueue provides
 FIFO function-pointer dispatch. Softirq provides 8 named vectors with bitmask
-tracking. Tasklets remain as a future enhancement.
+tracking. Tasklets are now implemented on top of the softirq tasklet vector as
+a small deferred callback queue.
 
 ---
 
@@ -375,7 +376,7 @@ These are the hardest subsystems to debug post-hoc.
 | 9 | No userspace coreutils / POSIX utilities | Medium | Open |
 | 10 | No io_uring or zero-copy networking | High | Resolved |
 | 11 | No huge pages, THP, NUMA, or KSM | High | Open |
-| 12 | No workqueues, softirqs, or tasklets | High | Partial |
+| 12 | No workqueues, softirqs, or tasklets | High | Resolved |
 | 13 | No KASAN/KFENCE memory safety detection | High | Partially Resolved |
 | 14 | No lockdep or completion variables | Medium | Resolved |
 | 15 | No container runtime or OCI support | Medium | Open |

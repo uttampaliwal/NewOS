@@ -17,7 +17,7 @@
 *   **Security & Hardening**: POSIX Capabilities, PID/Mount/Network/User namespaces, Seccomp-BPF filters, Linux Security Module (LSM) hooks with DAC, IMA/EVM integrity measurement, stack canaries, ASLR & KASLR.
 *   **POSIX Services**: Full process table, `fork`/`exec`/`waitpid`, VFS mounts (tmpfs plus in-memory ext4 state), pipes, Unix domain sockets, POSIX message queues, POSIX shared memory, futex synchronization, epoll event-driven I/O multiplexing, `eventfd`/`timerfd`, file descriptor tables with `dup`/`dup2`, `lseek`, `open` with flags, and **io_uring** async I/O.
 *   **Scheduling & Resource Management**: EEVDF (Earliest Eligible Virtual Deadline First) scheduler with 40 nice levels, scheduler classes (SCHED_NORMAL/BATCH/FIFO/RR/IDLE), cgroups v2 (CPU quota, memory limits, OOM-kill, PID limits), SMP with per-CPU scheduling.
-*   **Concurrency Primitives**: SeqLock, RwLock, RCU (read-copy-update), work queues, softirq (8 vectors), completion variables, lockdep, per-CPU counters.
+*   **Concurrency Primitives**: SeqLock, RwLock, RCU (read-copy-update), work queues, softirq (8 vectors), completion variables, tasklets, lockdep, per-CPU counters.
 *   **Device Drivers**: ACPI (RSDP/XSDT/MCFG/DSDT/SSDT + AML interpreter), PCI/PCIe ECAM, VirtIO-Net, NVMe, XHCI USB keyboard, DRM/KMS graphics.
 
 ---

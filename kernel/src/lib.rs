@@ -90,6 +90,7 @@ pub mod sync;
 pub mod syscall;
 #[cfg(feature = "arch-x86_64")]
 pub mod task;
+pub mod tasklet;
 #[cfg(feature = "arch-x86_64")]
 pub mod time;
 #[cfg(feature = "arch-x86_64")]

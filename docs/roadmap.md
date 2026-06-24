@@ -217,6 +217,7 @@ assessment.
 * [x] **RwLock**: Multiple-reader / single-writer lock with try_read/try_write
 * [x] **Completion Variables**: Wait/signal for one-shot events
 * [x] **Lockdep**: Runtime deadlock detection and lock ordering validation
+* [x] **Tasklets**: Deferred callback queue on the softirq tasklet vector
 * [ ] **Priority Inheritance Futexes**: `FUTEX_LOCK_PI`/`FUTEX_UNLOCK_PI` for priority inversion avoidance
 
 ---
