@@ -12,6 +12,16 @@ pub fn handle_dmesg(args: SyscallArgs) -> SyscallResult {
     let mut written = 0;
     let mut output = alloc::vec::Vec::new();
 
+    if crate::memory::kasan::is_enabled() {
+        let s = crate::memory::kasan::stats();
+        let line = alloc::format!(
+            "[KASAN] allocs={} frees={} errors={}\n",
+            s.allocs, s.frees, s.errors
+        );
+        output.extend_from_slice(line.as_bytes());
+        written += line.len();
+    }
+
     while let Some(entry) = crate::log_ring::kernel_log_read() {
         let msg = entry.message();
         let line = alloc::format!("[{}] {}\n", entry.level, msg);

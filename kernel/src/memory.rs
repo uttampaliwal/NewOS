@@ -9,6 +9,7 @@ pub mod allocator;
 pub mod aslr;
 pub mod demand;
 pub mod heap;
+pub mod kasan;
 pub mod oom;
 pub mod page_cache;
 pub mod paging;
