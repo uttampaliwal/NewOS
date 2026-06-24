@@ -926,6 +926,12 @@ mod tests {
             frame.user_rip, original_rip,
             "masked signal must not be delivered"
         );
+        let inner = env.process.inner.lock();
+        assert!(
+            inner.pending_signals.contains(3),
+            "masked signal must remain pending"
+        );
+        drop(inner);
         cleanup(env);
     }
 
