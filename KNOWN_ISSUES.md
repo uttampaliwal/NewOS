@@ -315,25 +315,31 @@ and lifecycle.
 
 ---
 
-## 16. Undocumented Unsafe Blocks (352 instances)
+## 16. Undocumented Unsafe Blocks (~325 remaining)
 
 | | |
 |---|---|
 | **Severity** | Medium |
 | **Component** | `kernel/src/` (all subsystems) |
-| **Status** | Open |
+| **Status** | Partially Resolved |
 
-**Impact:** 352 unsafe blocks/fns in production code lack `// Safety:`
-comments. For a Rust-first OS, this is the largest gap between stated
-values and actual code. No clippy lint enforces documentation, so the
-debt grows with each new subsystem.
+**Resolution:** Backfilling safety comments incrementally. Current counts:
+403 total `unsafe` blocks in `kernel/src/`; 78 documented with `// Safety:`
+comments (19.4%); 325 still undocumented (80.6%). The lint is currently
+`#![allow(clippy::undocumented_unsafe_blocks)]` in `kernel/src/lib.rs`
+with a TODO to switch to `#![warn(...)]` once backfill is complete.
+
+**Impact:** 325 unsafe blocks in production code lack `// Safety:` comments.
+For a Rust-first OS, this is the largest gap between stated values and
+actual code. No CI check enforces documentation, so the debt grows with
+each new subsystem.
 
 **Proposed Fix:**
-- Enable `#![warn(clippy::undocumented_unsafe_blocks)]` in `kernel/src/lib.rs`
 - Backfill safety comments incrementally by subsystem, starting with:
-  - `memory/paging.rs` and `memory/aslr.rs` (highest risk)
-  - `arch/x86_64/interrupts/` (hardware interaction)
-  - `drv/` (device drivers)
+  - `acpi.rs` (39 undocumented), `fs/ext2/mod.rs` (29),
+    `drivers/virtio_net.rs` (23), `syscall/handler/process.rs` (21)
+  - `memory/swap.rs` (18), `drivers/nvme.rs` (18)
+- Enable `#![warn(clippy::undocumented_unsafe_blocks)]` in `kernel/src/lib.rs`
 - Add CI check: deny undocumented unsafe after backfill is complete
 
 **Tracking:** Tracked in `kernel/src/lib.rs` TODO comment
@@ -346,20 +352,22 @@ debt grows with each new subsystem.
 |---|---|
 | **Severity** | Medium |
 | **Component** | `kernel/src/task/`, `kernel/src/net/` |
-| **Status** | Open |
+| **Status** | Improved |
 
-**Impact:** Scheduler (`task/scheduler.rs`), signal delivery
-(`task/signals.rs`), and networking (`net/socket.rs`,
-`net/smoltcp_iface.rs`) carry real complexity (SMP scheduling, signal
-state machines, socket state transitions) but have the fewest tests.
-These are the hardest subsystems to debug post-hoc.
+**Resolution:** Overall test count grew to 792 tests across 66 files
+(including 16 proptest blocks). Signal delivery is well covered (27 tests
++ 2 proptest blocks). However, specific weak areas remain:
+
+**Remaining:** Scheduler (`task/scheduler.rs`) has 13 tests, all single-CPU
+queries — zero SMP load balancing, CFS vruntime fairness, or cgroup
+enforcement tests. Networking (`net/socket.rs`) has 8 tests, all
+SocketTable bookkeeping — zero syscall or state machine tests
+(bind/listen/connect/accept/recv/send). `net/smoltcp_iface.rs` has 7
+tests for basic lifecycle only — no data path or connection tests.
 
 **Proposed Fix:**
 - Scheduler: tests for SMP load balancing, CFS vruntime fairness,
   scheduler class switching, cgroup enforcement under contention
-- Signals: tests for signal delivery during sleep/wake, blocked signal
-  queuing, signal handler stack frame construction, SIGKILL/SIGSTOP
-  immutability
 - Networking: socket state machine tests (LISTEN→ESTABLISHED→CLOSE),
   TCP retransmission, concurrent accept()
 
@@ -386,5 +394,5 @@ These are the hardest subsystems to debug post-hoc.
 | 13 | No KASAN/KFENCE memory safety detection | High | Partially Resolved |
 | 14 | No lockdep or completion variables | Medium | Resolved |
 | 15 | No container runtime or OCI support | Medium | Open |
-| 16 | Undocumented unsafe blocks (~352, ~60 done) | Medium | Partial |
+| 16 | Undocumented unsafe blocks (~325 remaining) | Medium | Partially Resolved |
 | 17 | Uneven test coverage | Medium | Improved |

@@ -209,7 +209,7 @@ assessment.
 
 ### 12d. Deferred Execution
 * [x] **Softirqs**: 8-vector bitmask-based deferred processing (Timer, NetTx, NetRx, Block, Tasklet, Scheduler, Security, Unused)
-* [ ] **Tasklets**: Softirq wrappers for simpler deferred work
+* [x] **Tasklets**: Deferred callback queue on the softirq tasklet vector
 * [ ] **Timer Wheel**: High-resolution kernel timers
 
 ### 12e. Locking Primitives
@@ -440,14 +440,14 @@ assessment.
 
 See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations:
 * ext4 writes are in-memory only (no block allocator, no journal, no disk flush)
-* No io_uring or zero-copy networking
+* Zero-copy networking (io_uring implemented, zero-copy is future work)
 * No ftrace/kprobes/perf observability
 * No crash dump / reliability engineering
 * No huge pages, NUMA, or memory compression
 * No seccomp notify, Landlock, or verified boot
 * No container runtime or OCI support
-* No kernel crypto API
-* No device driver PM / hotplug framework
+* Kernel crypto API partially resolved (SHA-256/HMAC-SHA256 only; no encryption/KDF/CSPRNG)
+* No device driver PM orchestration / hotplug framework
 
 See [SOTA Gap Analysis](sota-gap-analysis.md) for the full state-of-the-art
 assessment and gap details.

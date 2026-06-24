@@ -80,8 +80,9 @@ a strong emphasis on safety and modern design. Phases 1-8, 10, 12, and 13 are co
 - **Package Management:** SAT-based dependency solver, TUF repositories, rollback pipeline
 - **System Services:** IPC broker, structured logging, service unit manager
 - **Desktop Environment:** Wayland-like compositor, input routing, session management
-- **Scalability & Concurrency:** RCU (read-copy-update), SeqLock, RwLock, work queues, softirq (8 vectors), per-CPU counters
-- **Advanced I/O:** eventfd (Syscalls 79-81), timerfd (Syscalls 82-84), VFS read/write integration
+- **Scalability & Concurrency:** RCU (read-copy-update), SeqLock, RwLock, work queues, softirq (8 vectors), per-CPU counters, tasklets, lockdep, completion variables
+- **Advanced I/O:** io_uring (12 operations, 9 tests), eventfd (Syscalls 79-81), timerfd (Syscalls 82-84), VFS read/write integration
+- **Memory Safety:** KASAN (full shadow memory implementation), KFENCE (sampling prototype in fixed-size heap)
 
 ### Key Strengths
 
@@ -441,10 +442,10 @@ a strong emphasis on safety and modern design. Phases 1-8, 10, 12, and 13 are co
 |---|---|---|---|
 | 9 | Networking Depth | networking gaps | Critical |
 | 11 | Memory & Storage | filesystem gaps | High |
-| 12 | Scalability & Concurrency | ~~RCU, per-CPU, workqueues, softirqs~~ ✅ Done | ~~Critical~~ Done |
-| 13 | Async I/O & Zero-Copy | io_uring, zero-copy, eventfd | Critical |
+| 12 | Scalability & Concurrency | ~~RCU, per-CPU, workqueues, softirqs, tasklets, lockdep, completion~~ ✅ Done | ~~Critical~~ Done |
+| 13 | Async I/O & Zero-Copy | io_uring ✅ Done, zero-copy future work | Critical |
 | 14 | Observability & Tracing | ftrace, kprobes, perf | Critical |
-| 15 | Reliability Engineering | crash dumps, watchdogs, KASAN | Critical |
+| 15 | Reliability Engineering | crash dumps, watchdogs | Critical |
 | 16 | Advanced Memory | huge pages, NUMA, KSM, compression | High |
 | 17 | Security Hardening | CFI, KPTI, verified boot, Landlock | High |
 | 18 | Containers | OCI, OverlayFS, checkpoint/restore | High |
@@ -458,10 +459,10 @@ a strong emphasis on safety and modern design. Phases 1-8, 10, 12, and 13 are co
 
 The highest-return investments for the next development cycle:
 
-1. ~~RCU + Scalability Primitives~~ — **Done** (Phase 12: RCU, RwLock, SeqLock, per-CPU, softirq, workqueues)
-2. **io_uring + Zero-Copy** — highest-impact async I/O improvement
+1. ~~RCU + Scalability Primitives~~ — **Done** (Phase 12: RCU, RwLock, SeqLock, per-CPU, softirq, workqueues, tasklets, lockdep, completion)
+2. ~~io_uring~~ — **Done** (Phase 13: 12 operations, 9 tests, eventfd integration; zero-copy is future work)
 3. **ftrace/kprobes/perf** — essential for debugging and performance tuning
-4. **Reliability Engineering** — crash dumps, watchdogs, KASAN for production use
+4. **Reliability Engineering** — crash dumps, watchdogs (KASAN/KFENCE partially done)
 5. **Advanced Memory (Huge Pages, NUMA)** — critical for large-memory workloads
 
 ---
