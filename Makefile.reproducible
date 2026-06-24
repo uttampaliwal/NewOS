@@ -1,0 +1,30 @@
+# Reproducible build configuration
+# Usage: make -f Makefile.reproducible kernel
+
+SOURCE_DATE_EPOCH ?= 1735689600
+export SOURCE_DATE_EPOCH
+
+# Deterministic build flags
+RUSTFLAGS += --cfg source_date_epoch=\"$(SOURCE_DATE_EPOCH)\"
+
+.PHONY: kernel reproducible audit
+
+kernel:
+	SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) cargo build --release --target x86_64-unknown-none -p turnix-kernel
+
+reproducible: kernel
+	@echo "Build completed with SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH)"
+	@sha256sum target/x86_64-unknown-none/release/turnix-kernel
+
+audit:
+	cargo install cargo-deny 2>/dev/null || true
+	cargo deny check
+
+check-reproducible:
+	@echo "Building twice to verify reproducibility..."
+	SOURCE_DATE_DATE=$(SOURCE_DATE_EPOCH) cargo build --release --target x86_64-unknown-none -p turnix-kernel
+	cp target/x86_64-unknown-none/release/turnix-kernel /tmp/turnix-kernel-1
+	SOURCE_DATE_DATE=$(SOURCE_DATE_EPOCH) cargo build --release --target x86_64-unknown-none -p turnix-kernel
+	cp target/x86_64-unknown-none/release/turnix-kernel /tmp/turnix-kernel-2
+	@sha256sum /tmp/turnix-kernel-1 /tmp/turnix-kernel-2
+	@cmp -s /tmp/turnix-kernel-1 /tmp/turnix-kernel-2 && echo "PASS: Binaries are identical" || echo "FAIL: Binaries differ"

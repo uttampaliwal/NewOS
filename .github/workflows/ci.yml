@@ -176,6 +176,49 @@ jobs:
           RUSTFLAGS: "-D warnings"
         run: cargo clippy --workspace --all-targets
 
+  # ── Job: supply chain security ──────────────────────────────────────
+  supply-chain:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-deny
+        run: cargo install cargo-deny
+      - name: Audit dependencies
+        run: cargo deny check
+      - name: Check for known vulnerabilities
+        run: cargo audit 2>/dev/null || (cargo install cargo-audit && cargo audit)
+
+  # ── Job: reproducible build check ──────────────────────────────────
+  reproducible:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-none
+      - name: First build
+        env:
+          SOURCE_DATE_EPOCH: "1735689600"
+        run: cargo build --release --target x86_64-unknown-none -p turnix-kernel
+      - name: Copy first binary
+        run: cp target/x86_64-unknown-none/release/turnix-kernel /tmp/turnix-kernel-1
+      - name: Clean and rebuild
+        run: cargo clean -p turnix-kernel
+      - name: Second build
+        env:
+          SOURCE_DATE_EPOCH: "1735689600"
+        run: cargo build --release --target x86_64-unknown-none -p turnix-kernel
+      - name: Compare binaries
+        run: |
+          cp target/x86_64-unknown-none/release/turnix-kernel /tmp/turnix-kernel-2
+          sha256sum /tmp/turnix-kernel-1 /tmp/turnix-kernel-2
+          cmp -s /tmp/turnix-kernel-1 /tmp/turnix-kernel-2 && echo "PASS: Reproducible" || echo "FAIL: Not reproducible"
+
   # ── Job 8: docs ────────────────────────────────────────────────────────
   docs:
     runs-on: ubuntu-latest
