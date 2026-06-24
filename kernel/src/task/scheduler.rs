@@ -1,6 +1,6 @@
 use super::{Task, TaskId};
 use crate::process::{Process, ProcessId};
-use alloc::collections::VecDeque;
+use alloc::collections::BTreeMap;
 use core::sync::atomic::{AtomicU64, Ordering};
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -12,11 +12,12 @@ lazy_static! {
 }
 
 struct Scheduler {
-    cpu_queues: alloc::vec::Vec<VecDeque<Task>>,
+    cpu_queues: alloc::vec::Vec<BTreeMap<u64, Task>>,
     cpu_current: alloc::vec::Vec<Option<Task>>,
     cpu_current_id: alloc::vec::Vec<Option<TaskId>>,
     blocked_tasks: alloc::vec::Vec<Task>,
     task_count: usize,
+    min_vruntime: u64,
 }
 
 impl Scheduler {
@@ -26,7 +27,7 @@ impl Scheduler {
         let mut cpu_current = alloc::vec::Vec::with_capacity(cpu_count);
         let mut cpu_current_id = alloc::vec::Vec::with_capacity(cpu_count);
         for _ in 0..cpu_count {
-            cpu_queues.push(VecDeque::new());
+            cpu_queues.push(BTreeMap::new());
             cpu_current.push(None);
             cpu_current_id.push(None);
         }
@@ -36,6 +37,7 @@ impl Scheduler {
             cpu_current_id,
             blocked_tasks: alloc::vec![],
             task_count: 0,
+            min_vruntime: 0,
         }
     }
 
@@ -68,10 +70,37 @@ impl Scheduler {
             }
         }
         if max_len > 1 {
-            self.cpu_queues[max_cpu].pop_back()
+            self.cpu_queues[max_cpu].pop_last().map(|(_, t)| t)
         } else {
             None
         }
+    }
+}
+
+/// Compute the EEVDF virtual deadline for a task.
+/// deadline = vruntime + (time_slice_ticks * 1024 / weight)
+fn compute_deadline(vruntime: u64, time_slice: u32, weight: u32) -> u64 {
+    if weight == 0 {
+        return vruntime;
+    }
+    let slice_virtual = (time_slice as u64 * 1024) / weight as u64;
+    vruntime.saturating_add(slice_virtual)
+}
+
+/// Pick the next task to run using EEVDF logic.
+/// Returns the task with the earliest deadline among eligible tasks.
+fn pick_eevdf(queue: &BTreeMap<u64, Task>) -> Option<&Task> {
+    queue.values().find(|t| t.eligible)
+}
+
+/// Update a task's vruntime after running for one tick.
+/// vruntime increment = (1024 * delta) / weight, where delta is ticks.
+fn update_vruntime(task: &mut Task, ticks: u32) {
+    if task.weight > 0 {
+        let delta = (1024u64 * ticks as u64) / task.weight as u64;
+        task.vruntime = task.vruntime.saturating_add(delta.max(1));
+    } else {
+        task.vruntime = task.vruntime.saturating_add(1);
     }
 }
 
@@ -79,9 +108,12 @@ pub fn add_task(task: Task) {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut sched = SCHEDULER.lock();
         let target = sched.least_loaded_cpu();
-        let queue = &mut sched.cpu_queues[target];
-        let pos = queue.iter().position(|t| t.priority > task.priority).unwrap_or(queue.len());
-        queue.insert(pos, task);
+        let mut task = task;
+        let min_vr = sched.min_vruntime;
+        let deadline = compute_deadline(task.vruntime, task.time_slice, task.weight);
+        task.deadline = deadline;
+        task.eligible = task.vruntime <= min_vr;
+        sched.cpu_queues[target].insert(deadline, task);
         sched.task_count += 1;
     });
 }
@@ -99,9 +131,12 @@ pub fn remove_task(task_id: TaskId) {
             return;
         }
         for queue in &mut sched.cpu_queues {
-            let len_before = queue.len();
-            queue.retain(|t| t.id != task_id);
-            if queue.len() < len_before {
+            let deadline_to_remove = queue
+                .iter()
+                .find(|(_, t)| t.id == task_id)
+                .map(|(d, _)| *d);
+            if let Some(d) = deadline_to_remove {
+                queue.remove(&d);
                 sched.task_count -= 1;
                 return;
             }
@@ -121,7 +156,7 @@ pub fn start_scheduling() -> ! {
 
         let mut sched = SCHEDULER.lock();
         let cpu = sched.current_cpu_id();
-        if let Some(mut next_task) = sched.cpu_queues[cpu].pop_front() {
+        if let Some((_, mut next_task)) = sched.cpu_queues[cpu].pop_first() {
             next_task.switch_to();
             next_task.state = super::TaskState::Running;
             sched.cpu_current[cpu] = Some(next_task);
@@ -182,13 +217,22 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
             let was_running = prev_task.state == super::TaskState::Running;
             let is_zombie = prev_task.state == super::TaskState::Zombie;
 
-            // CFS vruntime: increment for NORMAL/BATCH tasks by (1024 / nice_weight).
-            // Nice 0 weight = 1024, so vruntime += 1 per tick.
+            // EEVDF: update vruntime with weighted fair queuing
             if was_running {
                 match prev_task.policy {
                     super::scheduler_class::SchedulingPolicy::SCHED_NORMAL
                     | super::scheduler_class::SchedulingPolicy::SCHED_BATCH => {
-                        prev_task.vruntime = prev_task.vruntime.saturating_add(1);
+                        update_vruntime(&mut prev_task, 1);
+                        // Update min_vruntime
+                        if prev_task.vruntime > sched.min_vruntime {
+                            sched.min_vruntime = prev_task.vruntime;
+                        }
+                        // Recompute deadline after vruntime update
+                        prev_task.deadline = compute_deadline(
+                            prev_task.vruntime,
+                            prev_task.time_slice,
+                            prev_task.weight,
+                        );
                     }
                     _ => {}
                 }
@@ -211,37 +255,40 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 should_preempt = false;
             }
 
-            // CFS: for SCHED_NORMAL, preempt if any queued task has lower vruntime.
+            // EEVDF: preempt if running task's deadline exceeds the earliest eligible deadline
             if was_running
                 && matches!(
                     prev_task.policy,
                     super::scheduler_class::SchedulingPolicy::SCHED_NORMAL
                         | super::scheduler_class::SchedulingPolicy::SCHED_BATCH
                 )
-                && let Some(min_vr) = sched.cpu_queues[cpu]
-                    .iter()
-                    .map(|t| t.vruntime)
-                    .min()
-                && min_vr < prev_task.vruntime
+                && let Some(next) = pick_eevdf(&sched.cpu_queues[cpu])
+                && prev_task.deadline > next.deadline
             {
                 should_preempt = true;
             }
 
             // Try local queue first, then steal from busiest CPU.
-            let mut next_task = sched.cpu_queues[cpu].pop_front();
+            let mut next_task = sched.cpu_queues[cpu].pop_first().map(|(_, t)| t);
             if next_task.is_none() {
                 next_task = sched.steal_task();
             }
 
             if let Some(mut next_task) = next_task {
-                if was_running && (should_preempt || next_task.priority < prev_task.priority) {
+                if was_running && should_preempt {
                     prev_task.state = super::TaskState::Ready;
                     prev_task.time_slice = super::scheduler_class::default_timeslice(prev_task.policy);
-                    let queue = &mut sched.cpu_queues[cpu];
-                    let pos = queue.iter().position(|t| t.priority > prev_task.priority).unwrap_or(queue.len());
-                    queue.insert(pos, prev_task);
+                    let min_vr = sched.min_vruntime;
+                    let deadline = compute_deadline(prev_task.vruntime, prev_task.time_slice, prev_task.weight);
+                    prev_task.deadline = deadline;
+                    prev_task.eligible = prev_task.vruntime <= min_vr;
+                    sched.cpu_queues[cpu].insert(deadline, prev_task);
                 } else if was_running {
-                    sched.cpu_queues[cpu].push_back(next_task);
+                    let min_vr = sched.min_vruntime;
+                    let deadline = compute_deadline(next_task.vruntime, next_task.time_slice, next_task.weight);
+                    next_task.deadline = deadline;
+                    next_task.eligible = next_task.vruntime <= min_vr;
+                    sched.cpu_queues[cpu].insert(deadline, next_task);
                     next_task = prev_task;
                 }
 
@@ -364,9 +411,11 @@ pub fn wake_task_by_id(task_id: TaskId) {
                 sched.task_count += 1;
                 // Route to least-loaded CPU.
                 let target = sched.least_loaded_cpu();
-                let queue = &mut sched.cpu_queues[target];
-                let pos = queue.iter().position(|t| t.priority > task.priority).unwrap_or(queue.len());
-                queue.insert(pos, task);
+                let min_vr = sched.min_vruntime;
+                let deadline = compute_deadline(task.vruntime, task.time_slice, task.weight);
+                task.deadline = deadline;
+                task.eligible = task.vruntime <= min_vr;
+                sched.cpu_queues[target].insert(deadline, task);
                 return;
             }
         }
@@ -396,9 +445,11 @@ pub fn wake_tasks_waiting_for_parent(parent_pid: ProcessId) {
                 task.state = super::TaskState::Ready;
                 sched.task_count += 1;
                 let target = sched.least_loaded_cpu();
-                let queue = &mut sched.cpu_queues[target];
-                let pos = queue.iter().position(|t| t.priority > task.priority).unwrap_or(queue.len());
-                queue.insert(pos, task);
+                let min_vr = sched.min_vruntime;
+                let deadline = compute_deadline(task.vruntime, task.time_slice, task.weight);
+                task.deadline = deadline;
+                task.eligible = task.vruntime <= min_vr;
+                sched.cpu_queues[target].insert(deadline, task);
             } else {
                 i += 1;
             }
@@ -425,6 +476,7 @@ pub fn test_reset() {
         queue.clear();
     }
     sched.task_count = 0;
+    sched.min_vruntime = 0;
 }
 
 // ---------------------------------------------------------------------------

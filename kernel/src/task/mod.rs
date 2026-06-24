@@ -58,6 +58,10 @@ pub struct Task {
     pub priority: u8,
     pub time_slice: u32,
     pub vruntime: u64,
+    pub eligible: bool,
+    pub deadline: u64,
+    pub lag: i64,
+    pub weight: u32,
 }
 
 impl Task {
@@ -73,6 +77,10 @@ impl Task {
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
             vruntime: 0,
+            eligible: true,
+            deadline: 0,
+            lag: 0,
+            weight: 1024,
         }
     }
 }
@@ -198,6 +206,10 @@ impl Task {
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
             vruntime: 0,
+            eligible: true,
+            deadline: 0,
+            lag: 0,
+            weight: 1024,
         };
         process.add_thread(id);
         task
@@ -310,6 +322,10 @@ impl Task {
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
             vruntime: 0,
+            eligible: true,
+            deadline: 0,
+            lag: 0,
+            weight: 1024,
         }
     }
 
@@ -482,6 +498,10 @@ impl Task {
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
             vruntime: 0,
+            eligible: true,
+            deadline: 0,
+            lag: 0,
+            weight: 1024,
         }
     }
 
@@ -595,6 +615,10 @@ impl Task {
             priority: scheduler_class::base_priority(scheduler_class::SchedulingPolicy::SCHED_NORMAL),
             time_slice: scheduler_class::DEFAULT_TIMESLICE,
             vruntime: 0,
+            eligible: true,
+            deadline: 0,
+            lag: 0,
+            weight: 1024,
         }
     }
 

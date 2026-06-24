@@ -44,3 +44,28 @@ pub fn default_timeslice(policy: SchedulingPolicy) -> u32 {
         SchedulingPolicy::SCHED_IDLE => 1,
     }
 }
+
+/// Linux nice-to-weight mapping (nice -20..+19).
+/// Weight determines the proportional share of CPU time.
+/// Higher weight = more CPU time.
+pub const NICE_WEIGHTS: [u32; 40] = [
+    88761, 71755, 56483, 46273, 36291,    // nice -20..-16
+    29154, 23254, 18705, 14949, 11916,    // nice -15..-11
+     9548,  7620,  6100,  4904,  3906,    // nice -10..-6
+     3121,  2501,  1991,  1586,  1277,    // nice  -5..-1
+     1024,   820,   655,   526,   423,    // nice   0..+4
+      335,   272,   215,   172,   137,    // nice  +5..+9
+      110,    87,    70,    56,    45,    // nice +10..+14
+       36,    29,    23,    18,    15,    // nice +15..+19
+];
+
+/// Convert a nice value (-20..+19) to a scheduling weight.
+pub fn nice_to_weight(nice: i32) -> u32 {
+    let idx = (nice + 20) as usize;
+    if idx < 40 { NICE_WEIGHTS[idx] } else { 1024 }
+}
+
+/// Convert a nice value to a base priority (lower = higher prio).
+pub fn nice_to_priority(nice: i32) -> u8 {
+    (120 + nice).clamp(100, 139) as u8
+}
