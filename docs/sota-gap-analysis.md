@@ -54,7 +54,7 @@ a strong emphasis on safety and modern design. Phases 1-8, 10, 12, and 13 are co
 | ----------------------- | ------------------------ | ----- |
 | Architecture            | Mature hybrid kernel     | 9/10  |
 | Memory Management       | Good + slab, demand paging, swap | 7.5/10 |
-| Scheduling              | CFS + classes + cgroups  | 7.5/10 |
+| Scheduling              | EEVDF + classes + cgroups  | 9/10 |
 | IPC                     | Pipes, sockets, epoll, futex, mqueue, shm | 8.5/10 |
 | Security                | Capabilities, namespaces, seccomp-BPF, LSM, IMA/EVM | 6.5/10 |
 | Networking              | Basic TCP/IP via smoltcp | 5/10  |
@@ -73,7 +73,7 @@ a strong emphasis on safety and modern design. Phases 1-8, 10, 12, and 13 are co
 - **Memory Subsystem:** VMAs, demand paging, mmap/munmap, LRU page cache, swap, ASLR/KASLR, slab allocator
 - **POSIX Services:** Process table, fork/exec/waitpid, VFS mounts (tmpfs/ext4), pipes, sockets, signals, init daemon
 - **IPC & Async I/O:** Epoll (I/O multiplexing), futex (userspace sync), POSIX message queues, POSIX shared memory, eventfd, timerfd
-- **Scheduling:** CFS vruntime scheduler, scheduler classes (NORMAL/BATCH/FIFO/RR/IDLE), per-CPU scheduling
+- **Scheduling:** EEVDF scheduler (40 nice levels, weight-scaled vruntime), scheduler classes (NORMAL/BATCH/FIFO/RR/IDLE), per-CPU scheduling
 - **Resource Isolation:** cgroups v2 with CPU, memory, and PIDs controllers
 - **SMP:** Application Processor bring-up via SIPI sequence
 - **Security Hardening:** POSIX capabilities, namespaces, seccomp-BPF, LSM hooks, IMA/EVM, stack canaries
@@ -115,12 +115,12 @@ a strong emphasis on safety and modern design. Phases 1-8, 10, 12, and 13 are co
 
 #### 1b. Scheduler Enhancements
 
-**Current:** CFS vruntime scheduler with scheduler classes (NORMAL/BATCH/FIFO/RR/IDLE), cgroups v2 integration.
+**Current:** EEVDF scheduler with 40 nice levels, weight-scaled vruntime, scheduler classes (NORMAL/BATCH/FIFO/RR/IDLE), cgroups v2 integration.
 
 **SOTA Requirements:**
 
 - ~~CFS-like scheduler: Virtual runtime tracking, red-black tree of runnable tasks~~ (vruntime per task, lowest-first selection)
-- **EEVDF (Earliest Eligible Virtual Deadline First):** Better fairness and responsiveness
+- ~~EEVDF (Earliest Eligible Virtual Deadline First):~~ Better fairness and responsiveness (BTreeMap deadline-ordered queues, eligibility check)
 - ~~Scheduler classes: RealTime (FIFO/RR), Fair (CFS), Idle, Batch~~ (SchedulingPolicy enum)
 - Priority inheritance for priority inversion avoidance
 - CPU affinity and scheduler domains

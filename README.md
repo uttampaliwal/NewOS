@@ -3,7 +3,7 @@
 ![CI](https://github.com/uttampaliwal/turnix/actions/workflows/ci.yml/badge.svg?branch=development)
 ![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Rust](https://img.shields.io/badge/rust-nightly-orange)
-![Tests](https://img.shields.io/badge/tests-1053%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1077%20passing-brightgreen)
 
 **A SOTA, Rust-first operating system built for learning, performance, and long-term daily usability.**
 
@@ -13,10 +13,10 @@
 
 ## Key Subsystems
 
-*   **Virtual Memory Management**: Higher-Half Direct Mapping (HHDM) paging, dynamic kernel/user heap layout, thread stack isolation, strict **W^X** memory enforcement, demand paging, `mmap`/`munmap`/`mmap2`/`mprotect` system calls, and slab allocator for kernel object caching.
+*   **Virtual Memory Management**: Higher-Half Direct Mapping (HHDM) paging, dynamic kernel/user heap layout, thread stack isolation, strict **W^X** memory enforcement, demand paging, `mmap`/`munmap`/`mmap2`/`mprotect` system calls, slab allocator for kernel object caching, and **KASAN** (Kernel Address Sanitizer) with shadow memory poisoning.
 *   **Security & Hardening**: POSIX Capabilities, PID/Mount/Network/User namespaces, Seccomp-BPF filters, Linux Security Module (LSM) hooks with DAC, IMA/EVM integrity measurement, stack canaries, ASLR & KASLR.
-*   **POSIX Services**: Full process table, `fork`/`exec`/`waitpid`, VFS mounts (tmpfs + ext4 read-write), pipes, Unix domain sockets, POSIX message queues, POSIX shared memory, futex synchronization, epoll event-driven I/O multiplexing, `eventfd`/`timerfd`, and file descriptor tables with `dup`/`dup2`.
-*   **Scheduling & Resource Management**: CFS vruntime scheduler, scheduler classes (SCHED_NORMAL/BATCH/FIFO/RR/IDLE), cgroups v2 (CPU quota, memory limits, OOM-kill, PID limits), SMP with per-CPU scheduling.
+*   **POSIX Services**: Full process table, `fork`/`exec`/`waitpid`, VFS mounts (tmpfs + ext4 read-write), pipes, Unix domain sockets, POSIX message queues, POSIX shared memory, futex synchronization, epoll event-driven I/O multiplexing, `eventfd`/`timerfd`, file descriptor tables with `dup`/`dup2`, `lseek`, `open` with flags, and **io_uring** async I/O.
+*   **Scheduling & Resource Management**: EEVDF (Earliest Eligible Virtual Deadline First) scheduler with 40 nice levels, scheduler classes (SCHED_NORMAL/BATCH/FIFO/RR/IDLE), cgroups v2 (CPU quota, memory limits, OOM-kill, PID limits), SMP with per-CPU scheduling.
 *   **Concurrency Primitives**: SeqLock, RwLock, RCU (read-copy-update), work queues, softirq (8 vectors), per-CPU counters.
 *   **Device Drivers**: ACPI (RSDP/XSDT/MCFG/DSDT/SSDT + AML interpreter), PCI/PCIe ECAM, VirtIO-Net, NVMe, XHCI USB keyboard, DRM/KMS graphics.
 
@@ -51,7 +51,7 @@ graph TD
             Canary[Stack Canaries]
         end
         subgraph Scheduling [Scheduling & Resources]
-            CFS[CFS vruntime Scheduler]
+            EEVDF[EEVDF Scheduler]
             Cgroups[cgroups v2 controllers]
         end
         subgraph Subsystems [Core Kernel Subsystems]
@@ -82,7 +82,7 @@ graph TD
     Handler --> LsmStack
     LsmStack --> VFS
     LsmStack --> Caps
-    CFS --> Memory
+    EEVDF --> Memory
     VFS --> Cache
     Cache --> Slab
     Cache --> Nvme
@@ -101,10 +101,10 @@ graph TD
 | **5** | **Package Management** | SAT CDCL dependency solver, TUF repositories, package staging, rollback | Done |
 | **6** | **System Services** | IPC Broker, structured logging (HMAC-SHA256), service unit manager | Done |
 | **7** | **Desktop Environment** | Window compositor, input routing, desktop session management | Done |
-| **8** | **SMP & Scheduler** | CFS vruntime, scheduler classes, cgroups v2, SMP AP bring-up, slab allocator | Done |
+| **8** | **SMP & Scheduler** | EEVDF scheduler, scheduler classes, cgroups v2, SMP AP bring-up, slab allocator | Done |
 | **10** | **Async I/O** | epoll, futex, POSIX message queues, POSIX shared memory, eventfd, timerfd | Done |
 | **12** | **Scalability** | SeqLock, RwLock, RCU, work queues, softirq, per-CPU counters | Done |
-| **13** | **Advanced I/O** | eventfd, timerfd, VFS read/write, epoll integration | Done |
+| **13** | **Advanced I/O** | io_uring (3 syscalls, 12 ops), VFS read/write, networking send/recv | Done |
 
 See [docs/roadmap.md](docs/roadmap.md) for the full 22-phase roadmap. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for known limitations.
 
@@ -147,7 +147,7 @@ cargo xtask build-kernel          # freestanding kernel
 ## Testing
 
 ```bash
-cargo test --workspace            # all host + kernel tests (~1053)
+cargo test --workspace            # all host + kernel tests (~1077)
 cargo test -p turnix-kernel       # kernel-specific tests
 cargo clippy -- -D warnings       # lint (zero warnings)
 cargo fmt --check                 # format check

@@ -103,7 +103,7 @@ assessment.
 
 ### 8b. Scheduler
 * **Scheduler Class Framework**: Pluggable RealTime, Fair, Idle, Batch schedulers via `SchedulingPolicy` enum
-* **CFS Scheduler**: Virtual runtime (`vruntime`) tracking per task, preemptive lowest-vruntime-first scheduling
+* **EEVDF Scheduler**: Earliest Eligible Virtual Deadline First with 40 nice levels, weight-scaled vruntime, deadline-based preemption
 * **Real-Time Scheduler**: FIFO and RR policies with static priorities
 * **Scheduling Syscalls**: `SchedSetScheduler` (ID 72), `SchedGetScheduler` (ID 73)
 
@@ -226,12 +226,13 @@ assessment.
 **Goal:** High-performance async I/O with zero-copy data paths.
 
 ### 13a. io_uring
-* [ ] **Submission Queue**: Ring buffer for batched syscall submission
-* [ ] **Completion Queue**: Ring buffer for async results
+* [x] **Submission Queue**: Ring buffer for batched syscall submission
+* [x] **Completion Queue**: Ring buffer for async results
+* [x] **SQE/CQE structs**: 12 operations (NOP, Read, Write, Close, Openat, Fsync, Statx, Send, Recv, PollAdd, PollRemove, Timeout)
 * [ ] **Registered Buffers**: `IORING_REGISTER_BUFFERS` for pinned user memory
 * [ ] **Registered Files**: `IORING_REGISTER_FILES` for fd table caching
 * [ ] **Linked Operations**: Chain dependent operations
-* [ ] **Poll Integration**: `IORING_OP_POLL_ADD` for epoll-like efficiency
+* [x] **Poll Integration**: `IORING_OP_POLL_ADD` for epoll-like efficiency
 
 ### 13b. Zero-Copy Networking
 * [ ] **Sendfile**: Kernel-space file-to-socket transfer
@@ -290,9 +291,9 @@ assessment.
 * **Failure Testing Framework**: Deterministic fault injection for CI
 
 ### 15d. Memory Safety Detection
-* **KASAN (Kernel Address Sanitizer)**: Heap out-of-bounds, use-after-free detection
+* [x] **KASAN (Kernel Address Sanitizer)**: Heap out-of-bounds, use-after-free detection — shadow memory, poison/free poisoning, violation reporting
 * **KFENCE (Kernel Electric Fence)**: Low-overhead sampling-based memory error detector
-* **Stack Protector**: Canary-based stack overflow detection
+* **Stack Protector**: Canary-based stack overflow detection (stack canaries already in Phase 4)
 * **Memory Poisoning**: Detect uninitialized memory reads
 
 ---
