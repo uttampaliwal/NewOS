@@ -16,7 +16,7 @@
 | 7 | Wayland compositor, input routing, desktop session management | Complete |
 | 8 | SMP, CFS scheduler, scheduler classes, cgroups v2, slab allocator | Complete |
 | 10 | Epoll, futex, POSIX message queues, POSIX shared memory | Complete |
-| 12 | RCU, per-CPU counters, workqueues, softirqs, seqlocks, completion, lockdep | Complete |
+| 12 | RCU, per-CPU counters, workqueues, softirqs, tasklets, seqlocks, completion, lockdep | Complete |
 
 ## Planned Phases
 
@@ -24,10 +24,9 @@
 |-------|-------|-----------|
 | 9 | Networking Depth | IPv6, TCP congestion control, eBPF, nftables, TLS 1.3 |
 | 11 | Memory & Storage | Huge pages, THP, NUMA, ext4 journaling, CoW filesystem |
-| 12 | Scalability & Concurrency | RCU, per-CPU counters, workqueues, softirqs, seqlocks, completion, lockdep |
-| 13 | Async I/O & Zero-Copy | io_uring, zero-copy networking, eventfd, timerfd |
+| 13 | Async I/O & Zero-Copy | Zero-copy networking (io_uring already implemented) |
 | 14 | Observability & Tracing | ftrace, kprobes, uprobes, perf, flamegraphs |
-| 15 | Reliability Engineering | Crash dumps, watchdogs, KASAN, KFENCE prototype, fault injection |
+| 15 | Reliability Engineering | Crash dumps, watchdogs, fault injection (KASAN/KFENCE done) |
 | 16 | Advanced Memory | Huge pages, THP, NUMA, memory compression, KSM |
 | 17 | Security Hardening | CFI, KPTI, verified boot, Landlock, IOMMU |
 | 18 | Containers | OCI runtime, OverlayFS, checkpoint/restore, device cgroups |
@@ -48,6 +47,6 @@
 | Observability | 4/10 |
 | Reliability | 4/10 |
 | Tooling | 7/10 |
-| Scalability | 6/10 |
+| Scalability | 7.5/10 |
 
 **Overall: ~7/10** — Exceptional for a hobby OS, approaching research OS level.
