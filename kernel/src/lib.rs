@@ -1,8 +1,8 @@
 #![no_std]
 #![cfg_attr(feature = "arch-x86_64", feature(abi_x86_interrupt))]
 // TODO: Switch to #![warn(clippy::undocumented_unsafe_blocks)] once safety
-// comments are backfilled. ~60/352 blocks documented (paging, interrupts,
-// apic, wx). Remaining: boot.rs, process.rs, memory.rs, handlers, drivers.
+// comments are backfilled. ~197/403 blocks documented (paging, interrupts,
+// apic, wx, acpi, virtio_net, nvme, process, swap). Remaining: ~206 blocks.
 // Track: KNOWN_ISSUES.md #16
 #![allow(clippy::undocumented_unsafe_blocks)]
 
