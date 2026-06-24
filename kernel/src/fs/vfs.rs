@@ -432,6 +432,8 @@ pub enum FdKind {
     EventFd(Arc<crate::ipc::eventfd::EventFd>),
     /// A timerfd file descriptor.
     TimerFd(Arc<crate::ipc::timerfd::TimerFd>),
+    /// An io_uring instance.
+    IoUring(Arc<crate::ipc::io_uring::IoUringInstance>),
 }
 
 impl core::fmt::Debug for FdKind {
@@ -446,6 +448,7 @@ impl core::fmt::Debug for FdKind {
             FdKind::MessageQueue(_) => write!(f, "MessageQueue"),
             FdKind::EventFd(_) => write!(f, "EventFd"),
             FdKind::TimerFd(_) => write!(f, "TimerFd"),
+            FdKind::IoUring(_) => write!(f, "IoUring"),
         }
     }
 }
@@ -845,6 +848,10 @@ impl Vfs {
             // Shut down the socket connection.
             if let FdKind::UnixSocket(sock) = &fd.kind {
                 sock.shutdown();
+            }
+            // Clean up io_uring instance.
+            if let FdKind::IoUring(_) = &fd.kind {
+                crate::ipc::io_uring::remove_instance(fd_idx);
             }
 
             let name = fd.name.clone();

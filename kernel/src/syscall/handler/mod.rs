@@ -6,6 +6,7 @@ mod ipc;
 mod gpu;
 mod sched;
 mod misc;
+mod io_uring;
 #[cfg(test)]
 mod tests;
 
@@ -137,6 +138,9 @@ pub fn handle_syscall(syscall: Syscall, args: SyscallArgs) -> SyscallResult {
         Syscall::TimerFdCreate => ipc::handle_timerfd_create(args),
         Syscall::TimerFdSettime => ipc::handle_timerfd_settime(args),
         Syscall::TimerFdGettime => ipc::handle_timerfd_gettime(args),
+        Syscall::IoUringSetup => io_uring::handle_io_uring_setup(args),
+        Syscall::IoUringEnter => io_uring::handle_io_uring_enter(args),
+        Syscall::IoUringRegister => io_uring::handle_io_uring_register(args),
     }
 }
 

@@ -97,6 +97,9 @@ pub enum Syscall {
     TimerFdCreate = 82,
     TimerFdSettime = 83,
     TimerFdGettime = 84,
+    IoUringSetup = 85,
+    IoUringEnter = 86,
+    IoUringRegister = 87,
 }
 
 impl Syscall {
@@ -186,6 +189,9 @@ impl Syscall {
             82 => Some(Self::TimerFdCreate),
             83 => Some(Self::TimerFdSettime),
             84 => Some(Self::TimerFdGettime),
+            85 => Some(Self::IoUringSetup),
+            86 => Some(Self::IoUringEnter),
+            87 => Some(Self::IoUringRegister),
             _ => None,
         }
     }
