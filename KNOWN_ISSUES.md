@@ -114,11 +114,16 @@ injection for robustness testing. Production kernels require all three.
 |---|---|
 | **Severity** | Medium |
 | **Component** | `kernel/src/crypto/` (new) |
-| **Status** | Open |
+| **Status** | Partially Resolved |
 
-**Impact:** Cryptographic operations are scattered across IMA/EVM and
-package verification. No unified in-kernel crypto API for encrypting
-filesystems, network traffic, or key management.
+**Resolution:** Added `kernel/src/crypto.rs` as a public facade over the
+existing SHA-256 and HMAC-SHA256 implementations used by IMA/EVM. Kernel
+consumers now have a single crypto entry point for hashing and message
+authentication.
+
+**Remaining:** The API still lacks symmetric encryption, key derivation,
+and a real randomness interface for general consumers. TPM-backed key
+management remains tied to the security/IMA path.
 
 **Proposed Fix:**
 - AEAD ciphers: AES-256-GCM, ChaCha20-Poly1305
@@ -371,7 +376,7 @@ These are the hardest subsystems to debug post-hoc.
 | 3 | No performance tracing (ftrace, kprobes) | High | Open |
 | 4 | No memory compression (zswap/zram) | Medium | Open |
 | 5 | No crash dump / reliability engineering | High | Open |
-| 6 | No kernel crypto API | Medium | Open |
+| 6 | No kernel crypto API | Medium | Partially Resolved |
 | 7 | No device driver PM / hotplug framework | Medium | Open |
 | 8 | No hypervisor / virtualization support | Medium | Open |
 | 9 | No userspace coreutils / POSIX utilities | Medium | Open |

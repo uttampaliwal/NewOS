@@ -354,6 +354,7 @@ assessment.
 ### 17d. Hardware Security
 * **IOMMU**: DMA protection, device isolation for user-space drivers
 * **Kernel Crypto API**: AES-GCM, ChaCha20-Poly1305, SHA-256/SHA-3
+* **Kernel Crypto Facade**: SHA-256 and HMAC-SHA256 exposed through a public `kernel/src/crypto.rs` module; encryption and KDFs remain future work
 * **CET Shadow Stacks**: Hardware-backed control flow for user space
 
 ---
