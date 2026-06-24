@@ -100,6 +100,8 @@ pub enum Syscall {
     IoUringSetup = 85,
     IoUringEnter = 86,
     IoUringRegister = 87,
+    Send = 88,
+    Recv = 89,
 }
 
 impl Syscall {
@@ -192,6 +194,8 @@ impl Syscall {
             85 => Some(Self::IoUringSetup),
             86 => Some(Self::IoUringEnter),
             87 => Some(Self::IoUringRegister),
+            88 => Some(Self::Send),
+            89 => Some(Self::Recv),
             _ => None,
         }
     }

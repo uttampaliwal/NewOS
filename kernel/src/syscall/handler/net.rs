@@ -265,6 +265,12 @@ pub fn handle_net_set_addr(args: SyscallArgs) -> SyscallResult {
             addrs.clear();
             let _ = addrs.push(ip_cidr);
         });
+
+        // Add default route via gateway
+        if gateway != [0, 0, 0, 0] {
+            let gw = smoltcp::wire::Ipv4Address::from_bytes(&gateway);
+            let _ = stack.interface.routes_mut().add_default_ipv4_route(gw);
+        }
     }
 
     {
@@ -372,4 +378,47 @@ pub fn handle_shutdown(_args: SyscallArgs) -> SyscallResult {
 pub fn handle_read_shutdown_signal(_args: SyscallArgs) -> SyscallResult {
     let pending = crate::acpi::take_init_shutdown_signal();
     SyscallResult::Success(if pending { 1 } else { 0 })
+}
+
+/// send(fd, buf_ptr, buf_len, flags) -> bytes_sent
+pub fn handle_send(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let buf_ptr = args.arg1 as *const u8;
+    let buf_len = args.arg2 as usize;
+    let _flags = args.arg3 as i32;
+
+    if buf_ptr.is_null() || buf_len == 0 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let buf = unsafe { core::slice::from_raw_parts(buf_ptr, buf_len) };
+
+    match crate::net::socket::sys_send(fd, buf) {
+        Ok(n) => SyscallResult::Success(n as u64),
+        Err(e) => SyscallResult::Error(e),
+    }
+}
+
+/// recv(fd, buf_ptr, buf_len, flags) -> bytes_received
+pub fn handle_recv(args: SyscallArgs) -> SyscallResult {
+    let fd = args.arg0 as usize;
+    let buf_ptr = args.arg1 as *mut u8;
+    let buf_len = args.arg2 as usize;
+    let _flags = args.arg3 as i32;
+
+    if buf_ptr.is_null() || buf_len == 0 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let mut buf = alloc::vec![0u8; buf_len];
+
+    match crate::net::socket::sys_recv(fd, &mut buf) {
+        Ok(n) => {
+            unsafe {
+                core::ptr::copy_nonoverlapping(buf.as_ptr(), buf_ptr, n);
+            }
+            SyscallResult::Success(n as u64)
+        }
+        Err(e) => SyscallResult::Error(e),
+    }
 }

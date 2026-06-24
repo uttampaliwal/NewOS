@@ -268,6 +268,7 @@ pub fn sys_connect(fd: usize, addr: IpAddress, port: u16) -> Result<(), i64> {
 /// Accept a new TCP connection. Returns the new FD.
 pub fn sys_accept(fd: usize) -> Result<usize, i64> {
     let handle;
+    let local_port;
     {
         let table = SOCKET_TABLE.lock();
         let entry = table.get(fd).ok_or(EBADF)?;
@@ -278,14 +279,13 @@ pub fn sys_accept(fd: usize) -> Result<usize, i64> {
             return Err(EINVAL);
         }
         handle = entry.handle;
+        local_port = entry.local_port;
     }
+
+    let local_port = local_port.ok_or(EINVAL)?;
 
     let mut stack = NET_STACK.lock();
 
-    // Check if the listening socket has received a connection.
-    // In smoltcp, when a listening socket receives a SYN and the handshake completes,
-    // it transitions from Listen -> SynReceived -> Established.
-    // At that point, remote_endpoint() returns the peer address.
     let listener = stack.sockets.get_mut::<smoltcp::socket::tcp::Socket>(handle);
 
     if !listener.is_open() {
@@ -294,46 +294,57 @@ pub fn sys_accept(fd: usize) -> Result<usize, i64> {
 
     match listener.state() {
         smoltcp::socket::tcp::State::Listen => {
-            // No connection yet
             Err(EAGAIN)
         }
         smoltcp::socket::tcp::State::SynReceived | smoltcp::socket::tcp::State::Established => {
-            // Connection arrived on the listening socket.
-            // The listening socket IS the established connection now.
-            // Create a new socket to replace it as the listener.
-            let local_port = entry_local_port(fd).unwrap_or(0);
-            if local_port == 0 {
-                return Err(EINVAL);
+            // The listening socket has transitioned to an established connection.
+            // We need to:
+            // 1. Create a new listener socket to replace it on the original FD
+            // 2. Allocate a new FD for the accepted (now established) connection
+
+            let new_listener_handle = stack.add_tcp_socket();
+            {
+                let new_listener = stack.sockets.get_mut::<smoltcp::socket::tcp::Socket>(new_listener_handle);
+                let local = (smoltcp::wire::IpAddress::v4(0, 0, 0, 0), local_port);
+                if new_listener.listen(local).is_err() {
+                    stack.remove_socket(new_listener_handle);
+                    return Err(EINVAL);
+                }
             }
 
-            let new_handle = stack.add_tcp_socket();
-            let new_socket = stack.sockets.get_mut::<smoltcp::socket::tcp::Socket>(new_handle);
-            let local = (smoltcp::wire::IpAddress::v4(0, 0, 0, 0), local_port);
+            drop(stack);
 
-            // Put the new socket in LISTEN state to replace the accepted one
-            if new_socket.listen(local).is_err() {
-                // If we can't listen, just return the accepted FD anyway
-                stack.remove_socket(new_handle);
+            // Allocate a new FD for the accepted connection (old handle)
+            let new_fd = {
+                let mut table = SOCKET_TABLE.lock();
+                let accepted_entry = NetSocketEntry {
+                    handle,
+                    sock_type: NetSocketType::Tcp,
+                    domain: 2,
+                    local_port: Some(local_port),
+                    remote_endpoint: None,
+                    is_bound: true,
+                    is_listening: false,
+                    is_connected: true,
+                    backlog: 0,
+                };
+                table.insert(accepted_entry).ok_or(ENOMEM)?
+            };
+
+            // Update the original FD to use the new listener socket
+            {
+                let mut table = SOCKET_TABLE.lock();
+                if let Some(entry) = table.get_mut(fd) {
+                    entry.handle = new_listener_handle;
+                    entry.is_connected = false;
+                    entry.is_listening = true;
+                }
             }
 
-            // Update the table: the original FD now refers to an accepted socket
-            let mut table = SOCKET_TABLE.lock();
-            if let Some(entry) = table.get_mut(fd) {
-                entry.is_listening = false;
-                // Remove the accepted socket's handle from our table
-                // and assign it to a new FD
-                entry.is_connected = true;
-            }
-
-            Ok(fd)
+            Ok(new_fd)
         }
         _ => Err(EAGAIN),
     }
-}
-
-fn entry_local_port(fd: usize) -> Option<u16> {
-    let table = SOCKET_TABLE.lock();
-    table.get(fd).and_then(|e| e.local_port)
 }
 
 /// Read from a TCP socket into a buffer. Returns bytes read.
