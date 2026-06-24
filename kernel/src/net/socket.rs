@@ -534,4 +534,20 @@ mod tests {
         }
         drop(stack);
     }
+
+    #[test]
+    fn test_socket_table_alloc_fd_exhaustion_returns_none() {
+        let mut stack = NET_STACK.lock();
+        let handle = stack.add_tcp_socket();
+        let mut table = SocketTable::new();
+        table.next_fd = 4096;
+
+        assert!(table.alloc_fd().is_none());
+        assert!(
+            table
+                .insert(NetSocketEntry::new(handle, NetSocketType::Tcp, 2))
+                .is_none()
+        );
+        drop(stack);
+    }
 }
