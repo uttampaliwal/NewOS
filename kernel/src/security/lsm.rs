@@ -114,21 +114,57 @@ pub trait MacHook: LsmHook {
     }
 
     /// Transition labels on process creation (fork/exec).
+    ///
+    /// Applies type transition rules: if a rule exists for (parent_type, process_class),
+    /// the child gets the transition type. Otherwise, child inherits parent label.
     fn mac_transition(
         &self,
         parent: &SecurityLabel,
         _child: &SecurityLabel,
     ) -> Result<SecurityLabel, LsmError> {
+        let policy_guard = TE_POLICY.lock();
+        if let Some(policy) = policy_guard.as_ref() {
+            for rule in &policy.allow_rules {
+                if rule.source_type == parent.level
+                    && rule.target_class == "process_transition"
+                {
+                    return Ok(SecurityLabel::new(
+                        &parent.user,
+                        &parent.role,
+                        &alloc::format!("{}", rule.perm_mask),
+                    ));
+                }
+            }
+        }
         Ok(parent.clone())
     }
 
     /// Get the label for a new process.
+    ///
+    /// Fork inherits parent label; exec may transition via type transition rules.
     fn mac_create_process(&self, parent: &SecurityLabel) -> SecurityLabel {
         parent.clone()
     }
 
     /// Get the label for a new file.
+    ///
+    /// File inherits the creator's type by default. A type_transition rule
+    /// can override this to assign a different file type.
     fn mac_create_file(&self, creator: &SecurityLabel) -> SecurityLabel {
+        let policy_guard = TE_POLICY.lock();
+        if let Some(policy) = policy_guard.as_ref() {
+            for rule in &policy.allow_rules {
+                if rule.source_type == creator.level
+                    && rule.target_class == "file_transition"
+                {
+                    return SecurityLabel::new(
+                        &creator.user,
+                        &creator.role,
+                        &alloc::format!("{}", rule.perm_mask),
+                    );
+                }
+            }
+        }
         creator.clone()
     }
 }
@@ -154,16 +190,134 @@ impl MacHookImpl {
     }
 }
 
+/// Type Enforcement rule: `source_type` → `target_class` with permission mask.
+struct TeRule {
+    source_type: String,
+    target_class: String,
+    perm_mask: u32,
+}
+
+impl TeRule {
+    fn new(source_type: &str, target_class: &str, perm_mask: u32) -> Self {
+        Self {
+            source_type: String::from(source_type),
+            target_class: String::from(target_class),
+            perm_mask,
+        }
+    }
+}
+
+/// Type enforcement policy database.
+struct TePolicy {
+    /// Allow rules: (source_type, target_class, perm_mask).
+    allow_rules: Vec<TeRule>,
+}
+
+impl TePolicy {
+    fn new() -> Self {
+        let mut policy = Self {
+            allow_rules: Vec::new(),
+        };
+        // Base policy: unconfined_t can do everything
+        policy.allow_rules.push(TeRule::new("unconfined_t", "*", 0xFFFFFFFF));
+        // Kernel type can do everything
+        policy.allow_rules.push(TeRule::new("kernel_t", "*", 0xFFFFFFFF));
+        // User processes can read/write user-level files
+        policy.allow_rules.push(TeRule::new("user_t", "file", 0x3));
+        // User processes can create child processes
+        policy.allow_rules.push(TeRule::new("user_t", "process", 0x1));
+        // User processes can use IPC
+        policy.allow_rules.push(TeRule::new("user_t", "ipc", 0x3));
+        // System processes can manage other processes
+        policy.allow_rules.push(TeRule::new("system_t", "process", 0x7));
+        // System processes can access all files
+        policy.allow_rules.push(TeRule::new("system_t", "file", 0xFFFFFFFF));
+        policy
+    }
+
+    fn is_allowed(&self, source_type: &str, target_class: &str, perm: u32) -> bool {
+        for rule in &self.allow_rules {
+            if (rule.source_type == source_type || rule.source_type == "*")
+                && (rule.target_class == target_class || rule.target_class == "*")
+                && (rule.perm_mask & perm) == perm
+            {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+static TE_POLICY: Mutex<Option<TePolicy>> = Mutex::new(None);
+
 impl LsmHook for MacHookImpl {
     fn file_open(&self, _path: &str, _flags: u32, _uid: u32, _gid: u32) -> Result<(), LsmError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let proc = match crate::task::scheduler::get_current_process() {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+        let inner = proc.inner.lock();
+        let level = &inner.sec_ctx.label.level;
+        let policy_guard = TE_POLICY.lock();
+        if let Some(policy) = policy_guard.as_ref() {
+            let perm = if _flags & 1 != 0 { 0x2 } else { 0x1 };
+            if !policy.is_allowed(level, "file", perm) {
+                crate::serial::println!(
+                    "[LSM/TE] denied file_open: {} on {} flags={}",
+                    level, _path, _flags
+                );
+                return Err(LsmError::AccessDenied);
+            }
+        }
         Ok(())
     }
 
     fn process_create(&self, _parent_uid: u32, _parent_gid: u32) -> Result<(), LsmError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let proc = match crate::task::scheduler::get_current_process() {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+        let inner = proc.inner.lock();
+        let level = &inner.sec_ctx.label.level;
+        let policy_guard = TE_POLICY.lock();
+        if let Some(policy) = policy_guard.as_ref()
+            && !policy.is_allowed(level, "process", 0x1)
+        {
+            crate::serial::println!(
+                "[LSM/TE] denied process_create: {}",
+                level
+            );
+            return Err(LsmError::AccessDenied);
+        }
         Ok(())
     }
 
     fn capability_check(&self, _cap: u32, _uid: u32, _gid: u32) -> Result<(), LsmError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let proc = match crate::task::scheduler::get_current_process() {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+        let inner = proc.inner.lock();
+        let level = &inner.sec_ctx.label.level;
+        let policy_guard = TE_POLICY.lock();
+        if let Some(policy) = policy_guard.as_ref()
+            && !policy.is_allowed(level, "capability", 1 << _cap)
+        {
+            crate::serial::println!(
+                "[LSM/TE] denied capability {} for {}",
+                _cap, level
+            );
+            return Err(LsmError::AccessDenied);
+        }
         Ok(())
     }
 }
@@ -385,6 +539,7 @@ pub fn init() {
     stack.register(Box::new(DacHook::new()));
     stack.register(Box::new(MacHookImpl::new()));
     *LSM_STACK.lock() = Some(stack);
+    *TE_POLICY.lock() = Some(TePolicy::new());
     LSM_INITIALIZED.store(true, Ordering::Release);
     crate::serial::println!("[LSM] Initialised with DAC + MAC hooks");
 }

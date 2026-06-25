@@ -46,11 +46,43 @@ pub fn init() {
         cpu_max: None,
         memory_max: None,
         pids_max: None,
-        controllers: Vec::new(),
+        controllers: alloc::vec![
+            CgroupController::cpu,
+            CgroupController::memory,
+            CgroupController::pids,
+            CgroupController::io,
+        ],
         cpu_used: 0,
-        cpu_period_ticks: 0,
+        cpu_period_ticks: CPU_PERIOD_MS,
         memory_used: 0,
     });
+
+    // Create well-known sub-cgroups for system services
+    drop(groups);
+    let _ = cgroup_create("/", "system");
+    let _ = cgroup_create("/", "user");
+    let _ = cgroup_create("/", "daemon");
+
+    // Apply default limits to the daemon cgroup (prevents runaway processes)
+    {
+        let mut groups = CGROUPS.lock();
+        if let Some(damon) = groups.iter_mut().find(|g| g.path == "/daemon") {
+            damon.pids_max = Some(64);
+            damon.memory_max = Some(256 * 1024 * 1024); // 256 MB
+            damon.cpu_max = Some(CPU_PERIOD_MS * 80 / 100); // 80% of period
+        }
+        if let Some(system) = groups.iter_mut().find(|g| g.path == "/system") {
+            system.pids_max = Some(256);
+            system.memory_max = Some(512 * 1024 * 1024); // 512 MB
+        }
+    }
+
+    crate::serial::println!(
+        "[CGROUP] Initialized: root cgroup with cpu, memory, pids, io controllers"
+    );
+    crate::serial::println!(
+        "[CGROUP] Created /system (256 procs, 512MB), /user, /daemon (64 procs, 256MB)"
+    );
 }
 
 fn resolve_path(base: &str, name: &str) -> String {

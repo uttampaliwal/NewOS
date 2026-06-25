@@ -1,4 +1,4 @@
-mod fs;
+pub(crate) mod fs;
 mod gpu;
 mod io_uring;
 mod ipc;

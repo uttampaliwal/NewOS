@@ -393,7 +393,7 @@ pub fn handle_chdir(args: SyscallArgs) -> SyscallResult {
 
 /// Normalize a filesystem path by resolving `.` (current dir) and `..` (parent dir)
 /// components and collapsing redundant separators.
-fn normalize_path(path: &str) -> alloc::string::String {
+pub(crate) fn normalize_path(path: &str) -> alloc::string::String {
     use alloc::vec::Vec;
 
     let mut components: Vec<&str> = Vec::new();

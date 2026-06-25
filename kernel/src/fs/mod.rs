@@ -15,6 +15,7 @@ use spin::Mutex;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FsType {
     Ext2,
+    Ext4,
     Fat32,
     Unknown,
 }
@@ -32,13 +33,43 @@ lazy_static! {
 }
 
 /// Initialize filesystem subsystem
+///
+/// Mounts the root tmpfs and populates the initial directory layout.
 pub fn init() {
     crate::serial::println!("[FS] Initializing filesystem subsystem...");
-    // For now, just print that we're ready
+
+    // Mount root tmpfs at "/"
+    {
+        let mut vfs = crate::vfs::VFS.lock();
+        let backend = alloc::sync::Arc::new(tmpfs::TmpfsBackend::new());
+        if vfs.mount(
+            "/",
+            backend,
+            crate::vfs::MountFlags::default(),
+        ).is_ok() {
+            crate::serial::println!("[FS] Root tmpfs mounted at /");
+        }
+
+        // Create standard directories
+        vfs.mkdir("/dev");
+        vfs.mkdir("/proc");
+        vfs.mkdir("/sys");
+        vfs.mkdir("/tmp");
+        vfs.mkdir("/var");
+        vfs.mkdir("/etc");
+        vfs.mkdir("/home");
+        vfs.mkdir("/root");
+        vfs.mkdir("/usr");
+        vfs.mkdir("/mnt");
+    }
+
     crate::serial::println!("[FS] Filesystem subsystem initialized");
 }
 
-/// Mount a filesystem
+/// Mount a filesystem at the given mount point.
+///
+/// Creates the appropriate backend based on `fs_type` and registers it
+/// with the VFS layer.
 pub fn mount(device: usize, fs_type: FsType, mount_point: &str) -> bool {
     crate::serial::println!(
         "[FS] Mounting {:?} filesystem from device {} at {}",
@@ -47,14 +78,21 @@ pub fn mount(device: usize, fs_type: FsType, mount_point: &str) -> bool {
         mount_point
     );
 
-    let mount = Mount {
-        device,
-        fs_type,
-        mount_point: String::from(mount_point),
-        root_inode: 2, // ext2 root inode is usually 2
-    };
-
-    MOUNTS.lock().push(mount);
-    crate::serial::println!("[FS] Mount complete");
-    true
+    // All current filesystem types return early (not yet implemented).
+    // Once block device drivers are available, Ext2/Ext4 backends will be
+    // created here and the VFS mount will be called with a real backend.
+    match fs_type {
+        FsType::Ext2 | FsType::Ext4 => {
+            crate::serial::println!("[FS] Ext4 backend not yet available for device {}", device);
+            false
+        }
+        FsType::Fat32 => {
+            crate::serial::println!("[FS] Fat32 backend not yet available for device {}", device);
+            false
+        }
+        FsType::Unknown => {
+            crate::serial::println!("[FS] Unknown filesystem type for device {}", device);
+            false
+        }
+    }
 }

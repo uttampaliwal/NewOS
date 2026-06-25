@@ -178,21 +178,57 @@ impl CpuStack {
 // kernel this would be indexed by `cpu_id()`.
 const NUM_CPUS: usize = 1;
 
+/// Maximum number of lock classes we track.
+const MAX_LOCK_CLASSES: usize = 64;
+
+/// Registry mapping lock id → name for warning messages.
+struct LockRegistry {
+    ids: [usize; MAX_LOCK_CLASSES],
+    names: [&'static str; MAX_LOCK_CLASSES],
+    len: usize,
+}
+
+impl LockRegistry {
+    const fn new() -> Self {
+        Self {
+            ids: [0; MAX_LOCK_CLASSES],
+            names: [""; MAX_LOCK_CLASSES],
+            len: 0,
+        }
+    }
+
+    fn register(&mut self, id: usize, name: &'static str) {
+        if self.len < MAX_LOCK_CLASSES && !self.ids[..self.len].contains(&id) {
+            self.ids[self.len] = id;
+            self.names[self.len] = name;
+            self.len += 1;
+        }
+    }
+
+    fn get_name(&self, id: usize) -> &'static str {
+        for i in 0..self.len {
+            if self.ids[i] == id {
+                return self.names[i];
+            }
+        }
+        "unknown-lock"
+    }
+}
+
 /// Interior-mutable wrapper so we can hold mutable state behind a
 /// `static`.  Protected by `STATE_LOCK`.
 struct LockDepState {
     order_table: OrderTable,
     cpu_stacks: [CpuStack; NUM_CPUS],
+    registry: LockRegistry,
 }
 
 impl LockDepState {
     const fn new() -> Self {
-        // `CpuStack::new()` is `const fn`; we initialise the array manually
-        // because `[expr; N]` requires `Copy` (which `CpuStack` does not
-        // implement due to the future possibility of a non-Copy field).
         Self {
             order_table: OrderTable::new(),
             cpu_stacks: [CpuStack::new()],
+            registry: LockRegistry::new(),
         }
     }
 }
@@ -268,10 +304,11 @@ pub fn lockdep_violation_count() -> usize {
 
 fn emit_warning(held_name: &'static str, new_name: &'static str) {
     VIOLATION_COUNT.fetch_add(1, Ordering::Relaxed);
-    // In a real kernel we'd call the log subsystem.  In test context we can
-    // use the platform's debug output if available; for now we just track the
-    // counter so tests can assert on it.
-    let _ = (held_name, new_name);
+    crate::serial::println!(
+        "[LOCKDEP] Potential deadlock: holding '{}' while acquiring '{}'",
+        held_name,
+        new_name
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +342,9 @@ pub fn lockdep_acquire(class: &'static LockClass) -> LockDepGuard {
     let state = g.get_mut();
     let cpu = &mut state.cpu_stacks[0];
 
+    // Register this lock class in the name registry
+    state.registry.register(class.id, class.name);
+
     // Check every currently-held lock H:
     //   - Record (H → class) in the ordering table.
     //   - If (class → H) is already in the table, we have a cycle.
@@ -312,10 +352,7 @@ pub fn lockdep_acquire(class: &'static LockClass) -> LockDepGuard {
         let held_id = cpu.stack[i];
 
         // Look up the name of the held class for the warning message.
-        // We store only IDs in the stack; to get the name we'd need a
-        // registry.  For now we emit a placeholder name — a real
-        // implementation would maintain an ID→name table.
-        let held_name: &'static str = "held-lock";
+        let held_name = state.registry.get_name(held_id);
 
         // Check for inverse ordering (potential deadlock).
         if state.order_table.contains(class.id, held_id) {

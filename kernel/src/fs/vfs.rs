@@ -1182,6 +1182,15 @@ impl Vfs {
         backend.xattr_get(inode, name)
     }
 
+    /// Set an extended attribute for `path`.
+    pub fn xattr_set(&self, path: &str, name: &str, value: &[u8]) -> Result<(), FsError> {
+        let (entry, rel_path) = self.resolve(path)?;
+        let backend = &entry.backend;
+        let root = backend.root_inode();
+        let inode = Self::walk_path(backend.as_ref(), root, rel_path)?;
+        backend.xattr_set(inode, name, value)
+    }
+
     /// Return stat for `path`, or `None` if not found.
     pub fn stat_path(&self, path: &str) -> Option<FileStat> {
         let (entry, rel_path) = self.resolve(path).ok()?;

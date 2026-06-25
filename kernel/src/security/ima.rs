@@ -296,6 +296,37 @@ pub fn evm_compute_hmac(inode: u64, size: u64, mtime: u64) -> [u8; 32] {
 }
 
 // ---------------------------------------------------------------------------
+// EVM VFS integration
+// ---------------------------------------------------------------------------
+
+/// EVM xattr name used to store the HMAC on filesystem inodes.
+pub const EVM_XATTR_NAME: &str = "security.evm";
+
+/// Compute and store an EVM HMAC for the given file via VFS xattr.
+///
+/// Returns `Ok(())` on success, or `Err` if the xattr operation fails.
+pub fn evm_set_xattr(path: &str, inode: u64, size: u64, mtime: u64) -> Result<(), crate::fs::vfs::FsError> {
+    let hmac = evm_compute_hmac(inode, size, mtime);
+    let vfs = crate::vfs::VFS.lock();
+    vfs.xattr_set(path, EVM_XATTR_NAME, &hmac)
+}
+
+/// Verify the EVM HMAC stored in the file's xattr against current metadata.
+///
+/// Returns `true` if the stored HMAC matches, `false` if tampered or missing.
+pub fn evm_verify_xattr(path: &str, inode: u64, size: u64, mtime: u64) -> bool {
+    let vfs = crate::vfs::VFS.lock();
+    match vfs.xattr_get(path, EVM_XATTR_NAME) {
+        Ok(Some(stored_hmac)) if stored_hmac.len() == 32 => {
+            let mut hmac_bytes = [0u8; 32];
+            hmac_bytes.copy_from_slice(&stored_hmac);
+            evm_verify(inode, size, mtime, &hmac_bytes)
+        }
+        _ => false,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Stack canary
 // ---------------------------------------------------------------------------
 

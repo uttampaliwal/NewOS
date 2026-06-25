@@ -7,7 +7,9 @@ pub mod lsm;
 pub mod namespaces;
 pub mod seccomp;
 
+use alloc::vec::Vec;
 use capabilities::CapabilitySet;
+use lsm::SecurityLabel;
 
 use spin::Mutex;
 
@@ -18,6 +20,8 @@ pub struct SecurityContext {
     pub gid: u32,
     pub caps: CapabilitySet,
     pub is_privileged: bool,
+    /// MAC label for type enforcement.
+    pub label: SecurityLabel,
 }
 
 impl SecurityContext {
@@ -27,6 +31,7 @@ impl SecurityContext {
             gid: 0,
             caps: CapabilitySet::root(),
             is_privileged: true,
+            label: SecurityLabel::kernel(),
         }
     }
 
@@ -36,6 +41,21 @@ impl SecurityContext {
             gid,
             caps,
             is_privileged: uid == 0,
+            label: if uid == 0 {
+                SecurityLabel::kernel()
+            } else {
+                SecurityLabel::new("unconfined_u", "unconfined_r", "user_t")
+            },
+        }
+    }
+
+    pub fn new_with_label(uid: u32, gid: u32, caps: CapabilitySet, label: SecurityLabel) -> Self {
+        Self {
+            uid,
+            gid,
+            caps,
+            is_privileged: uid == 0,
+            label,
         }
     }
 
@@ -62,6 +82,9 @@ pub fn init() {
     *CURRENT_CONTEXT.lock() = Some(SecurityContext::root());
     crate::serial::println!("[SEC] capabilities initialized");
 
+    init_credentials();
+    crate::serial::println!("[SEC] Credentials loaded (root, admin)");
+
     crate::security::lsm::init();
     crate::security::ima::init();
     crate::security::seccomp::init();
@@ -85,11 +108,14 @@ pub fn current_context() -> SecurityContext {
 }
 
 /// Check if current context has a specific POSIX capability.
+///
+/// Returns `true` if the capability is present in the effective set.
+/// When no context is set (boot phase), only root (cap 0) is allowed.
 pub fn check_capability(cap: capabilities::Capability) -> bool {
     let ctx = CURRENT_CONTEXT.lock();
     match &*ctx {
         Some(ctx) => ctx.has_capability(cap),
-        None => true, // Default to root
+        None => cap == capabilities::Capability::Chown,
     }
 }
 
@@ -111,11 +137,34 @@ pub fn get_gid() -> u32 {
     }
 }
 
+/// Simple hash for password verification.
+///
+/// Uses a basic DJB2-style hash for demonstration. In production this would
+/// use bcrypt/scrypt/argon2 with salted hashes stored in /etc/shadow.
+fn simple_hash(data: &[u8]) -> u64 {
+    let mut hash: u64 = 5381;
+    for &byte in data {
+        hash = hash.wrapping_mul(33).wrapping_add(byte as u64);
+    }
+    hash
+}
+
+/// In-memory credential store (replaces /etc/shadow for boot-time use).
+///
+/// Each entry is (username, password_hash, uid, gid).
+static CREDENTIALS: Mutex<Vec<(&'static str, u64, u32, u32)>> = Mutex::new(Vec::new());
+
+/// Initialize default credentials (root / toor, admin / admin).
+pub fn init_credentials() {
+    let mut creds = CREDENTIALS.lock();
+    creds.push(("root", simple_hash(b"toor"), 0, 0));
+    creds.push(("admin", simple_hash(b"admin"), 1000, 1000));
+}
+
 /// Authenticate user credentials.
 ///
-/// Performs basic input validation. In production this would verify the
-/// password hash against /etc/shadow or a PAM backend. For now it rejects
-/// obviously invalid inputs and logs the attempt.
+/// Verifies the password hash against stored credentials.
+/// Returns (uid, gid) on success, None on failure.
 pub fn authenticate(username: &str, password: &str) -> bool {
     if username.is_empty() || password.is_empty() {
         crate::serial::println!("[SEC] Authentication rejected: empty credentials");
@@ -125,8 +174,17 @@ pub fn authenticate(username: &str, password: &str) -> bool {
         crate::serial::println!("[SEC] Authentication rejected: credentials too long");
         return false;
     }
-    crate::serial::println!("[SEC] Authentication accepted for user: {}", username);
-    true
+
+    let password_hash = simple_hash(password.as_bytes());
+    let creds = CREDENTIALS.lock();
+    for &(user, hash, _uid, _gid) in creds.iter() {
+        if user == username && hash == password_hash {
+            crate::serial::println!("[SEC] Authentication accepted for user: {}", username);
+            return true;
+        }
+    }
+    crate::serial::println!("[SEC] Authentication rejected for user: {}", username);
+    false
 }
 
 #[test]
@@ -145,6 +203,21 @@ fn test_authenticate_long_rejected() {
 }
 
 #[test]
-fn test_authenticate_valid_accepted() {
-    assert!(authenticate("admin", "secret123"));
+fn test_authenticate_valid_credentials() {
+    init_credentials();
+    assert!(authenticate("root", "toor"));
+    assert!(authenticate("admin", "admin"));
+}
+
+#[test]
+fn test_authenticate_wrong_password() {
+    init_credentials();
+    assert!(!authenticate("root", "wrong"));
+    assert!(!authenticate("admin", "wrong"));
+}
+
+#[test]
+fn test_authenticate_unknown_user() {
+    init_credentials();
+    assert!(!authenticate("nobody", "password"));
 }
