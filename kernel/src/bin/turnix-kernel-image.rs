@@ -42,7 +42,7 @@ extern "sysv64" fn kernel_image_main(boot_info: *const BootInfo) -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo<'_>) -> ! {
     turnix_kernel::serial::init();
-    turnix_kernel::serial::print(format_args!("panic: {}\n", info));
+    turnix_kernel::crash_dump::capture_panic(info);
     qemu_exit_failure();
 }
 

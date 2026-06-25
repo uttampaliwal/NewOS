@@ -51,6 +51,7 @@ pub mod test_serial {
 pub mod arch;
 pub mod block;
 pub mod cgroup;
+pub mod crash_dump;
 pub mod crypto;
 
 // Re-export arch-specific modules at their original paths so

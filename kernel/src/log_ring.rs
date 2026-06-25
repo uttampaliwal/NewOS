@@ -167,6 +167,22 @@ impl LogRingBuffer {
             .store(self.head.load(Ordering::Relaxed), Ordering::Relaxed);
         self.count.store(0, Ordering::Relaxed);
     }
+
+    /// Read up to `n` entries from the buffer without removing them.
+    /// Returns entries in order from oldest to newest.
+    pub fn peek_n(&self, n: usize) -> alloc::vec::Vec<LogEntry> {
+        let count = self.count.load(Ordering::Acquire);
+        let to_read = n.min(count);
+        let mut entries = alloc::vec::Vec::with_capacity(to_read);
+        let tail = self.tail.load(Ordering::Acquire);
+        let ring_size = RING_SIZE as u64;
+        for i in 0..to_read {
+            let idx = ((tail as u64 + i as u64) % ring_size) as usize;
+            // SAFETY: idx is derived from tail + i modulo RING_SIZE, always in-bounds.
+            entries.push(unsafe { (*self.entries.get())[idx] });
+        }
+        entries
+    }
 }
 
 /// Global kernel log ring buffer.
@@ -190,6 +206,11 @@ pub fn kernel_log_count() -> usize {
 /// Clear the kernel log ring buffer.
 pub fn kernel_log_clear() {
     KERNEL_LOG.clear();
+}
+
+/// Read up to `n` recent entries from the kernel log ring buffer without removing them.
+pub fn kernel_log_peek_n(n: usize) -> alloc::vec::Vec<LogEntry> {
+    KERNEL_LOG.peek_n(n)
 }
 
 // Convenience macros for different log levels

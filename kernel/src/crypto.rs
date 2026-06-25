@@ -650,7 +650,7 @@ mod tests {
         let tag = hmac_sha256(key, data);
 
         // Compute tag with wrong key
-        let wrong_tag = {
+        let _wrong_tag = {
             let mut mac = HmacSha256::new(b"wrong");
             mac.update(data);
             mac.finalize()

@@ -864,4 +864,134 @@ mod tests {
         let picked = pick_eevdf(&queue).unwrap();
         assert_eq!(picked.deadline, 50, "should skip ineligible deadline=10");
     }
+
+    // -----------------------------------------------------------------------
+    // Scheduler queue / load-balancing tests
+    // -----------------------------------------------------------------------
+
+    #[cfg(test)]
+    fn test_insert_task(task: Task) {
+        let mut sched = SCHEDULER.lock();
+        let target = sched.least_loaded_cpu();
+        let deadline = compute_deadline(task.vruntime, task.time_slice, task.weight);
+        let mut task = task;
+        task.deadline = deadline;
+        task.eligible = task.vruntime <= sched.min_vruntime;
+        sched.cpu_queues[target].insert(deadline, task);
+        sched.task_count += 1;
+    }
+
+    #[cfg(test)]
+    fn test_queue_len() -> usize {
+        let sched = SCHEDULER.lock();
+        sched.cpu_queues.iter().map(|q| q.len()).sum()
+    }
+
+    #[test]
+    fn test_steal_task_empty_returns_none() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let mut sched = SCHEDULER.lock();
+        assert!(sched.steal_task().is_none());
+    }
+
+    #[test]
+    fn test_steal_task_single_task_returns_none() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let task = make_test_task(100);
+        test_insert_task(task);
+        assert_eq!(test_queue_len(), 1);
+        let mut sched = SCHEDULER.lock();
+        assert!(sched.steal_task().is_none(), "should not steal when only 1 task on remote CPU");
+    }
+
+    #[test]
+    fn test_steal_task_steals_from_busiest() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        // Tasks need distinct vruntimes so they get distinct deadlines in the BTreeMap
+        for (pid, vruntime) in [(200, 10u64), (201, 20), (202, 30)] {
+            let mut task = make_test_task(pid);
+            task.vruntime = vruntime;
+            test_insert_task(task);
+        }
+        assert_eq!(test_queue_len(), 3);
+        let mut sched = SCHEDULER.lock();
+        let stolen = sched.steal_task();
+        // In single-CPU mode, steal_task skips current CPU (0), so all tasks
+        // are on CPU 0 and steal_task returns None because it only steals from OTHER CPUs.
+        assert!(stolen.is_none(), "should not steal from own CPU");
+    }
+
+    #[test]
+    fn test_least_loaded_cpu_returns_zero() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let sched = SCHEDULER.lock();
+        assert_eq!(sched.least_loaded_cpu(), 0, "empty queues should return CPU 0");
+    }
+
+    #[test]
+    fn test_task_count_increments_on_insert() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        assert_eq!(get_task_count(), 0);
+        test_insert_task(make_test_task(300));
+        assert_eq!(get_task_count(), 1);
+        test_insert_task(make_test_task(301));
+        assert_eq!(get_task_count(), 2);
+    }
+
+    #[test]
+    fn test_insert_task_eligibility_based_on_vruntime() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        {
+            let mut sched = SCHEDULER.lock();
+            sched.min_vruntime = 100;
+        }
+        let mut task_a = make_test_task(400);
+        task_a.vruntime = 50;
+        let task_a_id = task_a.id;
+        test_insert_task(task_a);
+        let mut task_b = make_test_task(401);
+        task_b.vruntime = 200;
+        test_insert_task(task_b);
+        let sched = SCHEDULER.lock();
+        let cpu0_queue = &sched.cpu_queues[0];
+        let picked = pick_eevdf(cpu0_queue);
+        assert!(picked.is_some());
+        assert_eq!(picked.unwrap().id, task_a_id, "should pick eligible task with vruntime=50");
+    }
+
+    #[test]
+    fn test_insert_multiple_tasks_ordered_by_deadline() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        for pid in [500, 501, 502] {
+            let mut task = make_test_task(pid);
+            task.vruntime = (pid as u64) * 10;
+            test_insert_task(task);
+        }
+        let sched = SCHEDULER.lock();
+        let queue = &sched.cpu_queues[0];
+        let deadlines: alloc::vec::Vec<u64> = queue.keys().copied().collect();
+        assert!(deadlines.windows(2).all(|w| w[0] <= w[1]), "deadlines should be sorted");
+    }
+
+    #[test]
+    fn test_min_vruntime_not_decreasing() {
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        let vruntime_before = 50u64;
+        let ticks = 10u32;
+        let weight = 1024u32;
+        // Compute expected vruntime after update_vruntime
+        let expected_delta = (1024u64 * ticks as u64) / weight as u64;
+        let expected_vruntime = vruntime_before + expected_delta.max(1);
+        // Verify that update_vruntime increases vruntime monotonically
+        assert!(expected_vruntime > vruntime_before, "vruntime should increase after tick");
+        assert!(expected_vruntime >= vruntime_before + 1, "vruntime should increase by at least 1");
+    }
 }

@@ -386,4 +386,170 @@ mod tests {
         let child = groups.iter().find(|g| g.path == "/parent/child").unwrap();
         assert_eq!(child.cpu_max, Some(10));
     }
+
+    // -----------------------------------------------------------------------
+    // Boundary and edge-case tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn memory_exact_at_limit_succeeds() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "exact").unwrap();
+        cgroup_set_memory_max("/exact", 1000).unwrap();
+        cgroup_add_process("/exact", 50).unwrap();
+        // Allocate exactly to the limit
+        assert!(cgroup_memory_alloc(50, 1000));
+        let groups = CGROUPS.lock();
+        let cg = groups.iter().find(|g| g.path == "/exact").unwrap();
+        assert_eq!(cg.memory_used, 1000);
+    }
+
+    #[test]
+    fn memory_one_byte_over_limit_rejected() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "over").unwrap();
+        cgroup_set_memory_max("/over", 1000).unwrap();
+        cgroup_add_process("/over", 51).unwrap();
+        assert!(cgroup_memory_alloc(51, 999));
+        assert!(!cgroup_memory_alloc(51, 2), "should reject 1 byte over limit");
+    }
+
+    #[test]
+    fn memory_free_beyond_usage_saturates_to_zero() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "sat").unwrap();
+        cgroup_set_memory_max("/sat", 1000).unwrap();
+        cgroup_add_process("/sat", 52).unwrap();
+        cgroup_memory_alloc(52, 100);
+        cgroup_memory_free(52, 500); // free more than used
+        let groups = CGROUPS.lock();
+        let cg = groups.iter().find(|g| g.path == "/sat").unwrap();
+        assert_eq!(cg.memory_used, 0, "saturating_sub should produce 0");
+    }
+
+    #[test]
+    fn memory_exceeded_at_limit_boundary() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "boundary").unwrap();
+        cgroup_set_memory_max("/boundary", 500).unwrap();
+        cgroup_add_process("/boundary", 53).unwrap();
+        cgroup_memory_alloc(53, 500);
+        // memory_used == memory_max: NOT exceeded (strictly greater)
+        assert!(!cgroup_memory_exceeded(53));
+        // Free some then allocate to go over limit
+        cgroup_memory_free(53, 100);
+        // memory_used = 400; 400+200=600 > 500, should be rejected
+        assert!(!cgroup_memory_alloc(53, 200), "400+200=600 > 500 should be rejected");
+        // Free all, then alloc exactly to limit
+        cgroup_memory_free(53, 500); // saturates to 0
+        assert!(cgroup_memory_alloc(53, 500), "alloc exactly to limit should succeed");
+        assert!(!cgroup_memory_exceeded(53), "exactly at limit is not exceeded");
+    }
+
+    #[test]
+    fn multi_process_shares_cpu_quota() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "cpu_share").unwrap();
+        cgroup_set_cpu_max("/cpu_share", 3).unwrap();
+        cgroup_add_process("/cpu_share", 100).unwrap();
+        cgroup_add_process("/cpu_share", 101).unwrap();
+        // Both PIDs share the same quota pool of 3 ticks
+        assert!(cgroup_cpu_tick(100));
+        assert!(cgroup_cpu_tick(101));
+        assert!(cgroup_cpu_tick(100));
+        assert!(!cgroup_cpu_tick(101), "4th tick across both PIDs should exceed quota");
+    }
+
+    #[test]
+    fn set_cpu_max_nonexistent_cgroup_fails() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        assert_eq!(cgroup_set_cpu_max("/nope", 10), Err(2));
+    }
+
+    #[test]
+    fn set_memory_max_nonexistent_cgroup_fails() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        assert_eq!(cgroup_set_memory_max("/nope", 100), Err(2));
+    }
+
+    #[test]
+    fn set_pids_max_nonexistent_cgroup_fails() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        assert_eq!(cgroup_set_pids_max("/nope", 10), Err(2));
+    }
+
+    #[test]
+    fn init_creates_system_user_daemon() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        init();
+        let groups = CGROUPS.lock();
+        assert!(groups.iter().any(|g| g.path == "/system"), "/system should exist");
+        assert!(groups.iter().any(|g| g.path == "/user"), "/user should exist");
+        assert!(groups.iter().any(|g| g.path == "/daemon"), "/daemon should exist");
+        let daemon = groups.iter().find(|g| g.path == "/daemon").unwrap();
+        assert_eq!(daemon.pids_max, Some(64));
+        assert_eq!(daemon.memory_max, Some(256 * 1024 * 1024));
+        let system = groups.iter().find(|g| g.path == "/system").unwrap();
+        assert_eq!(system.pids_max, Some(256));
+        assert_eq!(system.memory_max, Some(512 * 1024 * 1024));
+    }
+
+    #[test]
+    fn deep_nested_cgroup_path() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "a").unwrap();
+        cgroup_create("/a", "b").unwrap();
+        cgroup_create("/a/b", "c").unwrap();
+        let groups = CGROUPS.lock();
+        assert!(groups.iter().any(|g| g.path == "/a/b/c"));
+        let deep = groups.iter().find(|g| g.path == "/a/b/c").unwrap();
+        assert_eq!(deep.parent_path, "/a/b");
+    }
+
+    #[test]
+    fn add_duplicate_process_no_double_count() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "dedup").unwrap();
+        cgroup_add_process("/dedup", 200).unwrap();
+        cgroup_add_process("/dedup", 200).unwrap(); // duplicate
+        let groups = CGROUPS.lock();
+        let cg = groups.iter().find(|g| g.path == "/dedup").unwrap();
+        assert_eq!(cg.procs.len(), 1, "duplicate PID should not be added twice");
+    }
+
+    #[test]
+    fn remove_process_not_supported_yet() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "rmtest").unwrap();
+        cgroup_add_process("/rmtest", 300).unwrap();
+        // No explicit remove API; just verify the PID is there
+        assert_eq!(cgroup_find_for_pid(300), Some(String::from("/rmtest")));
+    }
+
+    #[test]
+    fn memory_alloc_multiple_processes_independent() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "multi").unwrap();
+        cgroup_set_memory_max("/multi", 1000).unwrap();
+        cgroup_add_process("/multi", 400).unwrap();
+        cgroup_add_process("/multi", 401).unwrap();
+        // Each PID contributes to the same memory_used
+        assert!(cgroup_memory_alloc(400, 400));
+        assert!(cgroup_memory_alloc(401, 400));
+        assert!(!cgroup_memory_alloc(400, 201), "801+201=1002 > 1000 should fail");
+        assert!(cgroup_memory_alloc(401, 199), "800+199=999 <= 1000 should succeed");
+    }
 }
