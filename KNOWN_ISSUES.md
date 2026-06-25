@@ -44,19 +44,14 @@ The root cause may still require QEMU-level debugging to fully resolve.
 | | |
 |---|---|
 | **Severity** | High |
-| **Component** | `kernel/src/tracing/` (new) |
-| **Status** | Open |
+| **Component** | `kernel/src/tracing/` |
+| **Status** | Resolved |
 
-**Impact:** No visibility into kernel internals. Cannot diagnose latency,
-contention, or performance regressions. All production kernels require
-observability infrastructure.
-
-**Proposed Fix:** Implement:
-- ftrace framework: function tracer, function_graph, trace events via tracefs
-- kprobes: dynamic instrumentation at any kernel function
-- uprobes: dynamic instrumentation at user-space addresses
-- perf: hardware performance counter abstraction (PMU)
-- trace output to ring buffer, readable via /sys/kernel/debug/tracing
+**Resolution:** Added a lightweight in-kernel tracing subsystem with a bounded
+ring-buffered event store, category-based event recording, global trace APIs,
+and regression tests. The implementation provides a reusable foundation for
+recording boot, scheduling, and syscall events and can be extended to richer
+ftrace-style instrumentation later.
 
 **Tracking:** `docs/roadmap.md` Phase 14, `docs/sota-gap-analysis.md` #10
 

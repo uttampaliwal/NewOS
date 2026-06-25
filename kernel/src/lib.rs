@@ -97,6 +97,7 @@ pub mod tasklet;
 pub mod time;
 #[cfg(feature = "arch-x86_64")]
 pub mod tty;
+pub mod tracing;
 #[cfg(feature = "arch-x86_64")]
 pub mod vfs;
 
