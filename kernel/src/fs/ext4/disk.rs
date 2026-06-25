@@ -403,6 +403,7 @@ mod tests {
 
     #[test]
     fn test_superblock_block_size() {
+        // Safety: Ext4Superblock is a plain data struct; zeroed() produces a valid all-zero instance.
         let mut sb: Ext4Superblock = unsafe { core::mem::zeroed() };
         sb.s_magic = EXT4_SUPER_MAGIC;
         sb.s_log_block_size = 2; // 1024 << 2 = 4096
@@ -411,6 +412,7 @@ mod tests {
 
     #[test]
     fn test_superblock_block_size_1k() {
+        // Safety: Ext4Superblock is a plain data struct; zeroed() produces a valid all-zero instance.
         let mut sb: Ext4Superblock = unsafe { core::mem::zeroed() };
         sb.s_magic = EXT4_SUPER_MAGIC;
         sb.s_log_block_size = 0; // 1024 << 0 = 1024
@@ -419,6 +421,7 @@ mod tests {
 
     #[test]
     fn test_superblock_validate_good() {
+        // Safety: Ext4Superblock is a plain data struct; zeroed() produces a valid all-zero instance.
         let mut sb: Ext4Superblock = unsafe { core::mem::zeroed() };
         sb.s_magic = EXT4_SUPER_MAGIC;
         sb.s_inode_size = 256;
@@ -429,6 +432,7 @@ mod tests {
 
     #[test]
     fn test_superblock_validate_bad_magic() {
+        // Safety: Ext4Superblock is a plain data struct; zeroed() produces a valid all-zero instance.
         let mut sb: Ext4Superblock = unsafe { core::mem::zeroed() };
         sb.s_magic = 0xBAD0;
         sb.s_inode_size = 256;
@@ -439,6 +443,7 @@ mod tests {
 
     #[test]
     fn test_inode_is_dir() {
+        // Safety: Ext4Inode is a plain data struct; zeroed() produces a valid all-zero instance.
         let mut inode: Ext4Inode = unsafe { core::mem::zeroed() };
         inode.i_mode = 0o040755; // directory
         assert!(inode.is_dir());
@@ -447,6 +452,7 @@ mod tests {
 
     #[test]
     fn test_inode_is_file() {
+        // Safety: Ext4Inode is a plain data struct; zeroed() produces a valid all-zero instance.
         let mut inode: Ext4Inode = unsafe { core::mem::zeroed() };
         inode.i_mode = 0o100644; // regular file
         assert!(inode.is_file());

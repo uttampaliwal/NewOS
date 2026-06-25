@@ -315,7 +315,7 @@ and lifecycle.
 
 ---
 
-## 16. Undocumented Unsafe Blocks (~162 remaining)
+## 16. Undocumented Unsafe Blocks (~153 remaining)
 
 | | |
 |---|---|
@@ -324,8 +324,8 @@ and lifecycle.
 | **Status** | Partially Resolved |
 
 **Resolution:** Backfilling safety comments incrementally. Current counts:
-404 total `unsafe` blocks in `kernel/src/`; 242 documented with `// Safety:`
-comments (59.9%); 162 still undocumented (40.1%). The lint is currently
+404 total `unsafe` blocks in `kernel/src/`; 251 documented with `// Safety:`
+comments (62.1%); 153 still undocumented (37.9%). The lint is currently
 `#![allow(clippy::undocumented_unsafe_blocks)]` in `kernel/src/lib.rs`
 with a TODO to switch to `#![warn(...)]` once backfill is complete.
 
@@ -401,5 +401,5 @@ tests for basic lifecycle only — no data path or connection tests.
 | 13 | No KASAN/KFENCE memory safety detection | High | Partially Resolved |
 | 14 | No lockdep or completion variables | Medium | Resolved |
 | 15 | No container runtime or OCI support | Medium | Open |
-| 16 | Undocumented unsafe blocks (~162 remaining) | Medium | Partially Resolved |
+| 16 | Undocumented unsafe blocks (~153 remaining) | Medium | Partially Resolved |
 | 17 | Uneven test coverage | Medium | Improved |

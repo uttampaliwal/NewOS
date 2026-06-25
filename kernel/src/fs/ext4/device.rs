@@ -293,6 +293,8 @@ mod tests {
         /// Write a superblock at the correct location (byte 1024).
         fn write_superblock(&self, sb: &Ext4Superblock) {
             let mut data = self.data.lock();
+            // Safety: sb is a valid Ext4Superblock reference; from_raw_parts
+            // reads its bytes for a known size (sizeof(Ext4Superblock)).
             let bytes = unsafe {
                 core::slice::from_raw_parts(
                     sb as *const Ext4Superblock as *const u8,
@@ -342,6 +344,7 @@ mod tests {
     fn test_open_reads_superblock() {
         let dev = Arc::new(MockBlockDevice::new(8192));
 
+        // Safety: Ext4Superblock is a plain data struct; zeroed() produces a valid all-zero instance.
         let mut sb: Ext4Superblock = unsafe { core::mem::zeroed() };
         sb.s_magic = super::super::disk::EXT4_SUPER_MAGIC;
         sb.s_inode_size = 256;
@@ -371,6 +374,7 @@ mod tests {
     fn test_read_inode_root() {
         let dev = Arc::new(MockBlockDevice::new(8192));
 
+        // Safety: Ext4Superblock is a plain data struct; zeroed() produces a valid all-zero instance.
         let mut sb: Ext4Superblock = unsafe { core::mem::zeroed() };
         sb.s_magic = super::super::disk::EXT4_SUPER_MAGIC;
         sb.s_inode_size = 256;
