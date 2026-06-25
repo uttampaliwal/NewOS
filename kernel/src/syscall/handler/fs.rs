@@ -654,4 +654,140 @@ mod tests {
         let result = handle_chdir(args);
         assert!(matches!(result, SyscallResult::Error(2)), "Expected ENOENT for nonexistent path");
     }
+
+    #[test]
+    fn handle_chdir_to_file_returns_enotdir() {
+        let _guard = crate::test_serial::acquire();
+        {
+            let mut vfs = crate::vfs::VFS.lock();
+            *vfs = crate::vfs::Vfs::new();
+            let backend = alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new());
+            // Create a file directly in the tmpfs backend
+            {
+                let mut inner = backend.inner.lock();
+                inner.create_file(crate::fs::vfs::InodeId(1), "regular_file", 0o644);
+            }
+            vfs.mount(
+                "/",
+                backend,
+                crate::fs::vfs::MountFlags::default(),
+            )
+            .unwrap();
+        }
+
+        let process = crate::process::Process {
+            inner: alloc::sync::Arc::new(spin::Mutex::new(
+                crate::process::ProcessControlBlock {
+                    id: crate::process::ProcessId(98),
+                    ppid: crate::process::ProcessId(0),
+                    state: crate::process::ProcessState::Running,
+                    pml4_frame: x86_64::structures::paging::PhysFrame::containing_address(
+                        x86_64::PhysAddr::new(0),
+                    ),
+                    entry_point: x86_64::VirtAddr::zero(),
+                    stack_top: x86_64::VirtAddr::zero(),
+                    threads: alloc::vec![],
+                    vma_set: crate::memory::vma::VmaSet::new(),
+                    mmap_next_addr: x86_64::VirtAddr::zero(),
+                    aslr_base: x86_64::VirtAddr::zero(),
+                    fd_table: alloc::vec![None; 1024],
+                    signal_mask: crate::process::SignalSet::empty(),
+                    signal_handlers: [crate::process::SignalAction::Default; 64],
+                    pending_signals: crate::process::SignalSet::empty(),
+                    pending_signal_frame: None,
+                    sec_ctx: crate::security::SecurityContext::root(),
+                    nsproxy: crate::security::namespaces::NsProxy::new(),
+                    seccomp_filter: None,
+                    cgroup_path: None,
+                    cwd: alloc::string::String::from("/"),
+                },
+            )),
+        };
+        let task = crate::task::Task::new_test(
+            crate::task::TaskId::new(),
+            process,
+            crate::task::TaskState::Running,
+        );
+        crate::task::scheduler::set_current_task_for_test(task);
+
+        let path = "/regular_file";
+        let args = SyscallArgs::new(path.as_ptr() as u64, path.len() as u64, 0, 0);
+        let result = handle_chdir(args);
+        assert!(matches!(result, SyscallResult::Error(20)), "Expected ENOTDIR for file path");
+    }
+
+    #[test]
+    fn handle_chdir_success_updates_cwd() {
+        let _guard = crate::test_serial::acquire();
+        {
+            let mut vfs = crate::vfs::VFS.lock();
+            *vfs = crate::vfs::Vfs::new();
+            vfs.mount(
+                "/",
+                alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+                crate::fs::vfs::MountFlags::default(),
+            )
+            .unwrap();
+            assert!(vfs.mkdir("/home"), "Failed to create /home");
+            assert!(vfs.mkdir("/home/user"), "Failed to create /home/user");
+        }
+
+        let process = crate::process::Process {
+            inner: alloc::sync::Arc::new(spin::Mutex::new(
+                crate::process::ProcessControlBlock {
+                    id: crate::process::ProcessId(97),
+                    ppid: crate::process::ProcessId(0),
+                    state: crate::process::ProcessState::Running,
+                    pml4_frame: x86_64::structures::paging::PhysFrame::containing_address(
+                        x86_64::PhysAddr::new(0),
+                    ),
+                    entry_point: x86_64::VirtAddr::zero(),
+                    stack_top: x86_64::VirtAddr::zero(),
+                    threads: alloc::vec![],
+                    vma_set: crate::memory::vma::VmaSet::new(),
+                    mmap_next_addr: x86_64::VirtAddr::zero(),
+                    aslr_base: x86_64::VirtAddr::zero(),
+                    fd_table: alloc::vec![None; 1024],
+                    signal_mask: crate::process::SignalSet::empty(),
+                    signal_handlers: [crate::process::SignalAction::Default; 64],
+                    pending_signals: crate::process::SignalSet::empty(),
+                    pending_signal_frame: None,
+                    sec_ctx: crate::security::SecurityContext::root(),
+                    nsproxy: crate::security::namespaces::NsProxy::new(),
+                    seccomp_filter: None,
+                    cgroup_path: None,
+                    cwd: alloc::string::String::from("/"),
+                },
+            )),
+        };
+        let task = crate::task::Task::new_test(
+            crate::task::TaskId::new(),
+            process,
+            crate::task::TaskState::Running,
+        );
+        crate::task::scheduler::set_current_task_for_test(task);
+
+        let path = "/home/user";
+        let args = SyscallArgs::new(path.as_ptr() as u64, path.len() as u64, 0, 0);
+        let result = handle_chdir(args);
+        assert!(matches!(result, SyscallResult::Success(0)), "Expected success for valid directory");
+
+        // Verify CWD was updated
+        let cwd = crate::task::scheduler::get_current_process()
+            .unwrap()
+            .inner
+            .lock()
+            .cwd
+            .clone();
+        assert_eq!(cwd, "/home/user", "CWD should be updated to /home/user");
+    }
+
+    #[test]
+    fn normalize_path_complex() {
+        assert_eq!(normalize_path("/a/b/../c/./d///e"), "/a/c/d/e");
+        assert_eq!(normalize_path("/a/b/c/../../.."), "/");
+        assert_eq!(normalize_path("//a///b/"), "/a/b");
+        assert_eq!(normalize_path("/././."), "/");
+        assert_eq!(normalize_path("/a/b/../../c/d/.."), "/c");
+    }
 }
