@@ -1481,6 +1481,7 @@ impl Vfs {
         if addr == 0 || size == 0 {
             return;
         }
+        // Safety: addr is a valid ramdisk base address and size is the ramdisk length.
         let data = unsafe { core::slice::from_raw_parts(addr as *const u8, size as usize) };
         let mut offset = 0;
         while offset + 72 <= data.len() {

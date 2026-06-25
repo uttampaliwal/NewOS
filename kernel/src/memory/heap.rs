@@ -36,6 +36,8 @@ pub fn init_heap(
             .allocate_frame()
             .ok_or(MapToError::FrameAllocationFailed)?;
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+        // Safety: frame is a freshly allocated physical frame, page is an unmapped virtual page,
+        // and flags mark the page present and writable. The flush invalidates the TLB entry.
         unsafe {
             mapper.map_to(page, frame, flags, frame_allocator)?.flush();
         }
@@ -55,11 +57,15 @@ pub fn init_heap(
             .allocate_frame()
             .ok_or(MapToError::FrameAllocationFailed)?;
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+        // Safety: frame is a freshly allocated physical frame for KASAN shadow,
+        // page is unmapped, and flags mark the page present and writable.
         unsafe {
             mapper.map_to(page, frame, flags, frame_allocator)?.flush();
         }
     }
 
+    // Safety: The heap pages are now mapped and the ALLOCATOR static is only
+    // initialized once during boot. init() is called after all heap pages are mapped.
     unsafe {
         ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
     }

@@ -18,6 +18,9 @@ fn map_fault_frame(
     allocator: &mut impl FrameAllocator<Size4KiB>,
     phys_mem_offset: VirtAddr,
 ) -> bool {
+    // Safety: fault_addr is a valid user virtual address from Cr2, page is unmapped,
+    // frame is a freshly allocated physical frame, and mapper operates on the current
+    // process's page tables. The flush invalidates the TLB entry.
     unsafe {
         let page = Page::<Size4KiB>::containing_address(fault_addr);
         let (pml4_frame, _) = x86_64::registers::control::Cr3::read();
@@ -52,9 +55,12 @@ fn map_fault_frame(
 fn populate_file_page(frame_ptr: *mut u8, inode: crate::memory::vma::InodeId, page_idx: u64) {
     let vfs = crate::vfs::VFS.lock();
     let page_offset = page_idx * PAGE_SIZE;
+    // Safety: frame_ptr points to a freshly allocated physical frame of Size4KiB bytes,
+    // and the slice length matches the frame size.
     let buf = unsafe { core::slice::from_raw_parts_mut(frame_ptr, Size4KiB::SIZE as usize) };
     if !vfs.read_page(inode.0 as usize, page_offset, buf) {
         // File data not available — zero-fill
+        // Safety: frame_ptr is a valid pointer to a Size4KiB frame allocated above.
         unsafe {
             core::ptr::write_bytes(frame_ptr, 0, Size4KiB::SIZE as usize);
         }
@@ -177,6 +183,9 @@ pub fn handle_demand_fault() -> bool {
     };
 
     let frame_ptr = (phys_mem_offset + frame.start_address().as_u64()).as_mut_ptr::<u8>();
+    // Safety: frame is a freshly allocated physical frame, frame_ptr is derived from
+    // the physical address plus the memory-mapped offset, and the write covers exactly
+    // one page of the frame.
     unsafe {
         core::ptr::write_bytes(frame_ptr, 0, Size4KiB::SIZE as usize);
     }
@@ -379,6 +388,8 @@ mod tests {
         assert!(has_non_zero, "buffer should be non-zero before zero-fill");
 
         // Zero-fill using the same primitive as handle_demand_fault
+        // Safety: buffer is a stack-allocated, properly aligned, non-null pointer
+        // to valid memory of buffer.len() bytes.
         unsafe {
             ptr::write_bytes(buffer.as_mut_ptr(), 0, buffer.len());
         }
@@ -476,6 +487,8 @@ mod tests {
     fn zero_fill_partial_page() {
         let mut buf = [0xFFu8; 64];
         let half = 32;
+        // Safety: buf is a stack-allocated array, the pointer is valid for `half` bytes,
+        // and the write only covers the first half of the buffer.
         unsafe {
             core::ptr::write_bytes(buf.as_mut_ptr(), 0, half);
         }
@@ -490,6 +503,8 @@ mod tests {
     #[test]
     fn zero_fill_entire_page() {
         let mut buf = [0xABu8; 4096];
+        // Safety: buf is a stack-allocated array of 4096 bytes, the pointer is
+        // valid for the full buffer length.
         unsafe {
             core::ptr::write_bytes(buf.as_mut_ptr(), 0, buf.len());
         }

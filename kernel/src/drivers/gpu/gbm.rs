@@ -174,7 +174,9 @@ mod tests {
             rsdp_addr: 0,
             kaslr_offset: 0,
         });
-        let boot_info_ref: &'static BootInfo = unsafe { &*alloc::boxed::Box::into_raw(boot_info) };
+        let boot_info_ref: &'static BootInfo =
+            // Safety: Box::into_raw leaks the allocation; the &'static reference is valid for process lifetime.
+            unsafe { &*alloc::boxed::Box::into_raw(boot_info) };
 
         let frame_alloc = crate::memory::FrameAllocator::new(boot_info_ref);
         *crate::boot::FRAME_ALLOCATOR.lock() = Some(frame_alloc);

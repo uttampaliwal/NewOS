@@ -36,6 +36,7 @@ impl Ext4Device {
             .read_sectors(sb_sector, &mut sb_buf)
             .map_err(|_| Ext4DeviceError::ReadError)?;
 
+        // Safety: sb_buf contains a valid superblock read from disk at the correct offset.
         let sb = unsafe { core::ptr::read(sb_buf.as_ptr() as *const Ext4Superblock) };
 
         sb.validate().map_err(Ext4DeviceError::Superblock)?;
@@ -100,6 +101,7 @@ impl Ext4Device {
             .read_sectors(sector, &mut buf)
             .map_err(|_| Ext4DeviceError::ReadError)?;
 
+        // Safety: buf contains valid group descriptor data read from disk; byte_in_sector is within bounds.
         let bgd = unsafe {
             core::ptr::read(buf.as_ptr().add(byte_in_sector) as *const BlockGroupDescriptor)
         };
@@ -127,6 +129,7 @@ impl Ext4Device {
         let mut block_buf = alloc::vec![0u8; self.block_size as usize];
         self.read_block(block, &mut block_buf)?;
 
+        // Safety: block_buf contains valid inode table data read from disk; byte_in_block is within bounds.
         let inode = unsafe {
             core::ptr::read(block_buf.as_ptr().add(byte_in_block as usize) as *const Ext4Inode)
         };

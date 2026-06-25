@@ -222,6 +222,7 @@ impl IoUringInstance {
                         let mut buf = alloc::vec![0u8; buf_len];
                         let n = pipe_buf.read(&mut buf);
                         if n > 0 {
+                            // Safety: buf_addr is validated non-null above and points to a user buffer of buf_len bytes.
                             unsafe {
                                 core::ptr::copy_nonoverlapping(buf.as_ptr(), buf_addr, n);
                             }
@@ -232,6 +233,7 @@ impl IoUringInstance {
                         let mut buf = alloc::vec![0u8; buf_len];
                         let n = sock.read(&mut buf);
                         if n > 0 {
+                            // Safety: buf_addr is validated non-null above and points to a user buffer of buf_len bytes.
                             unsafe {
                                 core::ptr::copy_nonoverlapping(buf.as_ptr(), buf_addr, n);
                             }
@@ -242,6 +244,7 @@ impl IoUringInstance {
                         Ok(val) => {
                             let bytes = val.to_ne_bytes();
                             let len = buf_len.min(8);
+                            // Safety: buf_addr is validated non-null above and points to a user buffer of buf_len bytes.
                             unsafe {
                                 core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf_addr, len);
                             }
@@ -253,6 +256,7 @@ impl IoUringInstance {
                         Ok(exps) => {
                             let bytes = exps.to_ne_bytes();
                             let len = buf_len.min(8);
+                            // Safety: buf_addr is validated non-null above and points to a user buffer of buf_len bytes.
                             unsafe {
                                 core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf_addr, len);
                             }
@@ -279,6 +283,7 @@ impl IoUringInstance {
             return -14;
         }
 
+        // Safety: buf_addr is validated non-null above and points to a user buffer of buf_len bytes.
         let data = unsafe { alloc::slice::from_raw_parts(buf_addr, buf_len) };
 
         if let Some(process) = crate::task::scheduler::get_current_process() {

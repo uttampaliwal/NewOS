@@ -33,12 +33,16 @@ impl Slab {
 
     fn build_free_list(&mut self) {
         for i in 0..self.total {
+            // Safety: base was allocated with enough space for total * obj_size bytes,
+            // and i < total, so the offset is within bounds and properly aligned.
             let ptr = unsafe { self.base.add(i * self.obj_size) };
             let next_free = if i + 1 < self.total {
                 (i + 1) as u64
             } else {
                 u64::MAX
             };
+            // Safety: ptr points to a valid, properly aligned u64-sized region within
+            // the slab allocation, and the write initializes the free list node.
             unsafe {
                 core::ptr::write_volatile(ptr as *mut u64, next_free);
             }
@@ -50,6 +54,8 @@ impl Slab {
             if self.free_bitmap & (1u64 << self.cursor) != 0 {
                 let idx = self.cursor;
                 self.free_bitmap &= !(1u64 << idx);
+                // Safety: base was allocated with enough space for total * obj_size bytes,
+                // and idx < total, so the offset is within bounds.
                 let ptr = unsafe { self.base.add(idx * self.obj_size) };
                 self.cursor += 1;
                 return Some(ptr);
@@ -153,6 +159,9 @@ impl SlabCache {
     fn grow(&mut self) {
         let alloc_size = self.page_size.max(self.obj_size).next_multiple_of(4096);
         let layout = Layout::from_size_align(alloc_size, 4096).unwrap();
+        // Safety: layout is valid (size > 0, align is power of 2), alloc returns a
+        // pointer to a block of memory of the requested layout or null. The block
+        // is zeroed and then wrapped in a Slab which manages access within bounds.
         unsafe {
             let ptr = alloc(layout);
             if ptr.is_null() {
@@ -175,6 +184,8 @@ impl Drop for SlabCache {
     fn drop(&mut self) {
         for slab in &self.slabs {
             let layout = Layout::from_size_align(slab.alloc_size, 4096).unwrap();
+            // Safety: slab.base was allocated by alloc() with the same layout,
+            // and Drop is called when the slab is no longer in use.
             unsafe {
                 dealloc(slab.base, layout);
             }

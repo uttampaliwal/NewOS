@@ -73,6 +73,8 @@ pub fn init(heap_start: usize, heap_end: usize, shadow_base: usize) {
 
     let shadow = shadow_base as *mut u8;
     for i in 0..shadow_size {
+        // Safety: shadow_base is a valid writable virtual address range of at least
+        // shadow_size bytes, mapped and ready before init() was called.
         unsafe {
             core::ptr::write_volatile(shadow.add(i), KASAN_POISON_FREE);
         }
@@ -111,6 +113,8 @@ pub fn alloc_poison(addr: usize, size: usize) {
     let shadow = shadow_for(addr) as *mut u8;
     let shadow_size = size.div_ceil(SHADOW_SCALE);
 
+    // Safety: shadow points into the valid shadow memory region for the heap,
+    // and shadow_size is within the shadow region bounds.
     unsafe {
         for i in 0..shadow_size {
             core::ptr::write_volatile(shadow.add(i), 0);
@@ -121,6 +125,8 @@ pub fn alloc_poison(addr: usize, size: usize) {
     let rz_end = redzone_start + REDZONE_SIZE;
     let rz_shadow = shadow_for(redzone_start) as *mut u8;
     let rz_shadow_size = (rz_end - redzone_start).div_ceil(SHADOW_SCALE);
+    // Safety: rz_shadow points into the valid shadow memory region for the redzone,
+    // and rz_shadow_size covers only the redzone's shadow bytes.
     unsafe {
         for i in 0..rz_shadow_size {
             core::ptr::write_volatile(rz_shadow.add(i), KASAN_POISON_REDZONE);
@@ -140,6 +146,8 @@ pub fn free_poison(addr: usize, size: usize) {
     let shadow = shadow_for(addr) as *mut u8;
     let shadow_size = size.div_ceil(SHADOW_SCALE);
 
+    // Safety: shadow points into the valid shadow memory region for the heap,
+    // and shadow_size is within the shadow region bounds.
     unsafe {
         for i in 0..shadow_size {
             core::ptr::write_volatile(shadow.add(i), KASAN_POISON_FREE);
@@ -165,6 +173,8 @@ pub fn check_byte(addr: usize) -> bool {
     }
 
     let shadow = shadow_for(addr) as *const u8;
+    // Safety: shadow points into the valid shadow memory region; addr is within
+    // the heap bounds (checked above), so the shadow address is valid for a read.
     let poison = unsafe { core::ptr::read_volatile(shadow) };
 
     poison == 0
@@ -186,6 +196,8 @@ pub fn check_range(addr: usize, size: usize) -> Result<(), KasanError> {
     for offset in 0..size {
         let byte_addr = addr + offset;
         let shadow = shadow_for(byte_addr) as *const u8;
+        // Safety: shadow points into the valid shadow memory region; byte_addr is
+        // within heap bounds (checked above), so the shadow address is valid for a read.
         let poison = unsafe { core::ptr::read_volatile(shadow) };
 
         if poison != 0 {
@@ -216,6 +228,8 @@ pub fn report_violation(addr: usize, size: usize, error: &KasanError) {
         && addr < KASAN.heap_end.load(Ordering::Acquire)
     {
         let shadow = shadow_for(addr) as *const u8;
+        // Safety: shadow points into the valid shadow memory region; addr is within
+        // heap bounds (checked above), so the shadow bytes are valid for reading.
         unsafe {
             let mut buf = [0u8; 32];
             for (i, byte) in buf.iter_mut().enumerate() {

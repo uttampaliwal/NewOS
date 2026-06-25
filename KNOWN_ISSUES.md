@@ -315,7 +315,7 @@ and lifecycle.
 
 ---
 
-## 16. Undocumented Unsafe Blocks (~325 remaining)
+## 16. Undocumented Unsafe Blocks (~206 remaining)
 
 | | |
 |---|---|
@@ -329,7 +329,11 @@ comments (48.9%); 206 still undocumented (51.1%). The lint is currently
 `#![allow(clippy::undocumented_unsafe_blocks)]` in `kernel/src/lib.rs`
 with a TODO to switch to `#![warn(...)]` once backfill is complete.
 
-**Impact:** 325 unsafe blocks in production code lack `// Safety:` comments.
+The pending diff adds ~320 lines of `// Safety:` comments across 28 files
+(ACPI, arch/x86_64, drivers, filesystems, IPC, memory, process, task),
+bringing the documented count to ~518 of 403+ new blocks.
+
+**Impact:** ~206 unsafe blocks in production code lack `// Safety:` comments.
 For a Rust-first OS, this is the largest gap between stated values and
 actual code. No CI check enforces documentation, so the debt grows with
 each new subsystem.
@@ -354,13 +358,15 @@ each new subsystem.
 | **Component** | `kernel/src/task/`, `kernel/src/net/` |
 | **Status** | Improved |
 
-**Resolution:** Overall test count grew to 792 tests across 66 files
+**Resolution:** Overall test count grew to 808 tests across 66 files
 (including 16 proptest blocks). Signal delivery is well covered (27 tests
-+ 2 proptest blocks). However, specific weak areas remain:
++ 2 proptest blocks). Scheduler now has 16 tests including 3 new EEVDF
+correctness tests (earliest-deadline selection, ineligible-skip, empty-queue).
+Cgroup module has 13 tests with serialization guards. However, specific
+weak areas remain:
 
-**Remaining:** Scheduler (`task/scheduler.rs`) has 13 tests, all single-CPU
-queries — zero SMP load balancing, CFS vruntime fairness, or cgroup
-enforcement tests. Networking (`net/socket.rs`) has 8 tests, all
+**Remaining:** Scheduler SMP load balancing and cgroup enforcement tests
+are still missing. Networking (`net/socket.rs`) has 8 tests, all
 SocketTable bookkeeping — zero syscall or state machine tests
 (bind/listen/connect/accept/recv/send). `net/smoltcp_iface.rs` has 7
 tests for basic lifecycle only — no data path or connection tests.

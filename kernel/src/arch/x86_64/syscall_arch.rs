@@ -28,6 +28,10 @@ pub struct SyscallFrame {
 }
 
 pub fn init() {
+    // SAFETY: MSR writes during early boot with interrupts disabled.
+    // STAR (0xC0000081) configures segment bases for syscall/sysret.
+    // LSTAR points to the valid syscall_entry assembly trampoline.
+    // SFMask masks IF during syscall entry. EFER.SCE enables the SYSCALL instruction.
     unsafe {
         let mut star = Msr::new(0xC0000081);
         let kernel_base = 0x08u64;

@@ -246,7 +246,7 @@ pub fn check_pending_signals(frame: &mut SyscallFrame) {
             // Align down to 16 bytes.
             let frame_addr = (current_rsp - sig_frame_size) & !15u64;
 
-            // Write the signal frame to user space.
+            // Safety: frame_addr is within the user stack (below current_rsp); signal frame layout matches SignalFrame.
             unsafe {
                 (frame_addr as *mut SignalFrame).write(sig_frame);
             }
@@ -282,7 +282,7 @@ pub fn handle_sigreturn_with_frame(frame: &mut SyscallFrame) -> u64 {
     }
 
     if let Some(addr) = sig_frame {
-        // Read the signal frame from user space.
+        // Safety: addr was set by check_pending_signals from a valid frame_addr on the user stack; SignalFrame is repr(C) and correctly aligned.
         let saved: SignalFrame = unsafe { (addr as *const SignalFrame).read() };
 
         // Restore all registers.
@@ -368,6 +368,7 @@ mod tests {
             nsproxy: crate::security::namespaces::NsProxy::new(),
             seccomp_filter: None,
             cgroup_path: None,
+            cwd: alloc::string::String::from("/"),
         };
         let process = Process {
             inner: Arc::new(Mutex::new(pcb)),
@@ -411,6 +412,7 @@ mod tests {
     }
 
     fn cleanup(env: TestEnv) {
+        // Safety: stack_ptr was allocated via std::alloc::alloc with stack_layout; no other references remain.
         unsafe {
             std::alloc::dealloc(env.stack_ptr as *mut u8, env.stack_layout);
         }

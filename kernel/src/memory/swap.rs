@@ -510,25 +510,21 @@ fn write_pte_raw(
     if pml4[vaddr.p4_index()].is_unused() {
         return;
     }
-    let p3_ptr = (phys_mem_offset
-        + pml4[vaddr.p4_index()]
-            .frame()
-            .unwrap()
-            .start_address()
-            .as_u64())
-    .as_mut_ptr::<PageTable>();
+    let p3_frame = match pml4[vaddr.p4_index()].frame() {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let p3_ptr = (phys_mem_offset + p3_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     // Safety: p3_ptr points to a valid page table frame
     let p3 = unsafe { &mut *p3_ptr };
     if p3[vaddr.p3_index()].is_unused() {
         return;
     }
-    let p2_ptr = (phys_mem_offset
-        + p3[vaddr.p3_index()]
-            .frame()
-            .unwrap()
-            .start_address()
-            .as_u64())
-    .as_mut_ptr::<PageTable>();
+    let p2_frame = match p3[vaddr.p3_index()].frame() {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let p2_ptr = (phys_mem_offset + p2_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     // Safety: p2_ptr points to a valid page table frame
     let p2 = unsafe { &mut *p2_ptr };
     if p2[vaddr.p2_index()].is_unused() {
@@ -540,13 +536,11 @@ fn write_pte_raw(
     {
         return;
     }
-    let p1_ptr = (phys_mem_offset
-        + p2[vaddr.p2_index()]
-            .frame()
-            .unwrap()
-            .start_address()
-            .as_u64())
-    .as_mut_ptr::<PageTable>();
+    let p1_frame = match p2[vaddr.p2_index()].frame() {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let p1_ptr = (phys_mem_offset + p1_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     // Safety: p1_ptr points to a valid page table frame
     let p1 = unsafe { &mut *p1_ptr };
     p1[vaddr.p1_index()].set_addr(
@@ -564,25 +558,21 @@ fn clear_accessed_bit(pml4_frame: PhysFrame<Size4KiB>, phys_mem_offset: VirtAddr
     if pml4[vaddr.p4_index()].is_unused() {
         return;
     }
-    let p3_ptr = (phys_mem_offset
-        + pml4[vaddr.p4_index()]
-            .frame()
-            .unwrap()
-            .start_address()
-            .as_u64())
-    .as_mut_ptr::<PageTable>();
+    let p3_frame = match pml4[vaddr.p4_index()].frame() {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let p3_ptr = (phys_mem_offset + p3_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     // Safety: p3_ptr points to a valid page table frame
     let p3 = unsafe { &mut *p3_ptr };
     if p3[vaddr.p3_index()].is_unused() {
         return;
     }
-    let p2_ptr = (phys_mem_offset
-        + p3[vaddr.p3_index()]
-            .frame()
-            .unwrap()
-            .start_address()
-            .as_u64())
-    .as_mut_ptr::<PageTable>();
+    let p2_frame = match p3[vaddr.p3_index()].frame() {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let p2_ptr = (phys_mem_offset + p2_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     // Safety: p2_ptr points to a valid page table frame
     let p2 = unsafe { &mut *p2_ptr };
     if p2[vaddr.p2_index()].is_unused() {
@@ -594,13 +584,11 @@ fn clear_accessed_bit(pml4_frame: PhysFrame<Size4KiB>, phys_mem_offset: VirtAddr
     {
         return;
     }
-    let p1_ptr = (phys_mem_offset
-        + p2[vaddr.p2_index()]
-            .frame()
-            .unwrap()
-            .start_address()
-            .as_u64())
-    .as_mut_ptr::<PageTable>();
+    let p1_frame = match p2[vaddr.p2_index()].frame() {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let p1_ptr = (phys_mem_offset + p1_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
     // Safety: p1_ptr points to a valid page table frame
     let p1 = unsafe { &mut *p1_ptr };
     let mut flags = p1[vaddr.p1_index()].flags();

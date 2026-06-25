@@ -150,6 +150,8 @@ pub struct ProcessControlBlock {
     pub seccomp_filter: Option<SeccompFilter>,
     /// Cgroup path this process belongs to (None = root cgroup "/").
     pub cgroup_path: Option<alloc::string::String>,
+    /// Current working directory for relative path resolution.
+    pub cwd: alloc::string::String,
 }
 
 // ---------------------------------------------------------------------------
@@ -279,8 +281,8 @@ impl Process {
                         nsproxy: NsProxy::new(),
                         seccomp_filter: None,
                         cgroup_path: None,
-                    }))
-                }
+                        cwd: alloc::string::String::from("/"),
+                    }))}
             };
         }
         KERNEL_PROC.clone()
@@ -328,6 +330,7 @@ impl Process {
             nsproxy: NsProxy::new(),
             seccomp_filter: None,
             cgroup_path: None,
+            cwd: alloc::string::String::from("/"),
         };
 
         crate::serial::println!("[STG: PROC_INNER_BUILT]");
@@ -336,6 +339,7 @@ impl Process {
         };
         crate::serial::println!("[STG: PROC_ARC_BUILT]");
 
+        // Safety: pml4_frame and physical_memory_offset are valid; map_user_region handles page table setup.
         unsafe {
             // Map User Stack (read-write, non-executable)
             process.map_user_region(
@@ -348,6 +352,7 @@ impl Process {
             crate::serial::println!("[STG: PROC_NEW_STACK]");
 
             // Map ELF Segments
+            // Safety: pml4_frame is freshly allocated; physical_memory_offset maps physical memory.
             let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
                 .as_mut_ptr::<PageTable>();
             let process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
@@ -394,29 +399,33 @@ impl Process {
                     let mut offset = 0u64;
                     while offset < ph.file_size {
                         let chunk_virt = virt_start + offset;
-                        let chunk_phys =
-                            process_mapper.translate_addr(chunk_virt).expect("ELF map");
-                        let dest_ptr =
-                            (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
-                        let copy_size =
-                            (ph.file_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
-                        core::ptr::copy_nonoverlapping(
-                            &elf_data[ph.file_offset as usize + offset as usize],
-                            dest_ptr,
-                            copy_size as usize,
-                        );
-                        offset += copy_size;
-                    }
-                    // BSS
-                    while offset < ph.memory_size {
-                        let chunk_virt = virt_start + offset;
-                        let chunk_phys =
-                            process_mapper.translate_addr(chunk_virt).expect("BSS map");
-                        let dest_ptr =
-                            (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
-                        let copy_size =
-                            (ph.memory_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
-                        core::ptr::write_bytes(dest_ptr, 0, copy_size as usize);
+                        let chunk_phys = process_mapper
+                            .translate_addr(chunk_virt)
+                            .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+                    // Safety: chunk_virt is mapped via process_mapper; dest_ptr is within the mapped region.
+                    let dest_ptr =
+                        (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
+                    let copy_size =
+                        (ph.file_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
+                    core::ptr::copy_nonoverlapping(
+                        &elf_data[ph.file_offset as usize + offset as usize],
+                        dest_ptr,
+                        copy_size as usize,
+                    );
+                    offset += copy_size;
+                }
+                // BSS
+                while offset < ph.memory_size {
+                    let chunk_virt = virt_start + offset;
+                    let chunk_phys = process_mapper
+                        .translate_addr(chunk_virt)
+                        .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+                    // Safety: chunk_virt is mapped via process_mapper; dest_ptr is within the mapped region.
+                    let dest_ptr =
+                        (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
+                    let copy_size =
+                        (ph.memory_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
+                    core::ptr::write_bytes(dest_ptr, 0, copy_size as usize);
                         offset += copy_size;
                     }
                 }
@@ -471,7 +480,7 @@ impl Process {
             }
         }
 
-        let (old_pml4_frame, current_ppid, retained_fd_table, cloexec_fds) = {
+        let (old_pml4_frame, current_ppid, retained_fd_table, cloexec_fds, old_cwd) = {
             let inner = self.inner.lock();
             let cloexec_fds = inner
                 .fd_table
@@ -491,7 +500,7 @@ impl Process {
                         .filter(|fd| !fd.flags.is_cloexec())
                 })
                 .collect();
-            (inner.pml4_frame, inner.ppid, retained_fd_table, cloexec_fds)
+            (inner.pml4_frame, inner.ppid, retained_fd_table, cloexec_fds, inner.cwd.clone())
         };
 
         // Create new PML4 for the exec'd process
@@ -527,9 +536,11 @@ impl Process {
                 nsproxy: NsProxy::new(),
                 seccomp_filter: None,
                 cgroup_path: None,
+                cwd: old_cwd,
             })),
         };
 
+        // Safety: new_pml4_frame is freshly allocated; physical_memory_offset maps physical memory.
         unsafe {
             // Map User Stack (read-write, non-executable)
             temp_process.map_user_region(
@@ -541,6 +552,7 @@ impl Process {
             );
 
             // Map ELF Segments
+            // Safety: new_pml4_frame is freshly allocated; physical_memory_offset maps physical memory.
             let pml4_ptr = (physical_memory_offset + new_pml4_frame.start_address().as_u64())
                 .as_mut_ptr::<PageTable>();
             let temp_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
@@ -584,27 +596,33 @@ impl Process {
                     let mut offset = 0u64;
                     while offset < ph.file_size {
                         let chunk_virt = virt_start + offset;
-                        let chunk_phys = temp_mapper.translate_addr(chunk_virt).expect("ELF map");
-                        let dest_ptr =
-                            (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
-                        let copy_size =
-                            (ph.file_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
-                        core::ptr::copy_nonoverlapping(
-                            &elf_data[ph.file_offset as usize + offset as usize],
-                            dest_ptr,
-                            copy_size as usize,
-                        );
-                        offset += copy_size;
-                    }
-                    // BSS
-                    while offset < ph.memory_size {
-                        let chunk_virt = virt_start + offset;
-                        let chunk_phys = temp_mapper.translate_addr(chunk_virt).expect("BSS map");
-                        let dest_ptr =
-                            (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
-                        let copy_size =
-                            (ph.memory_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
-                        core::ptr::write_bytes(dest_ptr, 0, copy_size as usize);
+                        let chunk_phys = temp_mapper
+                            .translate_addr(chunk_virt)
+                            .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+                    // Safety: chunk_virt is mapped via temp_mapper; dest_ptr is within the mapped region.
+                    let dest_ptr =
+                        (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
+                    let copy_size =
+                        (ph.file_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
+                    core::ptr::copy_nonoverlapping(
+                        &elf_data[ph.file_offset as usize + offset as usize],
+                        dest_ptr,
+                        copy_size as usize,
+                    );
+                    offset += copy_size;
+                }
+                // BSS
+                while offset < ph.memory_size {
+                    let chunk_virt = virt_start + offset;
+                    let chunk_phys = temp_mapper
+                        .translate_addr(chunk_virt)
+                        .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
+                    // Safety: chunk_virt is mapped via temp_mapper; dest_ptr is within the mapped region.
+                    let dest_ptr =
+                        (physical_memory_offset + chunk_phys.as_u64()).as_mut_ptr::<u8>();
+                    let copy_size =
+                        (ph.memory_size - offset).min(4096 - (chunk_virt.as_u64() % 4096));
+                    core::ptr::write_bytes(dest_ptr, 0, copy_size as usize);
                         offset += copy_size;
                     }
                 }
@@ -629,9 +647,13 @@ impl Process {
                     stack_ptr -= (s.len() + 1) as u64; // +1 for null terminator
                     let dest_virt = VirtAddr::new_truncate(stack_ptr);
                     string_addrs[idx].push(dest_virt);
-                    let dest_phys = temp_mapper.translate_addr(dest_virt).unwrap();
+                    // Safety: dest_virt is mapped via temp_mapper; dest_ptr is within the mapped user stack.
+                    let dest_phys = temp_mapper
+                        .translate_addr(dest_virt)
+                        .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
                     let dest_ptr = (physical_memory_offset + dest_phys.as_u64()).as_mut_ptr::<u8>();
                     core::ptr::copy_nonoverlapping(s.as_ptr(), dest_ptr, s.len());
+                    // Safety: dest_ptr + s.len() is within the mapped user stack; writing null terminator.
                     core::ptr::write(dest_ptr.add(s.len()), 0);
                 }
             }
@@ -644,7 +666,10 @@ impl Process {
             // Step 3: Write envp array (null-terminated)
             stack_ptr -= (envp.len() + 1) as u64 * 8;
             let envp_array_virt = VirtAddr::new_truncate(stack_ptr);
-            let envp_array_phys = temp_mapper.translate_addr(envp_array_virt).unwrap();
+            // Safety: envp_array_virt is mapped via temp_mapper; envp_array_ptr is within the mapped user stack.
+            let envp_array_phys = temp_mapper
+                .translate_addr(envp_array_virt)
+                .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
             let envp_array_ptr =
                 (physical_memory_offset + envp_array_phys.as_u64()).as_mut_ptr::<u64>();
             for (i, addr) in string_addrs[1].iter().enumerate() {
@@ -655,7 +680,10 @@ impl Process {
             // Step 4: Write argv array (null-terminated)
             stack_ptr -= (argv.len() + 1) as u64 * 8;
             let argv_array_virt = VirtAddr::new_truncate(stack_ptr);
-            let argv_array_phys = temp_mapper.translate_addr(argv_array_virt).unwrap();
+            // Safety: argv_array_virt is mapped via temp_mapper; argv_array_ptr is within the mapped user stack.
+            let argv_array_phys = temp_mapper
+                .translate_addr(argv_array_virt)
+                .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
             let argv_array_ptr =
                 (physical_memory_offset + argv_array_phys.as_u64()).as_mut_ptr::<u64>();
             for (i, addr) in string_addrs[0].iter().enumerate() {
@@ -666,7 +694,10 @@ impl Process {
             // Step 5: Write argc
             stack_ptr -= 8;
             let argc_virt = VirtAddr::new_truncate(stack_ptr);
-            let argc_phys = temp_mapper.translate_addr(argc_virt).unwrap();
+            // Safety: argc_virt is mapped via temp_mapper; argc_ptr is within the mapped user stack.
+            let argc_phys = temp_mapper
+                .translate_addr(argc_virt)
+                .ok_or(elf::ParseError::ProgramHeaderOutOfBounds)?;
             let argc_ptr = (physical_memory_offset + argc_phys.as_u64()).as_mut_ptr::<u64>();
             core::ptr::write(argc_ptr, argv.len() as u64);
 
@@ -801,6 +832,7 @@ impl Process {
             nsproxy: NsProxy::from_flags(0, &parent.nsproxy),
             seccomp_filter: parent.seccomp_filter.clone().map(|f| f.inherit_on_fork()),
             cgroup_path: parent.cgroup_path.clone(),
+            cwd: parent.cwd.clone(),
         };
 
         Self {
@@ -851,6 +883,7 @@ impl Process {
             nsproxy,
             seccomp_filter: parent.seccomp_filter.clone().map(|f| f.inherit_on_fork()),
             cgroup_path: parent.cgroup_path.clone(),
+            cwd: parent.cwd.clone(),
         };
 
         Self {
@@ -873,6 +906,7 @@ impl Process {
         let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
             .as_mut_ptr::<PageTable>();
 
+        // Safety: pml4_frame is valid; physical_memory_offset maps physical memory; frame_allocator provides frames.
         unsafe {
             let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
             // Apply W^X enforcement: strip WRITABLE if both WRITABLE and executable
@@ -896,6 +930,7 @@ impl Process {
                     let frame = self.inner.allocate_frame()?;
                     let ptr =
                         (self.phys_offset + frame.start_address().as_u64()).as_mut_ptr::<u8>();
+                    // Safety: ptr points to a freshly allocated frame; 4096 bytes are writable via physical_memory_offset.
                     unsafe { core::ptr::write_bytes(ptr, 0, 4096) };
                     Some(frame)
                 }
@@ -911,7 +946,7 @@ impl Process {
                     .is_none()
                 {
                     let frame = zeroing.inner.allocate_frame().expect("out of memory");
-                    // Zero the leaf frame (data page) as well for security.
+                    // Safety: frame is freshly allocated; ptr points to the frame's physical memory.
                     let ptr = (physical_memory_offset + frame.start_address().as_u64())
                         .as_mut_ptr::<u8>();
                     core::ptr::write_bytes(ptr, 0, 4096);
@@ -946,6 +981,7 @@ impl Process {
         let pml4_frame = self.pml4_frame();
         let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
             .as_mut_ptr::<PageTable>();
+        // Safety: pml4_frame is valid; physical_memory_offset maps physical memory.
         unsafe {
             let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
             let pages = Page::<Size4KiB>::range_inclusive(
@@ -1088,6 +1124,7 @@ where
             let target_ptr =
                 (physical_memory_offset + target_physical.as_u64()).as_mut_ptr::<u64>();
 
+            // Safety: target_ptr points to mapped memory for the ELF relocation target.
             unsafe {
                 // R_X86_64_RELATIVE: *(r_offset + base) = base + A
                 // where A (addend) is relative to the PIE assumed base (0),
@@ -1133,6 +1170,7 @@ mod tests {
             nsproxy: NsProxy::new(),
             seccomp_filter: None,
             cgroup_path: None,
+            cwd: alloc::string::String::from("/"),
         }
     }
 

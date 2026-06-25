@@ -214,7 +214,9 @@ struct VirtQueue {
     _queue_idx: u16,
 }
 
+// Safety: VirtQueue is only accessed behind a Mutex, ensuring no concurrent access.
 unsafe impl Send for VirtQueue {}
+// Safety: VirtQueue is only accessed behind a Mutex, ensuring no concurrent access.
 unsafe impl Sync for VirtQueue {}
 
 impl VirtQueue {

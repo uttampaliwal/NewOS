@@ -47,33 +47,39 @@ pub struct Ext2Superblock {
 impl Ext2Superblock {
     pub fn is_valid(&self) -> bool {
         let magic_ptr = ptr::addr_of!(self.magic);
+        // Safety: self is a valid packed struct; magic_ptr points within it.
         let magic = unsafe { ptr::read_unaligned(magic_ptr) };
         magic == 0xEF53
     }
 
     pub fn block_size(&self) -> usize {
         let log_bs_ptr = ptr::addr_of!(self.log_block_size);
+        // Safety: self is a valid packed struct; log_bs_ptr points within it.
         let log_bs = unsafe { ptr::read_unaligned(log_bs_ptr) };
         1024 << log_bs
     }
 
     pub fn get_inode_count(&self) -> u32 {
         let ptr = ptr::addr_of!(self.inode_count);
+        // Safety: self is a valid packed struct; ptr points within it.
         unsafe { ptr::read_unaligned(ptr) }
     }
 
     pub fn get_block_count(&self) -> u32 {
         let ptr = ptr::addr_of!(self.block_count);
+        // Safety: self is a valid packed struct; ptr points within it.
         unsafe { ptr::read_unaligned(ptr) }
     }
 
     pub fn get_inodes_per_group(&self) -> u32 {
         let ptr = ptr::addr_of!(self.inodes_per_group);
+        // Safety: self is a valid packed struct; ptr points within it.
         unsafe { ptr::read_unaligned(ptr) }
     }
 
     pub fn get_blocks_per_group(&self) -> u32 {
         let ptr = ptr::addr_of!(self.blocks_per_group);
+        // Safety: self is a valid packed struct; ptr points within it.
         unsafe { ptr::read_unaligned(ptr) }
     }
 }
@@ -104,18 +110,21 @@ pub struct Ext2Inode {
 impl Ext2Inode {
     pub fn is_directory(&self) -> bool {
         let mode_ptr = ptr::addr_of!(self.mode);
+        // Safety: self is a valid packed struct; mode_ptr points within it.
         let mode = unsafe { ptr::read_unaligned(mode_ptr) };
         mode & 0x4000 != 0
     }
 
     pub fn is_regular_file(&self) -> bool {
         let mode_ptr = ptr::addr_of!(self.mode);
+        // Safety: self is a valid packed struct; mode_ptr points within it.
         let mode = unsafe { ptr::read_unaligned(mode_ptr) };
         mode & 0x8000 != 0
     }
 
     pub fn size(&self) -> u64 {
         let size_ptr = ptr::addr_of!(self.size_low);
+        // Safety: self is a valid packed struct; size_ptr points within it.
         let size_low = unsafe { ptr::read_unaligned(size_ptr) };
         size_low as u64
     }
@@ -124,7 +133,9 @@ impl Ext2Inode {
         if idx >= 15 {
             return 0;
         }
+        // Safety: self is a valid packed struct; the offset 40 + idx*4 is within the block[15] field.
         let block_ptr = unsafe { (self as *const _ as *const u8).add(40 + idx * 4) as *const u32 };
+        // Safety: block_ptr points to a valid u32 within the packed struct's block array.
         unsafe { ptr::read_unaligned(block_ptr) }
     }
 }
@@ -141,21 +152,25 @@ pub struct Ext2DirEntry {
 impl Ext2DirEntry {
     pub fn get_inode(&self) -> u32 {
         let ptr = ptr::addr_of!(self.inode);
+        // Safety: self is a valid packed struct; ptr points within it.
         unsafe { ptr::read_unaligned(ptr) }
     }
 
     pub fn get_rec_len(&self) -> u16 {
         let ptr = ptr::addr_of!(self.rec_len);
+        // Safety: self is a valid packed struct; ptr points within it.
         unsafe { ptr::read_unaligned(ptr) }
     }
 
     pub fn get_name_len(&self) -> u8 {
         let ptr = ptr::addr_of!(self.name_len);
+        // Safety: self is a valid packed struct; ptr points within it.
         unsafe { ptr::read_unaligned(ptr) }
     }
 
     pub fn get_file_type(&self) -> u8 {
         let ptr = ptr::addr_of!(self.file_type);
+        // Safety: self is a valid packed struct; ptr points within it.
         unsafe { ptr::read_unaligned(ptr) }
     }
 }
@@ -176,6 +191,7 @@ pub struct GroupDesc {
 impl GroupDesc {
     pub fn get_inode_table(&self) -> u32 {
         let ptr = ptr::addr_of!(self.inode_table);
+        // Safety: self is a valid packed struct; ptr points within it.
         unsafe { ptr::read_unaligned(ptr) }
     }
 }
@@ -213,7 +229,7 @@ fn read_superblock(device_id: usize) -> Option<Ext2Superblock> {
         return None;
     }
 
-    // Read superblock from buffer
+    // Safety: buffer contains a valid superblock read from disk at the correct offset.
     let sb = unsafe { ptr::read_unaligned(buffer.as_ptr() as *const Ext2Superblock) };
 
     if !sb.is_valid() {
@@ -261,6 +277,7 @@ pub fn init(device_id: usize) -> bool {
     let mut group_descs = Vec::new();
     for i in 0..group_count {
         if i * 32 + 32 <= gd_buffer.len() {
+            // Safety: gd_buffer contains valid group descriptor data read from disk; offset i*32 is within bounds.
             let gd =
                 unsafe { ptr::read_unaligned(gd_buffer.as_ptr().add(i * 32) as *const GroupDesc) };
             group_descs.push(gd);
@@ -316,8 +333,10 @@ pub fn read_inode(device_id: usize, ino: u32) -> Option<Ext2Inode> {
 
         let mut buffer = vec![0u8; block_size];
         if read_blocks(device_id, inode_table_lba, block_size / 512, &mut buffer) {
+            // Safety: buffer contains valid inode table data read from disk; inode_offset is within bounds.
             let inode_ptr =
                 unsafe { buffer.as_ptr().add(inode_offset as usize) as *const Ext2Inode };
+            // Safety: inode_ptr points to a valid Ext4Inode within the buffer.
             let inode = unsafe { ptr::read_unaligned(inode_ptr) };
             return Some(inode);
         }
@@ -353,7 +372,9 @@ pub fn list_dir(device_id: usize, ino: u32) -> Vec<(u32, String, u8)> {
             // Parse directory entries
             let mut offset = 0;
             while offset < buffer.len() && offset < size {
+                // Safety: buffer contains valid directory data; offset < buffer.len() and < size.
                 let entry_ptr = unsafe { buffer.as_ptr().add(offset) as *const Ext2DirEntry };
+                // Safety: entry_ptr points to a valid Ext2DirEntry within the buffer.
                 let entry = unsafe { ptr::read_unaligned(entry_ptr) };
 
                 let rec_len = entry.get_rec_len() as usize;
@@ -515,30 +536,37 @@ impl FsBackend for Ext2Backend {
 
         let mode_val = {
             let p = core::ptr::addr_of!(ext2_inode.mode);
+            // Safety: ext2_inode is a valid packed struct; p points to its mode field.
             unsafe { core::ptr::read_unaligned(p) }
         };
         let uid_val = {
             let p = core::ptr::addr_of!(ext2_inode.uid);
+            // Safety: ext2_inode is a valid packed struct; p points to its uid field.
             unsafe { core::ptr::read_unaligned(p) }
         };
         let gid_val = {
             let p = core::ptr::addr_of!(ext2_inode.gid);
+            // Safety: ext2_inode is a valid packed struct; p points to its gid field.
             unsafe { core::ptr::read_unaligned(p) }
         };
         let nlink_val = {
             let p = core::ptr::addr_of!(ext2_inode.links_count);
+            // Safety: ext2_inode is a valid packed struct; p points to its links_count field.
             unsafe { core::ptr::read_unaligned(p) }
         };
         let atime_val = {
             let p = core::ptr::addr_of!(ext2_inode.atime);
+            // Safety: ext2_inode is a valid packed struct; p points to its atime field.
             unsafe { core::ptr::read_unaligned(p) }
         };
         let mtime_val = {
             let p = core::ptr::addr_of!(ext2_inode.mtime);
+            // Safety: ext2_inode is a valid packed struct; p points to its mtime field.
             unsafe { core::ptr::read_unaligned(p) }
         };
         let ctime_val = {
             let p = core::ptr::addr_of!(ext2_inode.ctime);
+            // Safety: ext2_inode is a valid packed struct; p points to its ctime field.
             unsafe { core::ptr::read_unaligned(p) }
         };
 

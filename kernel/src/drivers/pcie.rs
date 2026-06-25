@@ -22,6 +22,7 @@ impl AcpiHandler for PcieAcpiHandler {
         size: usize,
     ) -> PhysicalMapping<Self, T> {
         let virtual_address = self.phys_mem_offset + physical_address as u64;
+        // Safety: physical_address is a valid ECAM region from ACPI MCFG; virtual_address is HHDM-mapped.
         unsafe {
             PhysicalMapping::new(
                 physical_address,
@@ -40,6 +41,7 @@ impl AcpiHandler for PcieAcpiHandler {
 
 fn cfg_read_u32(cfg_phys: u64, phys_mem_offset: VirtAddr, offset: u16) -> u32 {
     let addr = phys_mem_offset + cfg_phys + offset as u64;
+    // Safety: addr points to a valid PCIe ECAM config space region.
     unsafe { core::ptr::read_volatile(addr.as_ptr::<u32>()) }
 }
 
@@ -115,6 +117,7 @@ pub fn enumerate(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
     }
 
     let handler = PcieAcpiHandler::new(phys_mem_offset);
+    // Safety: rsdp_addr is a valid RSDP address provided by the bootloader.
     let tables = unsafe { AcpiTables::from_rsdp(handler, rsdp_addr as usize) };
     let tables = match tables {
         Ok(t) => t,

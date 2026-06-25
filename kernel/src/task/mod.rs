@@ -104,6 +104,7 @@ pub fn init_kernel_stack_region(
         .allocate_frame()
         .expect("out of memory for kernel stack region anchor");
 
+    // Safety: anchor_page is not already mapped (checked above); frame is freshly allocated.
     unsafe {
         match mapper.map_to(
             anchor_page,
@@ -137,6 +138,7 @@ impl Task {
         let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
         let stack_top_virt = usable_stack_start + STACK_SIZE;
 
+        // Safety: pages are in the kernel stack region; frame_allocator provides valid frames.
         unsafe {
             let pages = Page::<Size4KiB>::range_inclusive(
                 Page::containing_address(usable_stack_start),
@@ -161,8 +163,8 @@ impl Task {
 
         let mut stack_ptr = stack_top_virt.as_mut_ptr::<usize>();
 
+        // Safety: stack_ptr points to valid writable kernel stack memory; frame layout matches iretq expectations.
         unsafe {
-            // THE turnix CONTEXT FRAME
             //
             // When a task is NOT running, its stack looks like this (from high to low address):
             // 1. [CPU FRAME] SS
@@ -236,6 +238,7 @@ impl Task {
         let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
         let stack_top_virt = usable_stack_start + STACK_SIZE;
 
+        // Safety: pages are in the kernel stack region; frames are freshly allocated.
         unsafe {
             let pages = Page::<Size4KiB>::range_inclusive(
                 Page::containing_address(usable_stack_start),
@@ -287,6 +290,7 @@ impl Task {
 
         let mut stack_ptr = stack_top_virt.as_mut_ptr::<usize>();
 
+        // Safety: stack_ptr points to valid writable kernel stack memory; layout matches iretq frame for user entry.
         unsafe {
             // SS (User Data 0x23)
             stack_ptr = stack_ptr.sub(1);
@@ -359,6 +363,7 @@ impl Task {
         let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
         let stack_top_virt = usable_stack_start + STACK_SIZE;
 
+        // Safety: pages are in the kernel stack region; frames are freshly allocated.
         unsafe {
             let pages = Page::<Size4KiB>::range_inclusive(
                 Page::containing_address(usable_stack_start),
@@ -452,6 +457,7 @@ impl Task {
 
         let mut stack_ptr = stack_top_virt.as_mut_ptr::<u64>();
 
+        // Safety: stack_ptr points to valid writable kernel stack memory; frame matches parent's SyscallFrame layout.
         unsafe {
             // IRETQ frame (high addresses first — pushed last).
             stack_ptr = stack_ptr.sub(1);
@@ -544,6 +550,7 @@ impl Task {
         let usable_stack_start = stack_region_base + (GUARD_PAGES * 4096);
         let stack_top_virt = usable_stack_start + STACK_SIZE;
 
+        // Safety: pages are in the kernel stack region; frames are freshly allocated.
         unsafe {
             let pages = Page::<Size4KiB>::range_inclusive(
                 Page::containing_address(usable_stack_start),
@@ -594,6 +601,7 @@ impl Task {
 
         let mut stack_ptr = stack_top_virt.as_mut_ptr::<usize>();
 
+        // Safety: stack_ptr points to valid writable kernel stack memory; layout matches iretq frame for exec entry.
         unsafe {
             // SS (user data)
             stack_ptr = stack_ptr.sub(1);
@@ -649,7 +657,8 @@ impl Task {
             if self.kernel_stack_top > KERNEL_STACK_SIZE as usize {
                 let canary_addr = self.kernel_stack_top - KERNEL_STACK_SIZE as usize;
                 let expected = crate::security::ima::canary_value();
-                let actual = unsafe { core::ptr::read_unaligned(canary_addr as *const u64) };
+                // Safety: canary_addr points to the bottom of the kernel stack; reading u64 is valid.
+            let actual = unsafe { core::ptr::read_unaligned(canary_addr as *const u64) };
                 if actual != expected {
                     crate::serial::println!(
                         "[PANIC] Kernel stack canary corrupted for task {}! expected=0x{:016x}, actual=0x{:016x}",
@@ -665,6 +674,7 @@ impl Task {
 
             let (current_pml4, _) = x86_64::registers::control::Cr3::read();
             if current_pml4 != self.process.pml4_frame() {
+                // Safety: pml4_frame is a valid process page table; writing Cr3 switches address space.
                 unsafe {
                     x86_64::registers::control::Cr3::write(
                         self.process.pml4_frame(),

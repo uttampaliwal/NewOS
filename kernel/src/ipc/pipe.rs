@@ -17,6 +17,7 @@ impl PipeInner {
     fn new() -> Self {
         let buf = crate::memory::slab::slab_alloc(PIPE_BUF_SIZE)
             .expect("pipe: failed to allocate buffer from slab");
+        // Safety: buf is a valid pointer returned from slab_alloc with at least PIPE_BUF_SIZE bytes.
         unsafe {
             core::ptr::write_bytes(buf, 0, PIPE_BUF_SIZE);
         }
@@ -32,6 +33,7 @@ impl PipeInner {
         let to_read = core::cmp::min(self.bytes_available, buf.len());
         for (i, byte) in buf.iter_mut().enumerate().take(to_read) {
             let idx = (self.read_pos + i) % PIPE_BUF_SIZE;
+            // Safety: buffer is a valid slab-allocated pointer; idx is within 0..PIPE_BUF_SIZE.
             unsafe {
                 *byte = self.buffer.add(idx).read_volatile();
             }
@@ -46,6 +48,7 @@ impl PipeInner {
         let to_write = core::cmp::min(space, buf.len());
         for (i, byte) in buf.iter().enumerate().take(to_write) {
             let idx = (self.write_pos + i) % PIPE_BUF_SIZE;
+            // Safety: buffer is a valid slab-allocated pointer; idx is within 0..PIPE_BUF_SIZE.
             unsafe {
                 self.buffer.add(idx).write_volatile(*byte);
             }

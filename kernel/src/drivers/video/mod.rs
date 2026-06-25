@@ -122,6 +122,7 @@ impl<'a> TextConsole<'a> {
         let line_size = (fb.pitch * font_height) as usize * 4;
         let total_size = (fb.pitch * fb.height) as usize * 4;
 
+        // Safety: fb.addr points to a valid framebuffer of total_size bytes; copy stays within bounds.
         unsafe {
             let dest = fb.addr as *mut u8;
             let src = (fb.addr + line_size as u64) as *const u8;
@@ -169,6 +170,7 @@ impl Framebuffer {
                 blue | green | red
             }
         };
+        // Safety: addr + pixel_offset is within the framebuffer bounds (checked by x/y validation above).
         unsafe {
             let ptr = (self.addr + pixel_offset) as *mut u32;
             ptr.write_volatile(encoded);
@@ -177,6 +179,7 @@ impl Framebuffer {
 
     pub fn clear(&mut self, color: u32) {
         for i in 0..(self.height * self.pitch) {
+            // Safety: addr + i*4 is within the framebuffer bounds (i < height*pitch).
             unsafe {
                 let ptr = (self.addr + (i as u64 * 4)) as *mut u32;
                 ptr.write_volatile(color);

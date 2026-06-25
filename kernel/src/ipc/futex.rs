@@ -11,6 +11,7 @@ struct FutexWaitQueue {
 static FUTEX_TABLE: Mutex<BTreeMap<u64, FutexWaitQueue>> = Mutex::new(BTreeMap::new());
 
 pub fn futex_wait(uaddr: u64, expected_val: u32) -> Result<(), i32> {
+    // Safety: uaddr is a user-provided pointer that must be valid and aligned for a u32 read.
     let current_val = unsafe { core::ptr::read_volatile(uaddr as *const u32) };
     if current_val != expected_val {
         return Err(11); // EAGAIN

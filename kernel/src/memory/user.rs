@@ -33,6 +33,9 @@ impl UserSpace {
             let flags = PageTableFlags::PRESENT
                 | PageTableFlags::WRITABLE
                 | PageTableFlags::USER_ACCESSIBLE;
+            // Safety: frame is a freshly allocated physical frame, page is an unmapped
+            // stack page within the user address range, and mapper operates on the
+            // process page tables. The flush invalidates the TLB entry.
             unsafe {
                 let _ = mapper
                     .map_to(page, frame, flags, frame_allocator)
@@ -45,6 +48,8 @@ impl UserSpace {
 
     pub fn switch_to_user(&self, user_pml4: PhysFrame<Size4KiB>) {
         use x86_64::registers::control::Cr3;
+        // Safety: user_pml4 is a valid process page table frame, and this is called
+        // only when switching to a fully initialized user address space.
         unsafe {
             Cr3::write(user_pml4, x86_64::registers::control::Cr3Flags::empty());
         }

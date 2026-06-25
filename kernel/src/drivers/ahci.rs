@@ -113,6 +113,7 @@ impl AhciController {
         port.fbu = (recv_fis_addr >> 32) as u32;
 
         // Clear command list
+        // Safety: cmd_list, recv_fis, and cmd_table are valid heap allocations owned by self.
         unsafe {
             ptr::write_bytes(self.cmd_list.as_mut_ptr(), 0, self.cmd_list.len());
             ptr::write_bytes(self.recv_fis.as_mut_ptr(), 0, self.recv_fis.len());
@@ -154,6 +155,7 @@ impl AhciController {
         }
 
         // Set up command header
+        // Safety: cmd_list is a valid heap allocation of at least sizeof(CommandHeader) bytes.
         let cmd_header = unsafe { &mut *(self.cmd_list.as_mut_ptr() as *mut CommandHeader) };
 
         // Configure command: FIS length = 5 DWORDS, write = 0 (read), prefetchable = 1
@@ -164,6 +166,7 @@ impl AhciController {
         cmd_header.ctbau = (self.cmd_table.as_ptr() as u64 >> 32) as u32;
 
         // Set up command table - H2D FIS (Register FIS)
+        // Safety: cmd_table is a valid heap allocation of at least sizeof(H2dFis) bytes.
         let cmd_fis = unsafe { &mut *(self.cmd_table.as_mut_ptr() as *mut H2dFis) };
 
         // Build H2D FIS for READ DMA EXT (25h) or READ SECTOR(S) EXT (24h)
@@ -180,6 +183,7 @@ impl AhciController {
 
         // Set up PRD table (in command table, after FIS)
         let prd_offset = 0x80; // FIS is 0x40 bytes, PRD table starts after
+        // Safety: cmd_table has sufficient size for PRD entry at offset 0x80.
         let prd_entry =
             unsafe { &mut *(self.cmd_table.as_mut_ptr().add(prd_offset) as *mut PrdEntry) };
 
@@ -231,6 +235,7 @@ struct H2dFis {
 
 /// Initialize AHCI controller
 fn init(abar: VirtAddr) -> Option<AhciController> {
+    // Safety: abar is a valid AHCI ABAR address mapped via PCI BAR5.
     let ghc = unsafe { &mut *(abar.as_mut_ptr::<Ghc>()) };
 
     // Check AHCI version
@@ -247,6 +252,7 @@ fn init(abar: VirtAddr) -> Option<AhciController> {
 
     // Calculate port registers base (0x100 from ABAR)
     let ports_base = abar + 0x100;
+    // Safety: ports_base points to valid AHCI port register space within ABAR.
     let ports = unsafe { &mut *(ports_base.as_mut_ptr::<[PortRegs; 32]>()) };
 
     // Allocate DMA buffers (must be 1KB aligned for command list, 256-byte for FIS)

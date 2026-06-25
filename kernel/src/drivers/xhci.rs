@@ -271,6 +271,7 @@ pub fn parse_extended_capabilities(mmio_base: u64, hcc_params: u32) -> Vec<XhciE
 
         // Read the extended capability register (32 bits)
         let reg_addr = mmio_base + offset;
+        // Safety: reg_addr points to a valid XHCI extended capability MMIO register within BAR0 range.
         let reg = unsafe {
             let ptr = reg_addr as *const u32;
             core::ptr::read_volatile(ptr)
@@ -311,6 +312,7 @@ pub fn parse_extended_capabilities(mmio_base: u64, hcc_params: u32) -> Vec<XhciE
 pub fn handle_usb_legacy(mmio_base: u64, cap_offset: u64) -> Result<(), XhciError> {
     let reg_addr = mmio_base + cap_offset;
 
+    // Safety: reg_addr points to a valid USB Legacy Support MMIO register within BAR0 range.
     unsafe {
         // Read USBLEGSUP register
         let leg_sup = core::ptr::read_volatile(reg_addr as *const u32);
@@ -348,18 +350,22 @@ pub fn handle_usb_legacy(mmio_base: u64, cap_offset: u64) -> Result<(), XhciErro
 // ---------------------------------------------------------------------------
 
 fn mmio_read8(base: u64, offset: u64) -> u8 {
+    // Safety: base + offset points to a valid XHCI MMIO register mapped via BAR0.
     unsafe { read_volatile((base + offset) as *const u8) }
 }
 
 fn mmio_read16(base: u64, offset: u64) -> u16 {
+    // Safety: base + offset points to a valid XHCI MMIO register mapped via BAR0.
     unsafe { read_volatile((base + offset) as *const u16) }
 }
 
 fn mmio_read32(base: u64, offset: u64) -> u32 {
+    // Safety: base + offset points to a valid XHCI MMIO register mapped via BAR0.
     unsafe { read_volatile((base + offset) as *const u32) }
 }
 
 fn mmio_write32(base: u64, offset: u64, val: u32) {
+    // Safety: base + offset points to a valid XHCI MMIO register mapped via BAR0.
     unsafe { write_volatile((base + offset) as *mut u32, val) }
 }
 

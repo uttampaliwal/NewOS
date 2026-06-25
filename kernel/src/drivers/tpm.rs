@@ -97,7 +97,9 @@ pub struct TpmDriver {
     device_id: u32,
 }
 
+// Safety: TpmDriver is only accessed behind a Mutex, ensuring no concurrent access.
 unsafe impl Send for TpmDriver {}
+// Safety: TpmDriver is only accessed behind a Mutex, ensuring no concurrent access.
 unsafe impl Sync for TpmDriver {}
 
 impl TpmDriver {
@@ -118,6 +120,7 @@ impl TpmDriver {
 
     /// Read a byte from a TIS register.
     unsafe fn read_u8(&self, reg: u64) -> u8 {
+        // Safety: caller guarantees base_addr points to valid TPM TIS MMIO region.
         unsafe {
             let ptr = (self.base_addr + reg) as *const u8;
             core::ptr::read_volatile(ptr)
@@ -126,6 +129,7 @@ impl TpmDriver {
 
     /// Write a byte to a TIS register.
     unsafe fn write_u8(&self, reg: u64, value: u8) {
+        // Safety: caller guarantees base_addr points to valid TPM TIS MMIO region.
         unsafe {
             let ptr = (self.base_addr + reg) as *mut u8;
             core::ptr::write_volatile(ptr, value);
@@ -134,6 +138,7 @@ impl TpmDriver {
 
     /// Read a 32-bit value from a TIS register (4 consecutive reads).
     unsafe fn read_u32(&self, reg: u64) -> u32 {
+        // Safety: caller guarantees base_addr points to valid TPM TIS MMIO region.
         unsafe {
             let mut val = 0u32;
             for i in 0..4 {
@@ -145,6 +150,7 @@ impl TpmDriver {
 
     /// Probe the TPM device and read identification registers.
     pub fn probe(&mut self) -> Result<(), TpmError> {
+        // Safety: base_addr points to a valid TPM TIS MMIO region as required by `new`.
         unsafe {
             // Read VID and DID registers
             self.manufacturer_id = self.read_u32(TIS_REG_VID);
@@ -172,6 +178,7 @@ impl TpmDriver {
 
     /// Request access to the TPM.
     pub fn request_access(&self) -> Result<(), TpmError> {
+        // Safety: base_addr points to a valid TPM TIS MMIO region as required by `new`.
         unsafe {
             self.write_u8(TIS_REG_ACCESS, TIS_ACCESS_REQUEST_USE);
 
@@ -192,6 +199,7 @@ impl TpmDriver {
 
     /// Relinquish access to the TPM.
     pub fn relinquish(&self) {
+        // Safety: base_addr points to a valid TPM TIS MMIO region as required by `new`.
         unsafe {
             self.write_u8(TIS_REG_ACCESS, TIS_ACCESS_RELINQUISH);
         }
@@ -199,6 +207,7 @@ impl TpmDriver {
 
     /// Wait for the TPM to be ready to accept a command.
     pub fn wait_ready(&self) -> Result<(), TpmError> {
+        // Safety: base_addr points to a valid TPM TIS MMIO region as required by `new`.
         unsafe {
             let deadline = crate::task::scheduler::get_uptime_ticks() + 5000;
             loop {
@@ -237,6 +246,7 @@ impl TpmDriver {
         self.wait_ready()?;
 
         // Write command to FIFO
+        // Safety: base_addr points to a valid TPM TIS MMIO region as required by `new`.
         unsafe {
             for &byte in &cmd {
                 self.write_u8(TIS_REG_DATA_FIFO, byte);
@@ -252,6 +262,7 @@ impl TpmDriver {
         // Wait for data available
         let deadline = crate::task::scheduler::get_uptime_ticks() + 5000;
         loop {
+            // Safety: base_addr points to a valid TPM TIS MMIO region as required by `new`.
             let status = unsafe { self.read_u8(TIS_REG_STATUS) };
             if status & TIS_STATUS_DATA_AVAIL != 0 {
                 break;
@@ -264,6 +275,7 @@ impl TpmDriver {
 
         // Read response header (10 bytes: tag, length, response code)
         let mut header = [0u8; 10];
+        // Safety: base_addr points to a valid TPM TIS MMIO region as required by `new`.
         unsafe {
             for slot in &mut header {
                 *slot = self.read_u8(TIS_REG_DATA_FIFO);
@@ -280,6 +292,7 @@ impl TpmDriver {
         // Read remaining data
         let data_len = resp_len.saturating_sub(10);
         let mut data = Vec::with_capacity(data_len);
+        // Safety: base_addr points to a valid TPM TIS MMIO region as required by `new`.
         unsafe {
             for _ in 0..data_len {
                 // Wait for data available for each byte
@@ -389,6 +402,7 @@ impl TpmDriver {
 
 /// Initialize the TPM subsystem at the given MMIO base address.
 pub fn init(base_addr: u64) -> Result<(), TpmError> {
+    // Safety: caller guarantees base_addr points to valid TPM TIS MMIO region.
     unsafe {
         let mut tpm = TpmDriver::new(base_addr);
         tpm.initialize()?;
@@ -427,6 +441,7 @@ mod tests {
 
     #[test]
     fn test_tpm_driver_new() {
+        // Safety: test-only address; driver is not used for MMIO in this test.
         let tpm = unsafe { TpmDriver::new(0xFED40000) };
         assert!(!tpm.is_initialized());
         assert_eq!(tpm.manufacturer_id(), 0);

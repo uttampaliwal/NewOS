@@ -88,9 +88,9 @@ fn compute_deadline(vruntime: u64, time_slice: u32, weight: u32) -> u64 {
 }
 
 /// Pick the next task to run using EEVDF logic.
-/// Returns the task with the earliest deadline among eligible tasks.
+/// Returns the eligible task with the earliest (smallest) virtual deadline.
 fn pick_eevdf(queue: &BTreeMap<u64, Task>) -> Option<&Task> {
-    queue.values().find(|t| t.eligible)
+    queue.values().filter(|t| t.eligible).min_by_key(|t| t.deadline)
 }
 
 /// Update a task's vruntime after running for one tick.
@@ -164,6 +164,7 @@ pub fn start_scheduling() -> ! {
             };
             drop(sched);
 
+            // Safety: next_ptr is a valid stack pointer from Task::new_user; pop pattern matches SyscallContext frame layout; iretq returns to user mode.
             unsafe {
                 core::arch::asm!(
                     "mov rsp, {0}",
@@ -186,6 +187,7 @@ pub fn start_scheduling() -> ! {
 }
 
 pub fn yield_task() {
+    // Safety: YIELD_INTERRUPT_VECTOR is a valid software interrupt vector; interrupt is enabled in user mode.
     #[cfg(all(target_arch = "x86_64", target_os = "none"))]
     unsafe {
         core::arch::asm!("int {vector}", vector = const crate::interrupts::YIELD_INTERRUPT_VECTOR);
@@ -265,8 +267,18 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 should_preempt = true;
             }
 
-            // Try local queue first, then steal from busiest CPU.
-            let mut next_task = sched.cpu_queues[cpu].pop_first().map(|(_, t)| t);
+            // Try local queue first (pick eligible task with earliest deadline),
+            // then steal from busiest CPU.
+            let mut next_task = if let Some(key) = sched.cpu_queues[cpu]
+                .iter()
+                .filter(|(_, t)| t.eligible)
+                .min_by_key(|(k, _)| *k)
+                .map(|(k, _)| *k)
+            {
+                sched.cpu_queues[cpu].remove(&key)
+            } else {
+                None
+            };
             if next_task.is_none() {
                 next_task = sched.steal_task();
             }
@@ -530,6 +542,7 @@ mod tests {
             nsproxy: crate::security::namespaces::NsProxy::new(),
             seccomp_filter: None,
             cgroup_path: None,
+            cwd: alloc::string::String::from("/"),
         };
         Process {
             inner: Arc::new(Mutex::new(pcb)),
@@ -677,5 +690,55 @@ mod tests {
 
     fn get_current_task_count() -> usize {
         get_task_count()
+    }
+
+    #[test]
+    fn test_pick_eevdf_selects_earliest_deadline() {
+        let _guard = crate::test_serial::acquire();
+        let mut queue = BTreeMap::new();
+
+        let mut task_a = make_test_task(10);
+        task_a.eligible = true;
+        task_a.deadline = 100;
+        queue.insert(task_a.deadline, task_a);
+
+        let mut task_b = make_test_task(20);
+        task_b.eligible = true;
+        task_b.deadline = 50;
+        queue.insert(task_b.deadline, task_b);
+
+        let mut task_c = make_test_task(30);
+        task_c.eligible = true;
+        task_c.deadline = 200;
+        queue.insert(task_c.deadline, task_c);
+
+        let picked = pick_eevdf(&queue).expect("should pick a task");
+        assert_eq!(picked.deadline, 50, "should pick task with earliest deadline (50)");
+    }
+
+    #[test]
+    fn test_pick_eevdf_skips_ineligible() {
+        let _guard = crate::test_serial::acquire();
+        let mut queue = BTreeMap::new();
+
+        let mut task_a = make_test_task(10);
+        task_a.eligible = false;
+        task_a.deadline = 10;
+        queue.insert(task_a.deadline, task_a);
+
+        let mut task_b = make_test_task(20);
+        task_b.eligible = true;
+        task_b.deadline = 100;
+        queue.insert(task_b.deadline, task_b);
+
+        let picked = pick_eevdf(&queue).expect("should pick a task");
+        assert_eq!(picked.deadline, 100, "should skip ineligible task and pick next eligible");
+    }
+
+    #[test]
+    fn test_pick_eevdf_empty_queue() {
+        let _guard = crate::test_serial::acquire();
+        let queue = BTreeMap::new();
+        assert!(pick_eevdf(&queue).is_none());
     }
 }

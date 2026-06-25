@@ -19,6 +19,7 @@ fn pci_config_read_word(bus: u8, slot: u8, func: u8, offset: u8) -> u16 {
     let mut config_addr_port: Port<u32> = Port::new(CONFIG_ADDRESS);
     let mut config_data_port: Port<u32> = Port::new(CONFIG_DATA);
 
+    // Safety: I/O ports 0xCF8/0xCFC are the standard x86 PCI configuration mechanism.
     unsafe {
         config_addr_port.write(address);
         ((config_data_port.read() >> ((offset & 2) * 8)) & 0xFFFF) as u16

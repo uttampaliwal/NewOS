@@ -23,6 +23,8 @@ lazy_static! {
         let user_code_64 = gdt.append(Descriptor::user_code_segment());
 
         // 3. TSS
+        // SAFETY: TSS is a static mut initialized during early boot. This runs
+        // during single-threaded GDT initialization with no concurrent access.
         let tss = unsafe {
             #[allow(static_mut_refs)]
             gdt.append(Descriptor::tss_segment(&TSS.0))
@@ -66,6 +68,9 @@ pub fn init() {
     use x86_64::instructions::segmentation::{CS, DS, ES, SS, Segment};
     use x86_64::instructions::tables::load_tss;
 
+    // SAFETY: GDT loading and segment register configuration must run once
+    // during early boot with interrupts disabled. The static TSS, GDT, and
+    // segment selectors are initialized and valid.
     unsafe {
         // Initialize TSS Double Fault Stack
         TSS.0.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
@@ -97,6 +102,9 @@ pub fn init_for_cpu(_cpu_id: u32) {
     use x86_64::instructions::tables::load_tss;
     use x86_64::registers::model_specific::{GsBase, KernelGsBase};
 
+    // SAFETY: GDT loading and segment register configuration must run once
+    // per CPU during boot with interrupts disabled. The static TSS, GDT,
+    // and segment selectors are initialized and valid.
     unsafe {
         // Load GDT (same GDT used by all CPUs)
         GDT.0.load();
@@ -119,6 +127,8 @@ pub fn init_for_cpu(_cpu_id: u32) {
 fn alloc_per_cpu_struct() -> *mut PerCpu {
     use core::alloc::Layout;
     let layout = Layout::new::<PerCpu>();
+    // SAFETY: Layout is non-zero and the allocator returns valid, aligned memory
+    // for PerCpu. The block is zero-initialized to ensure clean state.
     unsafe {
         let ptr = alloc::alloc::alloc(layout) as *mut PerCpu;
         if ptr.is_null() {
@@ -134,6 +144,9 @@ pub fn reload_gdt() {
 }
 
 pub fn set_interrupt_stack(stack_top: VirtAddr) {
+    // SAFETY: TSS and PER_CPU are static muts accessed exclusively during
+    // boot or under external synchronization. stack_top is a valid, aligned
+    // stack address provided by the caller.
     unsafe {
         let tss_ptr = &raw const TSS as *mut TaskStateSegment;
         (*tss_ptr).privilege_stack_table[0] = stack_top;

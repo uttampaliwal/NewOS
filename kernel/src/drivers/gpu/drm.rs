@@ -231,6 +231,7 @@ impl DrmDevice for BochsDisplayDriver {
 
         // Write mode to VBE DISPI if available
         if self.vbe_available {
+            // Safety: vbe_available implies VBE I/O ports are accessible; caller ensures valid mode params.
             unsafe {
                 self.vbe_set_mode(mode.width as u16, mode.height as u16, 32);
             }

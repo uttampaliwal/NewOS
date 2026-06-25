@@ -20,6 +20,9 @@ impl UserContext {
     }
 
     pub fn switch_to_user(&self) -> ! {
+        // SAFETY: stack_pointer is a valid, properly aligned user-mode stack.
+        // entry is a valid user-mode code address. The iretq instruction atomically
+        // transitions from ring 0 to ring 3, restoring CS, SS, RSP, and RFLAGS.
         unsafe {
             core::arch::asm!(
                 "mov rsp, {0:r}",

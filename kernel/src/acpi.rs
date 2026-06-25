@@ -762,6 +762,7 @@ pub fn init(rsdp_addr: u64, phys_mem_offset: VirtAddr) {
 
     let handler = TurnixAcpiHandler::new(phys_mem_offset);
     // Safety: rsdp_addr is a valid RSDP physical address provided by the bootloader.
+    // The handler maps physical regions through the HHDM (phys_mem_offset).
     let acpi_tables = unsafe { AcpiTables::from_rsdp(handler.clone(), rsdp_addr as usize) };
 
     let tables = match acpi_tables {
@@ -1489,7 +1490,8 @@ mod tests {
 
             // Safety: physical_address is within bounds (checked above); the image covers the region.
             let ptr = unsafe { self.image.as_ptr().add(physical_address) as *mut T };
-            // Safety: physical_address is within bounds (checked above); the image covers the region.
+            // Safety: physical_address is within bounds (checked above); ptr is derived from
+            // a valid image allocation and NonNull is checked.
             unsafe {
                 PhysicalMapping::new(
                     physical_address,

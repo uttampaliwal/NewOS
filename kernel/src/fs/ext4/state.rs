@@ -28,6 +28,7 @@ pub struct MemInode {
 impl MemInode {
     /// Create a new regular file inode.
     pub fn new_file(mode: u16, uid: u16, gid: u16) -> Self {
+        // Safety: Ext4Inode is a plain-old-data type; zeroed() produces a valid zeroed instance.
         let mut inode: Ext4Inode = unsafe { core::mem::zeroed() };
         inode.i_mode = mode;
         inode.i_uid = uid;
@@ -43,6 +44,7 @@ impl MemInode {
 
     /// Create a new directory inode with `.` and `..` entries.
     pub fn new_dir(mode: u16, uid: u16, gid: u16, self_ino: u32, parent_ino: u32) -> Self {
+        // Safety: Ext4Inode is a plain-old-data type; zeroed() produces a valid zeroed instance.
         let mut inode: Ext4Inode = unsafe { core::mem::zeroed() };
         inode.i_mode = mode | 0o040000;
         inode.i_uid = uid;

@@ -22,6 +22,7 @@ impl<'a> Psf2Font<'a> {
             return None;
         }
 
+        // Safety: data is at least sizeof(Psf2Header) bytes and aligned; cast is valid.
         let header = unsafe { &*(data.as_ptr() as *const Psf2Header) };
 
         // Magic number for PSF2: 0x86 0x4a 0xb5 0x72

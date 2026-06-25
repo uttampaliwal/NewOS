@@ -332,8 +332,93 @@ pub fn handle_ftruncate(args: SyscallArgs) -> SyscallResult {
     }
 }
 
-pub fn handle_chdir(_args: SyscallArgs) -> SyscallResult {
-    todo!("chdir syscall")
+pub fn handle_chdir(args: SyscallArgs) -> SyscallResult {
+    let path_ptr = args.arg0 as *const u8;
+    let path_len = args.arg1 as usize;
+
+    if path_ptr.is_null() || path_len == 0 {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
+    let path = match core::str::from_utf8(path_slice) {
+        Ok(p) => p,
+        Err(_) => return SyscallResult::Error(22), // EINVAL
+    };
+
+    // Resolve relative paths against the current working directory.
+    let absolute_path = if path.starts_with('/') {
+        alloc::string::String::from(path)
+    } else {
+        let cwd = match crate::task::scheduler::get_current_process() {
+            Some(p) => p.inner.lock().cwd.clone(),
+            None => return SyscallResult::Error(1), // EPERM
+        };
+        let mut combined = cwd;
+        if !combined.ends_with('/') {
+            combined.push('/');
+        }
+        combined.push_str(path);
+        combined
+    };
+
+    // Normalize the path: resolve "." and ".." components, collapse separators.
+    let normalized = normalize_path(&absolute_path);
+    if normalized.is_empty() {
+        return SyscallResult::Error(22); // EINVAL
+    }
+
+    // Verify the path exists and is a directory.
+    {
+        let vfs = crate::vfs::VFS.lock();
+        match vfs.stat(&normalized) {
+            Some(stat) => {
+                if stat.file_type != crate::fs::vfs::FileType::Directory {
+                    return SyscallResult::Error(20); // ENOTDIR
+                }
+            }
+            None => return SyscallResult::Error(2), // ENOENT
+        }
+    }
+
+    // Update the current process's cwd.
+    if let Some(process) = crate::task::scheduler::get_current_process() {
+        let mut inner = process.inner.lock();
+        inner.cwd = normalized;
+        SyscallResult::Success(0)
+    } else {
+        SyscallResult::Error(1) // EPERM
+    }
+}
+
+/// Normalize a filesystem path by resolving `.` (current dir) and `..` (parent dir)
+/// components and collapsing redundant separators.
+fn normalize_path(path: &str) -> alloc::string::String {
+    use alloc::vec::Vec;
+
+    let mut components: Vec<&str> = Vec::new();
+
+    for component in path.split('/') {
+        match component {
+            "" | "." => continue,
+            ".." => {
+                components.pop();
+            }
+            other => components.push(other),
+        }
+    }
+
+    let mut result = alloc::string::String::new();
+    for comp in &components {
+        result.push('/');
+        result.push_str(comp);
+    }
+
+    if result.is_empty() {
+        result.push('/');
+    }
+
+    result
 }
 
 pub fn handle_xattr_get(args: SyscallArgs) -> SyscallResult {

@@ -41,6 +41,7 @@ fn setup_dummy_process() {
             nsproxy: crate::security::namespaces::NsProxy::new(),
             seccomp_filter: None,
             cgroup_path: None,
+            cwd: alloc::string::String::from("/"),
         })),
     };
     let task = Task::new_test(TaskId::new(), process, TaskState::Running);
@@ -165,6 +166,7 @@ fn make_pcb(pid: usize, ppid: usize, state: ProcessState) -> Arc<Mutex<ProcessCo
         nsproxy: crate::security::namespaces::NsProxy::new(),
         seccomp_filter: None,
         cgroup_path: None,
+        cwd: alloc::string::String::from("/"),
     }))
 }
 

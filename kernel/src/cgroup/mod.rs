@@ -148,14 +148,16 @@ pub fn cgroup_cpu_reset_period() {
 }
 
 /// Record memory allocation for a process's cgroup.
-/// Returns false if the cgroup has exceeded its memory_max.
+/// Returns false (and does not modify state) if the cgroup would exceed its memory_max.
 pub fn cgroup_memory_alloc(pid: u32, bytes: u64) -> bool {
     let mut groups = CGROUPS.lock();
     if let Some(cgroup) = groups.iter_mut().find(|g| g.procs.contains(&pid)) {
-        cgroup.memory_used += bytes;
-        if let Some(max) = cgroup.memory_max {
-            return cgroup.memory_used <= max;
+        if let Some(max) = cgroup.memory_max
+            && cgroup.memory_used + bytes > max
+        {
+            return false;
         }
+        cgroup.memory_used += bytes;
     }
     true
 }
@@ -186,4 +188,170 @@ pub fn cgroup_find_for_pid(pid: u32) -> Option<String> {
         .iter()
         .find(|g| g.procs.contains(&pid))
         .map(|g| g.path.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() {
+        let mut groups = CGROUPS.lock();
+        groups.clear();
+        groups.push(Cgroup {
+            name: String::from("/"),
+            path: String::from("/"),
+            parent_path: String::new(),
+            procs: Vec::new(),
+            cpu_max: None,
+            memory_max: None,
+            pids_max: None,
+            controllers: Vec::new(),
+            cpu_used: 0,
+            cpu_period_ticks: 0,
+            memory_used: 0,
+        });
+    }
+
+    #[test]
+    fn create_cgroup_under_root() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        assert!(cgroup_create("/", "test_group").is_ok());
+        let groups = CGROUPS.lock();
+        assert!(groups.iter().any(|g| g.path == "/test_group"));
+    }
+
+    #[test]
+    fn create_duplicate_cgroup_fails() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        assert!(cgroup_create("/", "dup").is_ok());
+        assert_eq!(cgroup_create("/", "dup"), Err(17)); // EEXIST
+    }
+
+    #[test]
+    fn create_cgroup_nonexistent_parent_fails() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        assert_eq!(cgroup_create("/nonexistent", "child"), Err(2)); // ENOENT
+    }
+
+    #[test]
+    fn add_process_to_cgroup() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "grp").unwrap();
+        assert!(cgroup_add_process("/grp", 100).is_ok());
+        assert_eq!(cgroup_find_for_pid(100), Some(String::from("/grp")));
+    }
+
+    #[test]
+    fn add_process_to_nonexistent_cgroup_fails() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        assert_eq!(cgroup_add_process("/nope", 1), Err(2)); // ENOENT
+    }
+
+    #[test]
+    fn pid_max_enforced() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "limited").unwrap();
+        cgroup_set_pids_max("/limited", 2).unwrap();
+        assert!(cgroup_add_process("/limited", 1).is_ok());
+        assert!(cgroup_add_process("/limited", 2).is_ok());
+        assert_eq!(cgroup_add_process("/limited", 3), Err(28)); // ENOSPC
+    }
+
+    #[test]
+    fn cpu_tick_accounting() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "cpu_grp").unwrap();
+        cgroup_set_cpu_max("/cpu_grp", 3).unwrap();
+        cgroup_add_process("/cpu_grp", 10).unwrap();
+
+        assert!(cgroup_cpu_tick(10));
+        assert!(cgroup_cpu_tick(10));
+        assert!(cgroup_cpu_tick(10));
+        // Fourth tick exceeds quota
+        assert!(!cgroup_cpu_tick(10));
+    }
+
+    #[test]
+    fn cpu_period_reset() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "cpu_reset").unwrap();
+        cgroup_set_cpu_max("/cpu_reset", 2).unwrap();
+        cgroup_add_process("/cpu_reset", 20).unwrap();
+
+        cgroup_cpu_tick(20);
+        cgroup_cpu_tick(20);
+        assert!(!cgroup_cpu_tick(20));
+
+        cgroup_cpu_reset_period();
+        assert!(cgroup_cpu_tick(20));
+    }
+
+    #[test]
+    fn memory_accounting() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "mem_grp").unwrap();
+        cgroup_set_memory_max("/mem_grp", 1000).unwrap();
+        cgroup_add_process("/mem_grp", 30).unwrap();
+
+        assert!(cgroup_memory_alloc(30, 500));
+        assert!(!cgroup_memory_exceeded(30));
+
+        // 500 + 600 = 1100 > 1000 — allocation is rejected (returns false)
+        assert!(!cgroup_memory_alloc(30, 600));
+        // Usage should still be 500 since the 600-byte alloc was rejected
+        assert!(!cgroup_memory_exceeded(30));
+    }
+
+    #[test]
+    fn memory_free_reduces_usage() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "mem_free").unwrap();
+        cgroup_set_memory_max("/mem_free", 1000).unwrap();
+        cgroup_add_process("/mem_free", 40).unwrap();
+
+        cgroup_memory_alloc(40, 800);
+        cgroup_memory_free(40, 300);
+
+        let groups = CGROUPS.lock();
+        let cg = groups.iter().find(|g| g.path == "/mem_free").unwrap();
+        assert_eq!(cg.memory_used, 500);
+    }
+
+    #[test]
+    fn cpu_tick_unknown_pid_succeeds() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        // Unknown PID should return true (no cgroup limit applies)
+        assert!(cgroup_cpu_tick(9999));
+    }
+
+    #[test]
+    fn memory_alloc_unknown_pid_succeeds() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        assert!(cgroup_memory_alloc(9999, 100));
+    }
+
+    #[test]
+    fn nested_cgroup_inherits_limits() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "parent").unwrap();
+        cgroup_set_cpu_max("/parent", 10).unwrap();
+        cgroup_create("/parent", "child").unwrap();
+
+        let groups = CGROUPS.lock();
+        let child = groups.iter().find(|g| g.path == "/parent/child").unwrap();
+        assert_eq!(child.cpu_max, Some(10));
+    }
 }
