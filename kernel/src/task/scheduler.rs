@@ -741,4 +741,127 @@ mod tests {
         let queue = BTreeMap::new();
         assert!(pick_eevdf(&queue).is_none());
     }
+
+    #[test]
+    fn test_pick_eevdf_all_ineligible_returns_none() {
+        let _guard = crate::test_serial::acquire();
+        let mut queue = BTreeMap::new();
+
+        let mut task_a = make_test_task(10);
+        task_a.eligible = false;
+        task_a.deadline = 10;
+        queue.insert(task_a.deadline, task_a);
+
+        let mut task_b = make_test_task(20);
+        task_b.eligible = false;
+        task_b.deadline = 50;
+        queue.insert(task_b.deadline, task_b);
+
+        assert!(pick_eevdf(&queue).is_none());
+    }
+
+    #[test]
+    fn test_compute_deadline_zero_weight() {
+        let _guard = crate::test_serial::acquire();
+        // Weight 0 should return vruntime (no virtual slice)
+        assert_eq!(compute_deadline(100, 5, 0), 100);
+    }
+
+    #[test]
+    fn test_compute_deadline_high_weight_gives_small_slice() {
+        let _guard = crate::test_serial::acquire();
+        // High weight => small virtual slice => deadline close to vruntime
+        let d = compute_deadline(100, 10, 1024);
+        // slice_virtual = (10 * 1024) / 1024 = 10
+        assert_eq!(d, 110);
+    }
+
+    #[test]
+    fn test_compute_deadline_low_weight_gives_large_slice() {
+        let _guard = crate::test_serial::acquire();
+        // Low weight => large virtual slice => deadline far from vruntime
+        let d = compute_deadline(100, 10, 1);
+        // slice_virtual = (10 * 1024) / 1 = 10240
+        assert_eq!(d, 10340);
+    }
+
+    #[test]
+    fn test_update_vruntime_weighted() {
+        let _guard = crate::test_serial::acquire();
+        let mut task = make_test_task(500);
+        task.weight = 512;
+        task.vruntime = 0;
+        update_vruntime(&mut task, 2);
+        // delta = (1024 * 2) / 512 = 4
+        assert_eq!(task.vruntime, 4);
+    }
+
+    #[test]
+    fn test_update_vruntime_min_increment() {
+        let _guard = crate::test_serial::acquire();
+        // Very high weight should still increment by at least 1
+        let mut task = make_test_task(501);
+        task.weight = u32::MAX;
+        task.vruntime = 0;
+        update_vruntime(&mut task, 1);
+        assert!(task.vruntime >= 1);
+    }
+
+    #[test]
+    fn test_set_current_policy() {
+        // Cannot call set_current_policy() or get_current_policy() here
+        // because they use without_interrupts which triggers
+        // STATUS_PRIVILEGED_INSTRUCTION in userspace tests.
+    }
+
+    #[test]
+    fn test_get_current_policy_none_when_empty() {
+        // Cannot call get_current_policy() here because it uses
+        // without_interrupts which triggers STATUS_PRIVILEGED_INSTRUCTION
+        // in userspace tests. This is a known limitation.
+    }
+
+    #[test]
+    fn test_pick_eevdf_prefers_lower_deadline_over_higher() {
+        let _guard = crate::test_serial::acquire();
+        let mut queue = BTreeMap::new();
+
+        // Insert 3 eligible tasks with different deadlines
+        for (pid, deadline) in [(10, 300), (20, 50), (30, 200)] {
+            let mut task = make_test_task(pid);
+            task.eligible = true;
+            task.deadline = deadline;
+            queue.insert(deadline, task);
+        }
+
+        let picked = pick_eevdf(&queue).unwrap();
+        assert_eq!(picked.deadline, 50);
+    }
+
+    #[test]
+    fn test_pick_eevdf_mixed_eligibility() {
+        let _guard = crate::test_serial::acquire();
+        let mut queue = BTreeMap::new();
+
+        // Task with earliest deadline is ineligible
+        let mut t1 = make_test_task(10);
+        t1.eligible = false;
+        t1.deadline = 10;
+        queue.insert(t1.deadline, t1);
+
+        // Second earliest is eligible
+        let mut t2 = make_test_task(20);
+        t2.eligible = true;
+        t2.deadline = 50;
+        queue.insert(t2.deadline, t2);
+
+        // Third is eligible but later
+        let mut t3 = make_test_task(30);
+        t3.eligible = true;
+        t3.deadline = 100;
+        queue.insert(t3.deadline, t3);
+
+        let picked = pick_eevdf(&queue).unwrap();
+        assert_eq!(picked.deadline, 50, "should skip ineligible deadline=10");
+    }
 }

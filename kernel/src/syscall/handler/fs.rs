@@ -528,3 +528,130 @@ pub fn handle_read(args: SyscallArgs) -> SyscallResult {
         None => SyscallResult::Error(1),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_path_absolute_simple() {
+        assert_eq!(normalize_path("/foo/bar"), "/foo/bar");
+    }
+
+    #[test]
+    fn normalize_path_dot_resolution() {
+        assert_eq!(normalize_path("/foo/./bar"), "/foo/bar");
+    }
+
+    #[test]
+    fn normalize_path_double_dot() {
+        assert_eq!(normalize_path("/foo/bar/../baz"), "/foo/baz");
+    }
+
+    #[test]
+    fn normalize_path_double_dot_to_root() {
+        assert_eq!(normalize_path("/foo/.."), "/");
+    }
+
+    #[test]
+    fn normalize_path_multiple_slashes() {
+        assert_eq!(normalize_path("/foo//bar///baz"), "/foo/bar/baz");
+    }
+
+    #[test]
+    fn normalize_path_leading_trailing_slashes() {
+        assert_eq!(normalize_path("///foo/bar///"), "/foo/bar");
+    }
+
+    #[test]
+    fn normalize_path_empty_gives_root() {
+        assert_eq!(normalize_path(""), "/");
+    }
+
+    #[test]
+    fn normalize_path_root_only() {
+        assert_eq!(normalize_path("/"), "/");
+    }
+
+    #[test]
+    fn normalize_path_deep_dotdot() {
+        assert_eq!(normalize_path("/a/b/c/../../d"), "/a/d");
+    }
+
+    #[test]
+    fn normalize_path_dotdot_past_root_stays_at_root() {
+        assert_eq!(normalize_path("/../../../foo"), "/foo");
+    }
+
+    #[test]
+    fn handle_chdir_null_ptr_returns_einval() {
+        let args = SyscallArgs::new(0, 0, 0, 0);
+        let result = handle_chdir(args);
+        assert!(matches!(result, SyscallResult::Error(22)));
+    }
+
+    #[test]
+    fn handle_chdir_zero_len_returns_einval() {
+        let path = "/tmp";
+        let args = SyscallArgs::new(path.as_ptr() as u64, 0, 0, 0);
+        let result = handle_chdir(args);
+        assert!(matches!(result, SyscallResult::Error(22)));
+    }
+
+    #[test]
+    fn handle_chdir_nonexistent_path_returns_enoent() {
+        let _guard = crate::test_serial::acquire();
+        // Set up a minimal VFS with a tmpfs root
+        {
+            let mut vfs = crate::vfs::VFS.lock();
+            *vfs = crate::vfs::Vfs::new();
+            vfs.mount(
+                "/",
+                alloc::sync::Arc::new(crate::fs::tmpfs::TmpfsBackend::new()),
+                crate::fs::vfs::MountFlags::default(),
+            )
+            .unwrap();
+        }
+
+        // Set up a current process with cwd="/"
+        let process = crate::process::Process {
+            inner: alloc::sync::Arc::new(spin::Mutex::new(
+                crate::process::ProcessControlBlock {
+                    id: crate::process::ProcessId(99),
+                    ppid: crate::process::ProcessId(0),
+                    state: crate::process::ProcessState::Running,
+                    pml4_frame: x86_64::structures::paging::PhysFrame::containing_address(
+                        x86_64::PhysAddr::new(0),
+                    ),
+                    entry_point: x86_64::VirtAddr::zero(),
+                    stack_top: x86_64::VirtAddr::zero(),
+                    threads: alloc::vec![],
+                    vma_set: crate::memory::vma::VmaSet::new(),
+                    mmap_next_addr: x86_64::VirtAddr::zero(),
+                    aslr_base: x86_64::VirtAddr::zero(),
+                    fd_table: alloc::vec![None; 1024],
+                    signal_mask: crate::process::SignalSet::empty(),
+                    signal_handlers: [crate::process::SignalAction::Default; 64],
+                    pending_signals: crate::process::SignalSet::empty(),
+                    pending_signal_frame: None,
+                    sec_ctx: crate::security::SecurityContext::root(),
+                    nsproxy: crate::security::namespaces::NsProxy::new(),
+                    seccomp_filter: None,
+                    cgroup_path: None,
+                    cwd: alloc::string::String::from("/"),
+                },
+            )),
+        };
+        let task = crate::task::Task::new_test(
+            crate::task::TaskId::new(),
+            process,
+            crate::task::TaskState::Running,
+        );
+        crate::task::scheduler::set_current_task_for_test(task);
+
+        let path = "/nonexistent_dir";
+        let args = SyscallArgs::new(path.as_ptr() as u64, path.len() as u64, 0, 0);
+        let result = handle_chdir(args);
+        assert!(matches!(result, SyscallResult::Error(2)), "Expected ENOENT for nonexistent path");
+    }
+}

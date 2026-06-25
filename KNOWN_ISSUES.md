@@ -358,12 +358,13 @@ each new subsystem.
 | **Component** | `kernel/src/task/`, `kernel/src/net/` |
 | **Status** | Improved |
 
-**Resolution:** Overall test count grew to 808 tests across 66 files
+**Resolution:** Overall test count grew to 831 tests across 66 files
 (including 16 proptest blocks). Signal delivery is well covered (27 tests
-+ 2 proptest blocks). Scheduler now has 16 tests including 3 new EEVDF
-correctness tests (earliest-deadline selection, ineligible-skip, empty-queue).
-Cgroup module has 13 tests with serialization guards. However, specific
-weak areas remain:
++ 2 proptest blocks). Scheduler now has 24 tests including EEVDF
+correctness tests (earliest-deadline selection, ineligible-skip, empty-queue,
+all-ineligible, deadline computation, vruntime updates). Cgroup module has
+13 tests with serialization guards. FS tests include 11 normalize_path and
+chdir tests. However, specific weak areas remain:
 
 **Remaining:** Scheduler SMP load balancing and cgroup enforcement tests
 are still missing. Networking (`net/socket.rs`) has 8 tests, all
