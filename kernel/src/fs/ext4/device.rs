@@ -87,6 +87,69 @@ impl Ext4Device {
         self.block_size
     }
 
+    /// Write the in-memory superblock back to disk.
+    pub fn write_superblock(&mut self) -> Result<(), Ext4DeviceError> {
+        let sb_byte_offset: u64 = 1024;
+        let sb_sector = sb_byte_offset / SECTOR_SIZE as u64;
+        let sb_size = core::mem::size_of::<Ext4Superblock>();
+        let mut buf = alloc::vec![0u8; sb_size];
+        // Safety: Ext4Superblock is a plain-old-data type; copying its bytes is safe.
+        let src = unsafe {
+            core::slice::from_raw_parts(
+                &self.sb as *const Ext4Superblock as *const u8,
+                sb_size,
+            )
+        };
+        buf[..sb_size].copy_from_slice(src);
+        self.device
+            .write_sectors(sb_sector, &buf)
+            .map_err(|_| Ext4DeviceError::WriteError)?;
+        Ok(())
+    }
+
+    /// Write an inode back to disk given its inode number.
+    ///
+    /// The inode number is taken from the MemInode's on-disk fields and the
+    /// caller must provide the correct inode number. This writes the
+    /// Ext4Inode into the inode table at the correct disk location.
+    pub fn write_inode(&self, inode_num: u32, inode: &Ext4Inode) -> Result<(), Ext4DeviceError> {
+        if inode_num == 0 {
+            return Err(Ext4DeviceError::InvalidInode);
+        }
+
+        let inodes_per_group = self.sb.inodes_per_group();
+        let group = (inode_num - 1) / inodes_per_group;
+        let index = (inode_num - 1) % inodes_per_group;
+
+        let bgd = self.read_group_descriptor(group)?;
+        let inode_table_block = bgd.inode_table_block() as u64;
+        let inode_size = self.sb.inode_size() as u64;
+        let inode_offset = index as u64 * inode_size;
+
+        let byte_in_block = inode_offset % self.block_size as u64;
+        let block = inode_table_block + inode_offset / self.block_size as u64;
+
+        let mut block_buf = alloc::vec![0u8; self.block_size as usize];
+        self.read_block(block, &mut block_buf)?;
+
+        // Safety: Ext4Inode is a plain-old-data type with known size.
+        let inode_bytes = unsafe {
+            core::slice::from_raw_parts(
+                inode as *const Ext4Inode as *const u8,
+                core::mem::size_of::<Ext4Inode>(),
+            )
+        };
+        let start = byte_in_block as usize;
+        let end = start + inode_bytes.len();
+        if end > block_buf.len() {
+            return Err(Ext4DeviceError::WriteError);
+        }
+        block_buf[start..end].copy_from_slice(inode_bytes);
+
+        self.write_block(block, &block_buf)?;
+        Ok(())
+    }
+
     /// Read a group descriptor by index.
     pub fn read_group_descriptor(
         &self,

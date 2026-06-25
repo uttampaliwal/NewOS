@@ -254,7 +254,7 @@ pub fn kfence_free(ptr: *mut u8) -> bool {
 
     let mut pool = POOL.lock();
 
-    for slot in pool.slots.iter_mut() {
+    for (slot_idx, slot) in pool.slots.iter_mut().enumerate() {
         if !slot.allocated {
             continue;
         }
@@ -263,6 +263,29 @@ pub fn kfence_free(ptr: *mut u8) -> bool {
         // the same pointer we handed to the caller in `kfence_alloc`.
         let slot_ptr = slot.data_ptr();
         if slot_ptr == ptr {
+            // Check canaries on this slot before overwriting with UAF bait.
+            // This catches heap buffer overflows that corrupted adjacent redzones.
+            if !slot.left_redzone_intact() {
+                let v = KfenceViolation::RedzoneCorruption {
+                    slot: slot_idx,
+                    side: KfenceSide::Left,
+                };
+                pool.stats.violations_detected += 1;
+                drop(pool);
+                kfence_report_violation(v);
+                return true;
+            }
+            if !slot.right_redzone_intact() {
+                let v = KfenceViolation::RedzoneCorruption {
+                    slot: slot_idx,
+                    side: KfenceSide::Right,
+                };
+                pool.stats.violations_detected += 1;
+                drop(pool);
+                kfence_report_violation(v);
+                return true;
+            }
+
             slot.mark_freed();
             pool.stats.total_freed += 1;
             return true;
@@ -351,6 +374,17 @@ pub fn kfence_report_violation(v: KfenceViolation) {
 /// Return a snapshot of the current KFENCE statistics.
 pub fn kfence_stats() -> KfenceStats {
     POOL.lock().stats
+}
+
+/// Return a formatted string with current KFENCE statistics.
+pub fn kfence_stats_string() -> alloc::string::String {
+    let s = kfence_stats();
+    alloc::format!(
+        "KFENCE stats: slots allocated={}, slots freed={}, violations detected={}",
+        s.total_allocated,
+        s.total_freed,
+        s.violations_detected
+    )
 }
 
 /// Return `true` if `ptr` points anywhere inside the KFENCE pool data region.

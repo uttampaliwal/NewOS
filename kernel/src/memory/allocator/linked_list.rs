@@ -42,6 +42,7 @@ impl LinkedListAllocator {
     ///
     /// `heap_start` must point to a valid, unused memory region of at least `heap_size` bytes.
     pub unsafe fn init(&mut self, heap_start: usize, heap_size: usize) {
+        // Safety: caller guarantees heap_start points to a valid, unused memory region of at least heap_size bytes.
         unsafe {
             self.add_free_region(heap_start, heap_size);
         }
@@ -54,6 +55,7 @@ impl LinkedListAllocator {
         let mut node = ListNode::new(size);
         node.next = self.head.next.take();
         let node_ptr = addr as *mut ListNode;
+        // Safety: addr is aligned to ListNode's alignment and has at least size_of::<ListNode>() bytes available (caller contract).
         unsafe {
             node_ptr.write(node);
             self.head.next = Some(&mut *node_ptr);
@@ -107,6 +109,7 @@ impl LinkedListAllocator {
             let alloc_end = alloc_start.checked_add(size).expect("overflow");
             let excess_size = region.end_addr() - alloc_end;
             if excess_size > 0 {
+                // Safety: alloc_end is within the allocated region and excess_size > 0, so the excess is a valid free region.
                 unsafe {
                     self.add_free_region(alloc_end, excess_size);
                 }
@@ -119,6 +122,7 @@ impl LinkedListAllocator {
 
     pub fn deallocate(&mut self, ptr: *mut u8, layout: Layout) {
         let (size, _) = Self::size_align(layout);
+        // Safety: ptr was returned by allocate() with a matching layout, so it is valid for size bytes and properly aligned.
         unsafe { self.add_free_region(ptr as usize, size) }
     }
 }

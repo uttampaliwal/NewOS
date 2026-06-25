@@ -41,6 +41,7 @@ pub fn handle_bind(args: SyscallArgs) -> SyscallResult {
     }
 
     // Read the sa_family (first 2 bytes)
+    // Safety: addr_ptr is validated non-null and addr_len >= 2 above; reading 2 bytes is within bounds.
     let family = unsafe { core::ptr::read_unaligned(addr_ptr as *const u16) };
 
     match family {
@@ -49,6 +50,8 @@ pub fn handle_bind(args: SyscallArgs) -> SyscallResult {
             if addr_len < 3 {
                 return SyscallResult::Error(14);
             }
+            // Safety: addr_ptr is validated non-null and addr_len >= 3 above; the offset (2) is
+            // within the buffer, and addr_len - 2 bytes remain after the family field.
             let path_slice = unsafe { core::slice::from_raw_parts(addr_ptr.add(2), addr_len - 2) };
             // Trim trailing nulls
             let path_len = path_slice
@@ -92,6 +95,8 @@ pub fn handle_bind(args: SyscallArgs) -> SyscallResult {
             }
 
             // sockaddr_in layout: family(2) + port(2) + addr(4) + zero(8)
+            // Safety: addr_ptr is validated non-null and addr_len >= 8 above; offsets 2 and 4 with
+            // sizes 2 and 4 bytes respectively are within the 8-byte minimum buffer.
             let raw_port = unsafe { core::ptr::read_unaligned(addr_ptr.add(2) as *const u16) };
             let raw_addr = unsafe { core::ptr::read_unaligned(addr_ptr.add(4) as *const u32) };
 
@@ -174,6 +179,7 @@ pub fn handle_connect(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(14); // EFAULT
     }
 
+    // Safety: addr_ptr is validated non-null and addr_len >= 2 above; reading 2 bytes is within bounds.
     let family = unsafe { core::ptr::read_unaligned(addr_ptr as *const u16) };
 
     match family {
@@ -182,6 +188,8 @@ pub fn handle_connect(args: SyscallArgs) -> SyscallResult {
             if addr_len < 3 {
                 return SyscallResult::Error(14);
             }
+            // Safety: addr_ptr is validated non-null and addr_len >= 3 above; the offset (2) is
+            // within the buffer, and addr_len - 2 bytes remain after the family field.
             let path_slice = unsafe { core::slice::from_raw_parts(addr_ptr.add(2), addr_len - 2) };
             let path_len = path_slice
                 .iter()
@@ -218,6 +226,8 @@ pub fn handle_connect(args: SyscallArgs) -> SyscallResult {
                 return SyscallResult::Error(14);
             }
 
+            // Safety: addr_ptr is validated non-null and addr_len >= 8 above; offsets 2 and 4 with
+            // sizes 2 and 4 bytes respectively are within the 8-byte minimum buffer.
             let raw_port = unsafe { core::ptr::read_unaligned(addr_ptr.add(2) as *const u16) };
             let raw_addr = unsafe { core::ptr::read_unaligned(addr_ptr.add(4) as *const u32) };
 
@@ -263,6 +273,8 @@ pub fn handle_net_set_addr(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22); // EINVAL
     }
 
+    // Safety: all three pointers are validated non-null above; each points to a [u8; 4] buffer
+    // provided by the caller, which is the correct size for read_unaligned.
     let addr = unsafe { core::ptr::read_unaligned(addr_ptr) };
     let netmask = unsafe { core::ptr::read_unaligned(netmask_ptr) };
     let gateway = unsafe { core::ptr::read_unaligned(gateway_ptr) };
@@ -339,6 +351,8 @@ pub fn handle_net_set_route(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22); // EINVAL
     }
 
+    // Safety: gateway_ptr is validated non-null above; it points to a [u8; 4] buffer
+    // provided by the caller, which is the correct size for read_unaligned.
     let gateway = unsafe { core::ptr::read_unaligned(gateway_ptr) };
 
     {
@@ -381,6 +395,8 @@ pub fn handle_net_query(args: SyscallArgs) -> SyscallResult {
         flags: if cfg.up { 1 } else { 0 },
     };
 
+    // Safety: resp_ptr is validated non-null above; caller guarantees the pointer references
+    // a valid writable buffer of at least size_of::<NetQueryResp>() bytes.
     unsafe { core::ptr::write_unaligned(resp_ptr, resp) };
 
     SyscallResult::Success(0)
@@ -391,6 +407,8 @@ pub fn handle_net_query(args: SyscallArgs) -> SyscallResult {
 pub fn handle_shutdown(_args: SyscallArgs) -> SyscallResult {
     crate::serial::println!("[syscall] shutdown() called by init");
     // QEMU/ACPI poweroff: try several common ports.
+    // Safety: these are standard QEMU/ACPI poweroff I/O port writes; the ports (0x604, 0xB004)
+    // and values (0x2000) are well-known for triggering ACPI shutdown on QEMU and Bochs.
     unsafe {
         // QEMU
         core::arch::asm!("outw %ax, %dx", in("ax") 0x2000u16, in("dx") 0x604u16, options(att_syntax));
@@ -421,6 +439,8 @@ pub fn handle_send(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22); // EINVAL
     }
 
+    // Safety: buf_ptr is validated non-null and buf_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least buf_len bytes.
     let buf = unsafe { core::slice::from_raw_parts(buf_ptr, buf_len) };
 
     match crate::net::socket::sys_send(fd, buf) {
@@ -444,6 +464,8 @@ pub fn handle_recv(args: SyscallArgs) -> SyscallResult {
 
     match crate::net::socket::sys_recv(fd, &mut buf) {
         Ok(n) => {
+            // Safety: buf_ptr is validated non-null and buf_len > 0 above; n bytes received is
+            // <= buf_len (the size of our local buffer), so the copy is within bounds.
             unsafe {
                 core::ptr::copy_nonoverlapping(buf.as_ptr(), buf_ptr, n);
             }

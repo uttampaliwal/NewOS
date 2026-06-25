@@ -23,6 +23,43 @@ pub mod wx;
 pub const PAGE_SIZE: u64 = 4096;
 const LOW_MEMORY_CUTOFF: u64 = 0x100000;
 
+/// Error returned when a user-copy operation fails validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserCopyError {
+    /// KASAN detected an invalid access in the source or destination range.
+    KasanViolation,
+    /// The pointer or size is invalid (null, overflow, etc.).
+    InvalidRange,
+}
+
+/// Copy `len` bytes from a user-space pointer `from` into a kernel buffer `to`.
+///
+/// Performs KASAN range validation on the source before copying.
+pub unsafe fn copy_from_user(from: *const u8, to: *mut u8, len: usize) -> Result<(), UserCopyError> {
+    if from.is_null() || to.is_null() {
+        return Err(UserCopyError::InvalidRange);
+    }
+    if !kasan::check_range_access(from, len) {
+        return Err(UserCopyError::KasanViolation);
+    }
+    unsafe { core::ptr::copy_nonoverlapping(from, to, len) };
+    Ok(())
+}
+
+/// Copy `len` bytes from a kernel buffer `from` into a user-space pointer `to`.
+///
+/// Performs KASAN range validation on the destination before copying.
+pub unsafe fn copy_to_user(from: *const u8, to: *mut u8, len: usize) -> Result<(), UserCopyError> {
+    if from.is_null() || to.is_null() {
+        return Err(UserCopyError::InvalidRange);
+    }
+    if !kasan::check_range_access(to, len) {
+        return Err(UserCopyError::KasanViolation);
+    }
+    unsafe { core::ptr::copy_nonoverlapping(from, to, len) };
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PhysFrame {
     pub start_address: u64,

@@ -16,6 +16,7 @@ pub fn handle_input_read(args: SyscallArgs) -> SyscallResult {
     let mut count: u64 = 0;
     for i in 0..slots {
         if let Some(ev) = crate::input::read_event() {
+            // Safety: buf_ptr is non-null (checked above) and i < slots, so the write is within the caller-provided buffer.
             unsafe { buf_ptr.add(i).write_unaligned(ev) };
             count += 1;
         } else {
@@ -111,6 +112,7 @@ pub fn handle_drm_page_flip(args: SyscallArgs) -> SyscallResult {
     let dst = (phys_mem_offset + fb_addr).as_mut_ptr::<u8>();
     let copy_size = core::cmp::min(fb_size, buf_size);
 
+    // Safety: src and dst point to valid physical memory regions (GBM buffer and framebuffer) with sufficient size.
     unsafe {
         core::ptr::copy_nonoverlapping(src, dst, copy_size as usize);
     }

@@ -7,7 +7,7 @@
 extern crate alloc;
 
 use super::disk::Ext4Inode;
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -111,6 +111,8 @@ pub struct Ext4State {
     /// Global counter for allocated data blocks (for i_blocks accounting).
     #[allow(dead_code)]
     allocated_blocks: u32,
+    /// Set of free block numbers available for allocation.
+    free_blocks: BTreeSet<u64>,
 }
 
 impl Ext4State {
@@ -128,6 +130,7 @@ impl Ext4State {
             next_inode: 3, // 1 = bad, 2 = root, next available = 3
             root_inode,
             allocated_blocks: 0,
+            free_blocks: BTreeSet::new(),
         }
     }
 
@@ -442,6 +445,36 @@ impl Ext4State {
     /// Get mutable iterator over all inodes.
     pub fn inodes_mut(&mut self) -> impl Iterator<Item = (&u64, &mut MemInode)> {
         self.inodes.iter_mut()
+    }
+
+    /// Initialize the free block set with a range of available block numbers.
+    /// Blocks below `reserved_start` and above `reserved_end` are excluded.
+    pub fn init_free_blocks(&mut self, start: u64, end: u64, reserved_start: u64) {
+        self.free_blocks.clear();
+        for b in start..end {
+            if b >= reserved_start {
+                self.free_blocks.insert(b);
+            }
+        }
+    }
+
+    /// Allocate a free block. Returns the block number, or None if none available.
+    pub fn alloc_block(&mut self) -> Option<u64> {
+        let block = *self.free_blocks.iter().next()?;
+        self.free_blocks.remove(&block);
+        self.allocated_blocks = self.allocated_blocks.saturating_add(1);
+        Some(block)
+    }
+
+    /// Return a block to the free set.
+    pub fn free_block(&mut self, block: u64) {
+        self.free_blocks.insert(block);
+        self.allocated_blocks = self.allocated_blocks.saturating_sub(1);
+    }
+
+    /// Get the number of free blocks.
+    pub fn free_block_count(&self) -> u64 {
+        self.free_blocks.len() as u64
     }
 }
 

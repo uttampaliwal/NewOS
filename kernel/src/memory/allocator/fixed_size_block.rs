@@ -32,6 +32,7 @@ impl FixedSizeBlockAllocator {
     ///
     /// `heap_start` must point to a valid, unused memory region of at least `heap_size` bytes.
     pub unsafe fn init(&mut self, heap_start: usize, heap_size: usize) {
+        // Safety: caller guarantees heap_start points to a valid, unused memory region of at least heap_size bytes.
         unsafe {
             self.fallback_allocator.init(heap_start, heap_size);
         }
@@ -93,6 +94,7 @@ unsafe impl GlobalAlloc for super::Locked<FixedSizeBlockAllocator> {
                 };
                 assert!(size_of::<ListNode>() <= BLOCK_SIZES[index]);
                 let new_node_ptr = ptr as *mut ListNode;
+                // Safety: ptr was allocated with block_size (>= BLOCK_SIZES[index] >= size_of::<ListNode>()), so it has sufficient space.
                 unsafe {
                     new_node_ptr.write(new_node);
                     allocator.list_heads[index] = Some(&mut *new_node_ptr);

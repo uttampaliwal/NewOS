@@ -48,7 +48,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         boot_info.ramdisk_addr, boot_info.ramdisk_size
     );
 
-    // 1. Initialize Kernel Paging
+    // Safety: phys_mem_offset is validated by BootInfo checks and points to a valid physical memory mapping.
     let mut mapper = unsafe { crate::memory::paging::init(phys_mem_offset) };
     let _ = writeln!(writer, "[STG: PAGING_INIT]");
 
@@ -220,6 +220,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     // 3.4d Probe TPM 2.0 TIS driver
     {
         const TPM_BASE_ADDR: u64 = 0xFED40000;
+        // Safety: TPM_BASE_ADDR is a well-known MMIO address (0xFED40000) for TIS interface.
         match unsafe { crate::drivers::tpm::TpmDriver::new(TPM_BASE_ADDR) }.probe() {
             Ok(()) => {
                 if let Err(e) = crate::drivers::tpm::init(TPM_BASE_ADDR) {

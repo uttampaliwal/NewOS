@@ -344,6 +344,7 @@ mod tests {
     fn setup_test_env() -> TestEnv {
         scheduler::test_reset();
         let stack_layout = core::alloc::Layout::from_size_align(4096, 16).unwrap();
+        // Safety: stack_layout is a valid, non-zero layout; allocation is freed in cleanup().
         let stack_ptr = unsafe { std::alloc::alloc(stack_layout) } as u64;
 
         let pcb = ProcessControlBlock {

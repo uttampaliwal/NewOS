@@ -35,6 +35,7 @@ pub fn handle_dmesg(args: SyscallArgs) -> SyscallResult {
     }
 
     if written > 0 {
+        // Safety: buf_ptr is non-null (checked above) and written <= buf_size, so the copy fits in the caller-provided buffer.
         unsafe {
             core::ptr::copy_nonoverlapping(output.as_ptr(), buf_ptr, written);
         }

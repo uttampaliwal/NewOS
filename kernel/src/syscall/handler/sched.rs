@@ -43,11 +43,13 @@ pub fn handle_cgroup_create(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22);
     }
 
+    // Safety: parent_ptr is non-null and parent_len > 0 (checked above); pointer is valid for reads of parent_len bytes.
     let parent_slice = unsafe { core::slice::from_raw_parts(parent_ptr, parent_len) };
     let parent_path = match core::str::from_utf8(parent_slice) {
         Ok(s) => s,
         Err(_) => return SyscallResult::Error(22),
     };
+    // Safety: name_ptr is non-null and name_len > 0 (checked above); pointer is valid for reads of name_len bytes.
     let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
     let name = match core::str::from_utf8(name_slice) {
         Ok(s) => s,
@@ -69,6 +71,7 @@ pub fn handle_cgroup_add_process(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22);
     }
 
+    // Safety: path_ptr is non-null and path_len > 0 (checked above); pointer is valid for reads of path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path = match core::str::from_utf8(path_slice) {
         Ok(s) => s,
@@ -90,6 +93,7 @@ pub fn handle_cgroup_set_cpu_max(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22);
     }
 
+    // Safety: path_ptr is non-null and path_len > 0 (checked above); pointer is valid for reads of path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path = match core::str::from_utf8(path_slice) {
         Ok(s) => s,
@@ -111,6 +115,7 @@ pub fn handle_cgroup_set_memory_max(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22);
     }
 
+    // Safety: path_ptr is non-null and path_len > 0 (checked above); pointer is valid for reads of path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path = match core::str::from_utf8(path_slice) {
         Ok(s) => s,
@@ -132,6 +137,7 @@ pub fn handle_cgroup_set_pids_max(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22);
     }
 
+    // Safety: path_ptr is non-null and path_len > 0 (checked above); pointer is valid for reads of path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path = match core::str::from_utf8(path_slice) {
         Ok(s) => s,

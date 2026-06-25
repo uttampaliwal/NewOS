@@ -30,6 +30,7 @@ const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
 
 #[unsafe(no_mangle)]
 extern "sysv64" fn kernel_image_main(boot_info: *const BootInfo) -> ! {
+    // Safety: boot_info is passed by the bootloader entry point and points to a valid BootInfo struct.
     let boot_info = unsafe { &*boot_info };
 
     match turnix_kernel::boot::early_boot(boot_info) {
@@ -54,11 +55,13 @@ fn qemu_exit_failure() -> ! {
 }
 
 fn qemu_exit(code: u32) -> ! {
+    // Safety: QEMU_DEBUG_EXIT_PORT is a valid I/O port for debug exit; out instruction writes eax to dx.
     unsafe {
         asm!("out dx, eax", in("dx") QEMU_DEBUG_EXIT_PORT, in("eax") code, options(nomem, nostack, preserves_flags));
     }
 
     loop {
+        // Safety: hlt is a benign instruction that halts the CPU until the next interrupt; options prevent side effects.
         unsafe {
             asm!("hlt", options(nomem, nostack, preserves_flags));
         }

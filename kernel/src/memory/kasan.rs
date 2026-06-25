@@ -146,9 +146,17 @@ pub fn free_poison(addr: usize, size: usize) {
     let shadow = shadow_for(addr) as *mut u8;
     let shadow_size = size.div_ceil(SHADOW_SCALE);
 
+    // Check if the memory is already poisoned (double-free detection).
     // Safety: shadow points into the valid shadow memory region for the heap,
     // and shadow_size is within the shadow region bounds.
     unsafe {
+        for i in 0..shadow_size {
+            let poison = core::ptr::read_volatile(shadow.add(i));
+            if poison == KASAN_POISON_FREE {
+                report_violation(addr, size, &KasanError::DoubleFree { addr });
+                return;
+            }
+        }
         for i in 0..shadow_size {
             core::ptr::write_volatile(shadow.add(i), KASAN_POISON_FREE);
         }
@@ -281,6 +289,14 @@ pub fn validate_kernel_buf(ptr: *const u8, size: usize) -> Result<(), KasanError
     }
 
     Ok(())
+}
+
+/// Check if a range [addr, addr+size) is fully accessible from an external caller.
+///
+/// Returns `true` if the range is valid (or KASAN is disabled), `false` if
+/// any byte in the range is poisoned.
+pub fn check_range_access(addr: *const u8, size: usize) -> bool {
+    check_range(addr as usize, size).is_ok()
 }
 
 /// Get allocation statistics

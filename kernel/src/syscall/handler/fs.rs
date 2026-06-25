@@ -12,6 +12,8 @@ pub fn handle_mkdir(args: SyscallArgs) -> SyscallResult {
     if path_ptr.is_null() || path_len == 0 {
         return SyscallResult::Error(1);
     }
+    // Safety: path_ptr is validated non-null and path_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path_str = core::str::from_utf8(path_slice).unwrap_or("");
     let mut vfs = VFS.lock();
@@ -28,6 +30,8 @@ pub fn handle_unlink(args: SyscallArgs) -> SyscallResult {
     if path_ptr.is_null() || path_len == 0 {
         return SyscallResult::Error(1);
     }
+    // Safety: path_ptr is validated non-null and path_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path_str = core::str::from_utf8(path_slice).unwrap_or("");
     let mut vfs = VFS.lock();
@@ -47,6 +51,8 @@ pub fn handle_write_file(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(1);
     }
 
+    // Safety: buf_ptr is validated non-null and buf_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least buf_len bytes.
     let buf = unsafe { core::slice::from_raw_parts(buf_ptr, buf_len) };
 
     // For pipe FDs, extract the Arc<PipeBuffer> and perform a blocking
@@ -109,12 +115,16 @@ pub fn handle_stat(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(1);
     }
 
+    // Safety: path_ptr is validated non-null and path_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path = core::str::from_utf8(path_slice).unwrap_or("");
 
     let vfs = VFS.lock();
     match vfs.stat(path) {
         Some(stat) => {
+            // Safety: stat_ptr is validated non-null above; caller guarantees the pointer
+            // references a valid writable buffer of at least size_of::<Stat>() bytes.
             unsafe {
                 *stat_ptr = stat.to_abi();
             }
@@ -135,6 +145,8 @@ pub fn handle_ls(args: SyscallArgs) -> SyscallResult {
     let vfs = VFS.lock();
     let files = vfs.list_dir();
     let mut offset = 0;
+    // Safety: buf_ptr is validated non-null and buf_len > 0 above; caller guarantees the pointer
+    // references a valid writable buffer of at least buf_len bytes.
     let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
 
     for name in files {
@@ -160,6 +172,8 @@ pub fn handle_open(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(1);
     }
 
+    // Safety: path_ptr is validated non-null and path_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path = core::str::from_utf8(path_slice).unwrap_or("");
 
@@ -202,6 +216,8 @@ pub fn handle_pipe(args: SyscallArgs) -> SyscallResult {
     let (read_idx, write_idx) = vfs.create_pipe();
 
     let pipefds = [read_idx as u64, write_idx as u64];
+    // Safety: pipefd_ptr is validated non-null above; caller guarantees the pointer
+    // references a valid writable buffer of at least size_of::<[u64; 2]>() bytes.
     unsafe {
         pipefd_ptr.write(pipefds);
     }
@@ -254,6 +270,8 @@ pub fn handle_mount(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22); // EINVAL
     }
 
+    // Safety: path_ptr is validated non-null and path_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let mount_point = match core::str::from_utf8(path_slice) {
         Ok(s) => s,
@@ -290,6 +308,8 @@ pub fn handle_umount(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22); // EINVAL
     }
 
+    // Safety: path_ptr is validated non-null and path_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let mount_point = match core::str::from_utf8(path_slice) {
         Ok(s) => s,
@@ -340,6 +360,8 @@ pub fn handle_chdir(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22); // EINVAL
     }
 
+    // Safety: path_ptr is validated non-null and path_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path = match core::str::from_utf8(path_slice) {
         Ok(p) => p,
@@ -431,11 +453,15 @@ pub fn handle_xattr_get(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22); // EINVAL
     }
 
+    // Safety: path_ptr is validated non-null and path_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let path = match core::str::from_utf8(path_slice) {
         Ok(p) => p,
         Err(_) => return SyscallResult::Error(22),
     };
+    // Safety: name_ptr is validated non-null and name_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least name_len bytes.
     let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
     let name = match core::str::from_utf8(name_slice) {
         Ok(n) => n,
@@ -465,11 +491,15 @@ pub fn handle_xattr_set(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22); // EINVAL
     }
 
+    // Safety: path_ptr is validated non-null and path_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least path_len bytes.
     let path_slice = unsafe { core::slice::from_raw_parts(path_ptr, path_len) };
     let _path = match core::str::from_utf8(path_slice) {
         Ok(p) => p,
         Err(_) => return SyscallResult::Error(22),
     };
+    // Safety: name_ptr is validated non-null and name_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least name_len bytes.
     let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
     let _name = match core::str::from_utf8(name_slice) {
         Ok(n) => n,
@@ -521,6 +551,8 @@ pub fn handle_read(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(1);
     }
 
+    // Safety: buf_ptr is validated non-null and buf_len > 0 above; caller guarantees the pointer
+    // references a valid writable buffer of at least buf_len bytes.
     let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
     let mut vfs = VFS.lock();
     match vfs.read(fd, buf) {

@@ -29,6 +29,7 @@ use state::Ext4State;
 /// at construction, `sync()` writes dirty data to disk.
 pub struct Ext4Backend {
     state: Arc<Mutex<Ext4State>>,
+    device: Option<Arc<Mutex<device::Ext4Device>>>,
 }
 
 impl Ext4Backend {
@@ -36,6 +37,15 @@ impl Ext4Backend {
     pub fn new() -> Self {
         Ext4Backend {
             state: Arc::new(Mutex::new(Ext4State::new())),
+            device: None,
+        }
+    }
+
+    /// Create an ext4 backend with a block device for write-back support.
+    pub fn with_device(state: Ext4State, device: device::Ext4Device) -> Self {
+        Ext4Backend {
+            state: Arc::new(Mutex::new(state)),
+            device: Some(Arc::new(Mutex::new(device))),
         }
     }
 
@@ -44,6 +54,7 @@ impl Ext4Backend {
     pub fn from_state(state: Ext4State) -> Self {
         Ext4Backend {
             state: Arc::new(Mutex::new(state)),
+            device: None,
         }
     }
 }
@@ -259,10 +270,39 @@ impl FsBackend for Ext4Backend {
     }
 
     fn sync(&self) -> Result<(), FsError> {
-        // In-memory only: mark all inodes as clean
-        let mut state = self.state.lock();
-        for (_ino, inode) in state.inodes_mut() {
-            inode.dirty = false;
+        if let Some(ref device) = self.device {
+            let mut state = self.state.lock();
+            let mut dev = device.lock();
+
+            // Write each dirty inode to disk
+            let dirty_inodes: Vec<u64> = state
+                .inodes_mut()
+                .filter(|(_, inode)| inode.dirty)
+                .map(|(&ino, _)| ino)
+                .collect();
+
+            for ino in dirty_inodes {
+                if let Some(mem_inode) = state.get_inode(ino) {
+                    let disk_inode = mem_inode.inode;
+                    let inode_num = ino as u32;
+                    dev.write_inode(inode_num, &disk_inode)
+                        .map_err(|_| FsError::IoError)?;
+                }
+            }
+
+            // Write superblock
+            dev.write_superblock().map_err(|_| FsError::IoError)?;
+
+            // Clear dirty flags
+            for (_, inode) in state.inodes_mut() {
+                inode.dirty = false;
+            }
+        } else {
+            // In-memory only: mark all inodes as clean
+            let mut state = self.state.lock();
+            for (_, inode) in state.inodes_mut() {
+                inode.dirty = false;
+            }
         }
         Ok(())
     }

@@ -17,6 +17,8 @@ pub fn handle_shm_open(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22); // EINVAL
     }
 
+    // Safety: name_ptr is validated non-null and name_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least name_len bytes.
     let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
     let name = match core::str::from_utf8(name_slice) {
         Ok(s) => s,
@@ -66,6 +68,8 @@ pub fn handle_shm_unlink(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22);
     }
 
+    // Safety: name_ptr is validated non-null and name_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least name_len bytes.
     let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
     let name = match core::str::from_utf8(name_slice) {
         Ok(s) => s,
@@ -103,6 +107,8 @@ pub fn handle_mq_open(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22);
     }
 
+    // Safety: name_ptr is validated non-null and name_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least name_len bytes.
     let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
     let name = match core::str::from_utf8(name_slice) {
         Ok(s) => s,
@@ -182,6 +188,8 @@ pub fn handle_mq_unlink(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(22);
     }
 
+    // Safety: name_ptr is validated non-null and name_len > 0 above; caller guarantees the pointer
+    // references a valid readable buffer of at least name_len bytes.
     let name_slice = unsafe { core::slice::from_raw_parts(name_ptr, name_len) };
     let name = match core::str::from_utf8(name_slice) {
         Ok(s) => s,
@@ -204,6 +212,8 @@ pub fn handle_mq_send(args: SyscallArgs) -> SyscallResult {
         return SyscallResult::Error(14); // EFAULT
     }
 
+    // Safety: msg_ptr is validated non-null above; caller guarantees the pointer references
+    // a valid readable buffer of at least msg_len bytes.
     let msg_slice = unsafe { core::slice::from_raw_parts(msg_ptr, msg_len) };
 
     let process = match crate::task::scheduler::get_current_process() {
@@ -254,6 +264,8 @@ pub fn handle_mq_receive(args: SyscallArgs) -> SyscallResult {
     let mut buf = alloc::vec![0u8; buf_len];
     match mq.receive(&mut buf) {
         Ok((n, _prio)) => {
+            // Safety: buf_ptr is validated non-null above; n bytes received is <= buf_len
+            // (the size of our local buffer), so the copy is within bounds.
             unsafe {
                 core::ptr::copy_nonoverlapping(buf.as_ptr(), buf_ptr, n);
             }
