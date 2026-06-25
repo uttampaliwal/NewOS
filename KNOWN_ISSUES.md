@@ -315,7 +315,7 @@ and lifecycle.
 
 ---
 
-## 16. Undocumented Unsafe Blocks (~206 remaining)
+## 16. Undocumented Unsafe Blocks (~162 remaining)
 
 | | |
 |---|---|
@@ -324,25 +324,25 @@ and lifecycle.
 | **Status** | Partially Resolved |
 
 **Resolution:** Backfilling safety comments incrementally. Current counts:
-403 total `unsafe` blocks in `kernel/src/`; 197 documented with `// Safety:`
-comments (48.9%); 206 still undocumented (51.1%). The lint is currently
+404 total `unsafe` blocks in `kernel/src/`; 242 documented with `// Safety:`
+comments (59.9%); 162 still undocumented (40.1%). The lint is currently
 `#![allow(clippy::undocumented_unsafe_blocks)]` in `kernel/src/lib.rs`
 with a TODO to switch to `#![warn(...)]` once backfill is complete.
 
-The pending diff adds ~320 lines of `// Safety:` comments across 28 files
-(ACPI, arch/x86_64, drivers, filesystems, IPC, memory, process, task),
-bringing the documented count to ~518 of 403+ new blocks.
+The pending diff adds safety comments across 28+ files
+(ACPI, arch/x86_64, drivers, filesystems, IPC, memory, process, task, ima),
+bringing the documented count to ~242 of 404 blocks.
 
-**Impact:** ~206 unsafe blocks in production code lack `// Safety:` comments.
+**Impact:** ~162 unsafe blocks in production code lack `// Safety:` comments.
 For a Rust-first OS, this is the largest gap between stated values and
 actual code. No CI check enforces documentation, so the debt grows with
 each new subsystem.
 
 **Proposed Fix:**
 - Backfill safety comments incrementally by subsystem, starting with:
-  - `acpi.rs` (39 undocumented), `fs/ext2/mod.rs` (29),
-    `drivers/virtio_net.rs` (23), `syscall/handler/process.rs` (21)
-  - `memory/swap.rs` (18), `drivers/nvme.rs` (18)
+  - `arch/x86_64/interrupts/mod.rs` (48 undocumented),
+    `process.rs` (21), `drivers/virtio_net.rs` (16),
+    `fs.rs` (16), `memory/paging.rs` (14)
 - Enable `#![warn(clippy::undocumented_unsafe_blocks)]` in `kernel/src/lib.rs`
 - Add CI check: deny undocumented unsafe after backfill is complete
 
@@ -401,5 +401,5 @@ tests for basic lifecycle only — no data path or connection tests.
 | 13 | No KASAN/KFENCE memory safety detection | High | Partially Resolved |
 | 14 | No lockdep or completion variables | Medium | Resolved |
 | 15 | No container runtime or OCI support | Medium | Open |
-| 16 | Undocumented unsafe blocks (~206 remaining) | Medium | Partially Resolved |
+| 16 | Undocumented unsafe blocks (~162 remaining) | Medium | Partially Resolved |
 | 17 | Uneven test coverage | Medium | Improved |

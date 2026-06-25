@@ -330,6 +330,8 @@ pub const SECCOMP_MODE_FILTER: u32 = 2;
 /// This is intentionally permissive; production systems would lock down further.
 pub fn default_allow_filter() -> SeccompFilter {
     // The default filter: always ALLOW.
+    // Safety: A single BPF_RET instruction is always valid and within the
+    // 4096-instruction limit, so unwrap is acceptable here.
     SeccompFilter::new(
         alloc::vec![BpfInstruction {
             code: BPF_RET,

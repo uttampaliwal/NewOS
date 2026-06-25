@@ -261,6 +261,10 @@ fn get_evm_key() -> [u8; 32] {
 #[cfg(not(test))]
 fn derive_key_from_tpm() -> Option<[u8; 32]> {
     const TPM_BASE_ADDR: u64 = 0xFED40000;
+    // Safety: TPM_BASE_ADDR is the standard MMIO base address for the TPM
+    // 2.0 FIFO interface (0xFED40000). The TpmDriver constructor maps this
+    // region as MMIO; probe() and get_random() perform validated register
+    // reads/writes to the TPM command buffer.
     let mut tpm = unsafe { crate::drivers::tpm::TpmDriver::new(TPM_BASE_ADDR) };
 
     if tpm.probe().is_err() {
@@ -318,7 +322,10 @@ fn generate_random_u64() -> u64 {
         for _ in 0..10 {
             let val: u64;
             let ok: u8;
-            unsafe {
+            // Safety: RDRAND is a x86 instruction that reads a hardware random number
+        // from the CPU's RDRAND entropy source. It is safe to call on any x86 CPU
+        // that supports RDRAND; the instruction itself is a single atomic read.
+        unsafe {
                 core::arch::asm!(
                     "rdrand {0}",
                     "setc {1}",
@@ -339,7 +346,10 @@ fn generate_random_u64() -> u64 {
         {
             let lo: u32;
             let hi: u32;
-            unsafe {
+            // Safety: RDTSC reads the CPU timestamp counter, a 64-bit value that
+        // counts CPU cycles since reset. It is a benign instruction with no
+        // side effects and is safe to call from any privilege level.
+        unsafe {
                 core::arch::asm!(
                     "rdtsc",
                     out("eax") lo,
