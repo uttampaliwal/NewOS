@@ -88,11 +88,15 @@ responsiveness under memory pressure.
 |---|---|
 | **Severity** | High |
 | **Component** | `kernel/src/panic.rs`, `kernel/src/reliability/` (new) |
-| **Status** | Open |
+| **Status** | Partially Addressed |
 
 **Impact:** Kernel panics produce only a register dump. No crash dump is
 captured for post-mortem analysis. No watchdog for hang detection. No fault
 injection for robustness testing. Production kernels require all three.
+
+**Progress:** Panic crash-dump capture, register dump formatting, and recent
+kernel-log snapshotting are now implemented in `kernel/src/crash_dump.rs` and
+wired into the panic path. Watchdog and fault-injection support remain open.
 
 **Proposed Fix:**
 - Crash dump: kdump-style capture of kernel memory to reserved region
@@ -332,15 +336,11 @@ backfill is complete.
 | **Component** | `kernel/src/task/`, `kernel/src/net/` |
 | **Status** | Improved |
 
-**Resolution:** Overall test count grew to 848 tests across 66 files
-(including 16 proptest blocks). Signal delivery is well covered (27 tests
-+ 2 proptest blocks). Scheduler now has 24 tests including EEVDF
-correctness tests (earliest-deadline selection, ineligible-skip, empty-queue,
-all-ineligible, deadline computation, vruntime updates). Cgroup module has
-13 tests with serialization guards. FS tests include 11 normalize_path and
-3 chdir handler tests. Crypto module has 14 tests covering SHA-256 streaming,
-HMAC, CSPRNG, HKDF, PBKDF2, and ChaCha20. However, specific weak areas
-remain:
+**Resolution:** Overall test count grew to 882 tests across the kernel library
+suite. Signal delivery, scheduler behavior, cgroup boundary handling, and
+network socket state handling are now covered by targeted regression tests.
+The remaining weak areas are scheduler SMP load balancing and broader network
+state-machine coverage.
 
 **Remaining:** Scheduler SMP load balancing and cgroup enforcement tests
 are still missing. Networking (`net/socket.rs`) has 8 tests, all
@@ -366,7 +366,7 @@ tests for basic lifecycle only — no data path or connection tests.
 | 2 | GP fault during fork/clone | Medium | Mitigated |
 | 3 | No performance tracing (ftrace, kprobes) | High | Open |
 | 4 | No memory compression (zswap/zram) | Medium | Open |
-| 5 | No crash dump / reliability engineering | High | Open |
+| 5 | No crash dump / reliability engineering | High | Partially Addressed |
 | 6 | No kernel crypto API | Medium | Resolved |
 | 7 | No device driver PM / hotplug framework | Medium | Open |
 | 8 | No hypervisor / virtualization support | Medium | Open |

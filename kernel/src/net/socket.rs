@@ -188,6 +188,9 @@ pub fn sys_bind(fd: usize, addr: IpAddress, port: u16) -> Result<(), i64> {
     {
         let table = SOCKET_TABLE.lock();
         let entry = table.get(fd).ok_or(EBADF)?;
+        if entry.is_bound {
+            return Err(EINVAL);
+        }
         handle = entry.handle;
         sock_type = entry.sock_type;
     }
@@ -245,6 +248,9 @@ pub fn sys_connect(fd: usize, addr: IpAddress, port: u16) -> Result<(), i64> {
     {
         let table = SOCKET_TABLE.lock();
         let entry = table.get(fd).ok_or(EBADF)?;
+        if entry.is_listening || entry.is_connected {
+            return Err(EINVAL);
+        }
         handle = entry.handle;
         sock_type = entry.sock_type;
     }
@@ -662,6 +668,27 @@ mod tests {
     fn test_listen_requires_bound_tcp_socket() {
         let fd = sys_socket(2, 1).unwrap();
         let err = sys_listen(fd, 8).unwrap_err();
+        assert_eq!(err, EINVAL);
+        assert!(sys_close(fd).is_ok());
+    }
+
+    #[test]
+    fn test_bind_twice_returns_einval() {
+        let fd = sys_socket(2, 1).unwrap();
+        let addr = IpAddress::v4(127, 0, 0, 1);
+        assert!(sys_bind(fd, addr, 9000).is_ok());
+        let err = sys_bind(fd, addr, 9001).unwrap_err();
+        assert_eq!(err, EINVAL);
+        assert!(sys_close(fd).is_ok());
+    }
+
+    #[test]
+    fn test_connect_rejects_listening_tcp_socket() {
+        let fd = sys_socket(2, 1).unwrap();
+        let addr = IpAddress::v4(127, 0, 0, 1);
+        assert!(sys_bind(fd, addr, 9002).is_ok());
+        assert!(sys_listen(fd, 4).is_ok());
+        let err = sys_connect(fd, addr, 9003).unwrap_err();
         assert_eq!(err, EINVAL);
         assert!(sys_close(fd).is_ok());
     }
