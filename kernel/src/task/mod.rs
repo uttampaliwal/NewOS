@@ -15,6 +15,15 @@ pub type TaskEntry = extern "sysv64" fn() -> !;
 #[cfg(not(target_arch = "x86_64"))]
 pub type TaskEntry = extern "C" fn() -> !;
 
+/// Errors that can occur during task creation.
+#[derive(Debug)]
+pub enum TaskError {
+    /// Frame allocator exhausted — out of memory for kernel stack pages.
+    OutOfMemory,
+    /// Page table mapping failed.
+    MappingFailed,
+}
+
 const KERNEL_STACK_REGION_BASE: u64 = 0xFFFF_FE00_0000_0000;
 const KERNEL_STACK_PAGES: u64 = 32;
 pub const KERNEL_STACK_SIZE: u64 = KERNEL_STACK_PAGES * 4096;
@@ -126,7 +135,7 @@ impl Task {
         entry: TaskEntry,
         mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-    ) -> Self {
+    ) -> Result<Self, TaskError> {
         const STACK_PAGES: u64 = 32;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
@@ -148,7 +157,7 @@ impl Task {
             for page in pages {
                 let frame = frame_allocator
                     .allocate_frame()
-                    .expect("out of memory for kernel stack");
+                    .ok_or(TaskError::OutOfMemory)?;
                 mapper
                     .map_to(
                         page,
@@ -156,7 +165,7 @@ impl Task {
                         PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
                         frame_allocator,
                     )
-                    .expect("failed to map kernel stack page")
+                    .map_err(|_| TaskError::MappingFailed)?
                     .flush();
             }
         }
@@ -218,7 +227,7 @@ impl Task {
             weight: 1024,
         };
         process.add_thread(id);
-        task
+        Ok(task)
     }
 
     pub fn new_user(
@@ -226,7 +235,7 @@ impl Task {
         mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: x86_64::VirtAddr,
-    ) -> Self {
+    ) -> Result<Self, TaskError> {
         const STACK_PAGES: u64 = 32;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
@@ -248,7 +257,7 @@ impl Task {
             for page in pages {
                 let frame = frame_allocator
                     .allocate_frame()
-                    .expect("out of memory for user-task kernel stack");
+                    .ok_or(TaskError::OutOfMemory)?;
 
                 // 1. Map the kernel stack into the CURRENT (kernel) address space.
                 // This allows us to initialize the stack contents below.
@@ -320,7 +329,7 @@ impl Task {
         }
 
         process.add_thread(id);
-        Self {
+        Ok(Self {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
@@ -336,7 +345,7 @@ impl Task {
             deadline: 0,
             lag: 0,
             weight: 1024,
-        }
+        })
     }
 
     /// Create a task for a forked child process.
@@ -351,7 +360,7 @@ impl Task {
         mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: VirtAddr,
-    ) -> Self {
+    ) -> Result<Self, TaskError> {
         const STACK_PAGES: u64 = 32;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
@@ -373,7 +382,7 @@ impl Task {
             for page in pages {
                 let frame = frame_allocator
                     .allocate_frame()
-                    .expect("out of memory for forked-task kernel stack");
+                    .ok_or(TaskError::OutOfMemory)?;
 
                 // Map into the current (kernel) address space for initialization.
                 if mapper
@@ -510,7 +519,7 @@ impl Task {
         }
 
         process.add_thread(id);
-        Self {
+        Ok(Self {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
@@ -526,7 +535,7 @@ impl Task {
             deadline: 0,
             lag: 0,
             weight: 1024,
-        }
+        })
     }
 
     /// Create a task for an exec'd process.
@@ -538,7 +547,7 @@ impl Task {
         mapper: &mut impl Mapper<Size4KiB>,
         frame_allocator: &mut impl FrameAllocator<Size4KiB>,
         physical_memory_offset: VirtAddr,
-    ) -> Self {
+    ) -> Result<Self, TaskError> {
         const STACK_PAGES: u64 = 32;
         const GUARD_PAGES: u64 = 1;
         const STACK_SIZE: u64 = STACK_PAGES * 4096;
@@ -560,7 +569,7 @@ impl Task {
             for page in pages {
                 let frame = frame_allocator
                     .allocate_frame()
-                    .expect("out of memory for exec-task kernel stack");
+                    .ok_or(TaskError::OutOfMemory)?;
 
                 // Map into current (kernel) address space
                 if mapper
@@ -631,7 +640,7 @@ impl Task {
         }
 
         process.add_thread(id);
-        Self {
+        Ok(Self {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
@@ -647,7 +656,7 @@ impl Task {
             deadline: 0,
             lag: 0,
             weight: 1024,
-        }
+        })
     }
 
     pub fn switch_to(&self) {

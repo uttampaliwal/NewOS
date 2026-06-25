@@ -495,13 +495,16 @@ pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::Syscall
     let mut frame_allocator_guard2 = crate::boot::get_frame_allocator().lock();
     let frame_allocator2 = frame_allocator_guard2.as_mut().unwrap();
 
-    let child_task = crate::task::Task::new_forked_user(
+    let child_task = match crate::task::Task::new_forked_user(
         child_process.clone(),
         frame,
         &mut mapper,
         frame_allocator2,
         phys_mem_offset,
-    );
+    ) {
+        Ok(task) => task,
+        Err(_) => return !0, // ENOMEM
+    };
 
     // 6. Add child process to PROCESS_TABLE
     {
@@ -549,13 +552,16 @@ pub fn handle_clone_with_frame(frame: &crate::arch::x86_64::syscall_arch::Syscal
     let mut frame_allocator_guard2 = crate::boot::get_frame_allocator().lock();
     let frame_allocator2 = frame_allocator_guard2.as_mut().unwrap();
 
-    let child_task = crate::task::Task::new_forked_user(
+    let child_task = match crate::task::Task::new_forked_user(
         child_process.clone(),
         frame,
         &mut mapper,
         frame_allocator2,
         phys_mem_offset,
-    );
+    ) {
+        Ok(task) => task,
+        Err(_) => return !0, // ENOMEM
+    };
 
     {
         let mut process_table = crate::process::PROCESS_TABLE.lock();

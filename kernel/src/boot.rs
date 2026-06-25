@@ -330,7 +330,8 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                     &mut mapper,
                     get_frame_allocator().lock().as_mut().unwrap(),
                     phys_mem_offset,
-                );
+                )
+                .expect("failed to create init task");
                 let _ = writeln!(writer, "[STG: INIT_TASK_BUILT]");
                 crate::acpi::register_init_task(init_task.id);
                 crate::task::scheduler::add_task(init_task);
@@ -370,7 +371,8 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                                 &mut mapper,
                                 get_frame_allocator().lock().as_mut().unwrap(),
                                 phys_mem_offset,
-                            ));
+                            )
+                            .expect("failed to create shell task"));
                             let _ = writeln!(writer, "[STG: SHELL_TASK_ADDED]");
                         }
                         let _ = writeln!(writer, "[STG: SHELL_READY]");
@@ -411,7 +413,8 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                                 &mut mapper,
                                 get_frame_allocator().lock().as_mut().unwrap(),
                                 phys_mem_offset,
-                            ));
+                            )
+                            .expect("failed to create fault-tester task"));
                             let _ = writeln!(writer, "[STG: FAULT_TASK_ADDED]");
                         }
                         let _ = writeln!(writer, "[STG: FAULT_TESTER_READY]");
@@ -442,17 +445,20 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         heartbeat_task,
         &mut mapper,
         get_frame_allocator().lock().as_mut().unwrap(),
-    ));
+    )
+    .expect("failed to create heartbeat task"));
     crate::task::scheduler::add_task(crate::task::Task::new(
         worker_task,
         &mut mapper,
         get_frame_allocator().lock().as_mut().unwrap(),
-    ));
+    )
+    .expect("failed to create worker task"));
     crate::task::scheduler::add_task(crate::task::Task::new(
         idle_task,
         &mut mapper,
         get_frame_allocator().lock().as_mut().unwrap(),
-    ));
+    )
+    .expect("failed to create idle task"));
 
     x86_64::instructions::interrupts::enable();
     let _ = writeln!(writer, "[STG: INTR_ENABLED]");
