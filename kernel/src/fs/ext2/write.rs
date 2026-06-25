@@ -111,6 +111,10 @@ impl Ext2Writer {
 
     /// Initialize a new inode.
     pub fn init_inode(&self, inode_num: u32, mode: u16, uid: u16, gid: u16) -> Ext4Inode {
+        // Safety: Ext4Inode is a plain data struct with no pointers or
+        // references; zeroed memory is a valid all-zeros representation
+        // for every field, and subsequent lines overwrite all meaningful
+        // fields before the inode is returned.
         let mut inode: Ext4Inode = unsafe { core::mem::zeroed() };
         inode.i_mode = mode;
         inode.i_uid = uid;
@@ -210,8 +214,15 @@ mod tests {
     fn test_init_inode() {
         let writer = Ext2Writer::new(1, 8, 8, 4096);
         let inode = writer.init_inode(5, 0o100644, 1000, 1000);
+        // Safety: Ext4Inode is a #[repr(C)] plain-data struct; addr_of!
+        // produces a valid unaligned pointer to a live local, and
+        // read_unaligned does not require alignment.
         let mode = unsafe { core::ptr::read_unaligned(core::ptr::addr_of!(inode.i_mode)) };
+        // Safety: Same rationale as above — reading a packed field from a
+        // stack-local Ext4Inode via addr_of! + read_unaligned.
         let uid = unsafe { core::ptr::read_unaligned(core::ptr::addr_of!(inode.i_uid)) };
+        // Safety: Same rationale — reading a packed field from a stack-local
+        // Ext4Inode via addr_of! + read_unaligned.
         let links = unsafe { core::ptr::read_unaligned(core::ptr::addr_of!(inode.i_links_count)) };
         assert_eq!(mode, 0o100644);
         assert_eq!(uid, 1000);
