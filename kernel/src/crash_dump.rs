@@ -145,7 +145,7 @@ pub fn capture_panic(info: &core::panic::PanicInfo<'_>) {
     let _ = writeln!(reg_writer, "RDI:    {:#018x}", rdi);
 
     // Best-effort stack trace via frame pointer walking
-    let _ = writeln!(reg_writer, "");
+    let _ = writeln!(reg_writer);
     let _ = writeln!(reg_writer, "=== Stack Trace (frame pointer) ===");
     let mut frame_ptr = rbp;
     for i in 0..16 {
@@ -168,7 +168,7 @@ pub fn capture_panic(info: &core::panic::PanicInfo<'_>) {
     }
 
     // Capture recent log entries
-    let _ = writeln!(reg_writer, "");
+    let _ = writeln!(reg_writer);
     let _ = writeln!(reg_writer, "=== Recent Kernel Log ===");
     let log_entries = crate::log_ring::kernel_log_peek_n(LOG_ENTRIES_TO_CAPTURE);
     for entry in &log_entries {
