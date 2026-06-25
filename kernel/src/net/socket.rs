@@ -221,19 +221,19 @@ pub fn sys_bind(fd: usize, addr: IpAddress, port: u16) -> Result<(), i64> {
 
 /// Listen on a bound TCP socket.
 pub fn sys_listen(fd: usize, backlog: usize) -> Result<(), i64> {
-    {
-        let table = SOCKET_TABLE.lock();
-        let entry = table.get(fd).ok_or(EBADF)?;
-        if entry.sock_type != NetSocketType::Tcp {
-            return Err(EOPNOTSUPP);
-        }
+    let mut table = SOCKET_TABLE.lock();
+    let entry = table.get_mut(fd).ok_or(EBADF)?;
+
+    if entry.sock_type != NetSocketType::Tcp {
+        return Err(EOPNOTSUPP);
     }
 
-    let mut table = SOCKET_TABLE.lock();
-    if let Some(entry) = table.get_mut(fd) {
-        entry.is_listening = true;
-        entry.backlog = backlog;
+    if !entry.is_bound || entry.local_port.is_none() {
+        return Err(EINVAL);
     }
+
+    entry.is_listening = true;
+    entry.backlog = backlog;
 
     Ok(())
 }
@@ -549,5 +549,120 @@ mod tests {
                 .is_none()
         );
         drop(stack);
+    }
+
+    // -----------------------------------------------------------------------
+    // Additional socket table and metadata tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_socket_table_iter_returns_all_entries() {
+        let mut stack = NET_STACK.lock();
+        let h1 = stack.add_tcp_socket();
+        let h2 = stack.add_udp_socket();
+        let mut table = SocketTable::new();
+        let fd1 = table
+            .insert(NetSocketEntry::new(h1, NetSocketType::Tcp, 2))
+            .unwrap();
+        let fd2 = table
+            .insert(NetSocketEntry::new(h2, NetSocketType::Udp, 2))
+            .unwrap();
+        let fds: alloc::vec::Vec<usize> = table.iter().map(|(fd, _)| *fd).collect();
+        assert!(fds.contains(&fd1));
+        assert!(fds.contains(&fd2));
+        assert_eq!(fds.len(), 2);
+        drop(stack);
+    }
+
+    #[test]
+    fn test_net_socket_entry_with_backlog() {
+        let mut stack = NET_STACK.lock();
+        let handle = stack.add_tcp_socket();
+        let mut entry = NetSocketEntry::new(handle, NetSocketType::Tcp, 2);
+        entry.backlog = 128;
+        entry.is_listening = true;
+        assert_eq!(entry.backlog, 128);
+        assert!(entry.is_listening);
+        drop(stack);
+    }
+
+    #[test]
+    fn test_socket_table_remove_returns_entry() {
+        let mut stack = NET_STACK.lock();
+        let handle = stack.add_tcp_socket();
+        let mut table = SocketTable::new();
+        let entry = NetSocketEntry::new(handle, NetSocketType::Tcp, 2);
+        let fd = table.insert(entry).unwrap();
+        let removed = table.remove(fd).unwrap();
+        assert_eq!(removed.sock_type, NetSocketType::Tcp);
+        assert_eq!(removed.domain, 2);
+        assert!(table.get(fd).is_none());
+        drop(stack);
+    }
+
+    #[test]
+    fn test_socket_table_remove_nonexistent_returns_none() {
+        let mut table = SocketTable::new();
+        assert!(table.remove(9999).is_none());
+    }
+
+    #[test]
+    fn test_socket_table_overwrite_fd() {
+        let mut stack = NET_STACK.lock();
+        let h1 = stack.add_tcp_socket();
+        let h2 = stack.add_udp_socket();
+        let mut table = SocketTable::new();
+        let fd = table
+            .insert(NetSocketEntry::new(h1, NetSocketType::Tcp, 2))
+            .unwrap();
+        // Insert second entry (gets different FD since FDs are sequential)
+        let fd2 = table
+            .insert(NetSocketEntry::new(h2, NetSocketType::Udp, 2))
+            .unwrap();
+        assert_ne!(fd, fd2);
+        assert_eq!(table.fds.len(), 2);
+        drop(stack);
+    }
+
+    #[test]
+    fn test_net_socket_entry_domain_af_inet() {
+        let mut stack = NET_STACK.lock();
+        let handle = stack.add_tcp_socket();
+        let entry = NetSocketEntry::new(handle, NetSocketType::Tcp, 2);
+        assert_eq!(entry.domain, 2); // AF_INET
+        drop(stack);
+    }
+
+    #[test]
+    fn test_net_socket_entry_domain_af_unix() {
+        let mut stack = NET_STACK.lock();
+        let handle = stack.add_udp_socket();
+        let entry = NetSocketEntry::new(handle, NetSocketType::Udp, 1);
+        assert_eq!(entry.domain, 1); // AF_UNIX
+        drop(stack);
+    }
+
+    #[test]
+    fn test_socket_table_fd_sequential() {
+        let mut stack = NET_STACK.lock();
+        let mut table = SocketTable::new();
+        let h = stack.add_tcp_socket();
+        let fd1 = table
+            .insert(NetSocketEntry::new(h, NetSocketType::Tcp, 2))
+            .unwrap();
+        let h2 = stack.add_tcp_socket();
+        let fd2 = table
+            .insert(NetSocketEntry::new(h2, NetSocketType::Tcp, 2))
+            .unwrap();
+        assert_eq!(fd2, fd1 + 1, "FDs should be sequential");
+        drop(stack);
+    }
+
+    #[test]
+    fn test_listen_requires_bound_tcp_socket() {
+        let fd = sys_socket(2, 1).unwrap();
+        let err = sys_listen(fd, 8).unwrap_err();
+        assert_eq!(err, EINVAL);
+        assert!(sys_close(fd).is_ok());
     }
 }
