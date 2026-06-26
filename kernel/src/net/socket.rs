@@ -666,6 +666,7 @@ mod tests {
 
     #[test]
     fn test_listen_requires_bound_tcp_socket() {
+        let _guard = crate::test_serial::acquire();
         let fd = sys_socket(2, 1).unwrap();
         let err = sys_listen(fd, 8).unwrap_err();
         assert_eq!(err, EINVAL);
@@ -674,6 +675,7 @@ mod tests {
 
     #[test]
     fn test_bind_twice_returns_einval() {
+        let _guard = crate::test_serial::acquire();
         let fd = sys_socket(2, 1).unwrap();
         let addr = IpAddress::v4(127, 0, 0, 1);
         assert!(sys_bind(fd, addr, 9000).is_ok());
@@ -684,6 +686,7 @@ mod tests {
 
     #[test]
     fn test_connect_rejects_listening_tcp_socket() {
+        let _guard = crate::test_serial::acquire();
         let fd = sys_socket(2, 1).unwrap();
         let addr = IpAddress::v4(127, 0, 0, 1);
         assert!(sys_bind(fd, addr, 9002).is_ok());
