@@ -897,6 +897,7 @@ fn find_ovmf_code() -> Option<PathBuf> {
         candidates.push(base.join("share").join("ovmf").join("OVMF.fd"));
     }
 
+    candidates.push(PathBuf::from("/usr/share/OVMF/OVMF_CODE_4M.fd"));
     candidates.push(PathBuf::from("/usr/share/ovmf/OVMF.fd"));
     candidates.push(PathBuf::from("/usr/share/ovmf/x64/OVMF_CODE.fd"));
     candidates.push(PathBuf::from("/usr/share/OVMF/OVMF_CODE.fd"));
@@ -930,6 +931,7 @@ fn find_ovmf_vars() -> Option<PathBuf> {
         candidates.push(ovmf.join("OVMF.fd"));
     }
 
+    candidates.push(PathBuf::from("/usr/share/OVMF/OVMF_VARS_4M.fd"));
     candidates.push(PathBuf::from("/usr/share/ovmf/OVMF.fd"));
     candidates.push(PathBuf::from("/usr/share/ovmf/x64/OVMF_VARS.fd"));
     candidates.push(PathBuf::from("/usr/share/OVMF/OVMF_VARS.fd"));

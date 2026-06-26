@@ -224,11 +224,16 @@ fn main() -> Status {
             Cr3Flags::empty(),
         );
 
-        serial_println!("Jumping to kernel...");
-        jump_to_kernel(
-            loaded_kernel.entry_point + kaslr_offset,
+        let kernel_entry = loaded_kernel.entry_point + kaslr_offset;
+        serial_println!(
+            "entry=0x{:016x} kaslr=0x{:x} jump=0x{:016x} boot_info={:p}",
+            loaded_kernel.entry_point,
+            kaslr_offset,
+            kernel_entry,
             boot_info as *const BootInfo,
-        )
+        );
+        serial_println!("Jumping to kernel...");
+        jump_to_kernel(kernel_entry, boot_info as *const BootInfo)
     }
 }
 
@@ -394,16 +399,10 @@ const KASLR_PAGE_ENTROPY: u64 = 9;
 const KASLR_RANGE_PAGES: u64 = 1 << KASLR_PAGE_ENTROPY;
 
 fn generate_kaslr_offset() -> u64 {
-    // Attempt RDRAND; fall back to 0 if the instruction is not available
-    // (should not happen on any real x86_64 UEFI system).
-    let mut val: u64 = 0;
-    let ok = unsafe { core::arch::x86_64::_rdrand64_step(&mut val) == 1 };
-    if ok {
-        let page_offset = val % KASLR_RANGE_PAGES;
-        page_offset * 4096
-    } else {
-        0
-    }
+    // KASLR is disabled because the kernel is compiled as a static EXEC (not PIE),
+    // so its .got section contains absolute addresses that are not relocated.
+    // TODO: enable KASLR once the kernel is built as PIE or GOT fixups are applied.
+    0
 }
 
 fn qemu_exit_failure() -> ! {

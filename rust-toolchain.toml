@@ -1,5 +1,5 @@
 # Rust toolchain configuration for reproducible builds
 [toolchain]
-channel = "nightly-2026-06-22"
+channel = "nightly"
 components = ["rustc", "rust-std", "cargo", "rustfmt", "clippy"]
 profile = "minimal"
