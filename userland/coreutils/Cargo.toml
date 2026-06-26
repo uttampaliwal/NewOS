@@ -1,0 +1,185 @@
+[package]
+name = "turnix-coreutils"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Core POSIX utilities for Turnix OS"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "cat"
+path = "src/bin/cat.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "rm"
+path = "src/bin/rm.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "mkdir"
+path = "src/bin/mkdir.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "cp"
+path = "src/bin/cp.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "mv"
+path = "src/bin/mv.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "touch"
+path = "src/bin/touch.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "ls"
+path = "src/bin/ls.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "echo"
+path = "src/bin/echo.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "wc"
+path = "src/bin/wc.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "head"
+path = "src/bin/head.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "tail"
+path = "src/bin/tail.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "grep"
+path = "src/bin/grep.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "sort"
+path = "src/bin/sort.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "uniq"
+path = "src/bin/uniq.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "whoami"
+path = "src/bin/whoami.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "id"
+path = "src/bin/id.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "uname"
+path = "src/bin/uname.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "uptime"
+path = "src/bin/uptime.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "ps"
+path = "src/bin/ps.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "dmesg"
+path = "src/bin/dmesg.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "kill"
+path = "src/bin/kill.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "sleep"
+path = "src/bin/sleep.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "true"
+path = "src/bin/true.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "false"
+path = "src/bin/false.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "pwd"
+path = "src/bin/pwd.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "rmdir"
+path = "src/bin/rmdir.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "chmod"
+path = "src/bin/chmod.rs"
+test = false
+required-features = ["host_bin"]
+
+[[bin]]
+name = "chown"
+path = "src/bin/chown.rs"
+test = false
+required-features = ["host_bin"]
+
+[dependencies]
+turnix-abi = { path = "../../shared/abi" }
+libturnix = { path = "../libturnix" }
+
+[features]
+host_bin = []

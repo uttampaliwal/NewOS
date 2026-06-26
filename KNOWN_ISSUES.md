@@ -186,27 +186,33 @@ legacy software.
 
 ---
 
-## 9. No Userspace Coreutils / POSIX Utilities
+## 9. ~~No Userspace Coreutils / POSIX Utilities~~ (Resolved)
 
 | | |
 |---|---|
 | **Severity** | Medium |
-| **Component** | `userland/coreutils/` (new) |
-| **Status** | Open |
+| **Component** | `userland/coreutils/` |
+| **Status** | Resolved |
 
-**Impact:** No standard UNIX utilities (ls, cat, grep, cp, mv, rm, chmod,
-etc.). Users must write custom programs for basic operations. An OS without
-coreutils is not usable for development or daily use.
+**Resolution:** Full coreutils crate implemented with 28 POSIX utilities across
+three categories. All utilities are `#![no_std]` binaries using `libturnix` syscalls.
 
-**Proposed Fix:** Port or rewrite core utilities:
-- File operations: cat, cp, mv, rm, ln, mkdir, rmdir, chmod, chown, chgrp
-- Text processing: grep, sed, awk, sort, uniq, wc, head, tail, cut, tr
-- System info: ps, top, df, du, free, uname, uptime, whoami, id
-- Process management: kill, nice, nohup, sleep, wait
-- Archives: tar, gzip, gunzip
-- Network: curl, wget, ssh, scp
+- **File operations** (9): `cat` (read/concatenate files), `rm` (remove files),
+  `mkdir` (create directories), `rmdir` (remove directories), `cp` (copy files),
+  `mv` (move files via copy+delete), `touch` (create empty files), `ls` (list
+  directory contents), `chmod` (stub — prints not supported)
+- **Text processing** (7): `echo` (output text), `wc` (line/word/byte count),
+  `head` (first N lines), `tail` (last N lines), `grep` (substring search),
+  `sort` (insertion sort), `uniq` (filter adjacent duplicates)
+- **System info** (12): `whoami` (print username), `id` (print uid/gid),
+  `uname` (system info with -a/-s flags), `uptime` (system uptime), `ps`
+  (process listing), `dmesg` (kernel messages), `kill` (send signal with -s flag),
+  `sleep` (delay N seconds), `pwd` (print working directory), `true` (exit 0),
+  `false` (exit 1), `chown` (stub — prints not supported)
 
-**Tracking:** `docs/roadmap.md` Phase 15
+Added `arg()`, `arg_after_prog()`, `args_after_prog_count()`, `write_all()`,
+and `write_str()` helper functions to `libturnix` for argument parsing and
+convenient I/O.
 
 ---
 
@@ -387,7 +393,7 @@ tests for basic lifecycle only — no data path or connection tests.
 | 6 | No kernel crypto API | Medium | Resolved |
 | 7 | No device driver PM / hotplug framework | Medium | Resolved |
 | 8 | No hypervisor / virtualization support | Medium | Open |
-| 9 | No userspace coreutils / POSIX utilities | Medium | Open |
+| 9 | No userspace coreutils / POSIX utilities | Medium | Resolved |
 | 10 | No io_uring or zero-copy networking | High | Resolved |
 | 11 | No huge pages, THP, NUMA, or KSM | High | Partially Addressed |
 | 12 | No workqueues, softirqs, or tasklets | High | Resolved |

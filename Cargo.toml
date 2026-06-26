@@ -23,6 +23,7 @@ members = [
     "userland/display-manager",
     "userland/desktop-shell",
     "userland/observability",
+    "userland/coreutils",
     "userland/benchmarks",
     "benchmarks",
 ]

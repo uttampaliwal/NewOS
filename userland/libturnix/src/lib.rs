@@ -82,6 +82,81 @@ pub fn exit(code: i32) -> ! {
     }
 }
 
+/// Read command-line arguments from the stack.
+/// Returns (argc, argv_ptr) where argv_ptr points to an array of `*const u8` pointers.
+///
+/// # Safety
+/// The stack layout is set up by the kernel: [argc, argv[0], argv[1], ..., NULL].
+/// This function reads from the raw stack pointer.
+pub fn args() -> (usize, *const *const u8) {
+    let rsp: *const u8;
+    unsafe {
+        core::arch::asm!("mov {}, rsp", out(reg) rsp);
+    }
+    let rsp_u64 = rsp as *const u64;
+    // Safety: rsp points to argc on the user stack, set up by the kernel during exec.
+    let argc = unsafe { *rsp_u64 } as usize;
+    // Safety: argv starts at rsp+8, contains argc pointers followed by NULL.
+    let argv = unsafe { rsp_u64.add(1) } as *const *const u8;
+    (argc, argv)
+}
+
+/// Get the i-th command-line argument as a string slice.
+/// Returns None if the index is out of bounds or the pointer is invalid.
+pub fn arg(index: usize) -> Option<&'static str> {
+    let (argc, argv) = args();
+    if index >= argc {
+        return None;
+    }
+    // Safety: argv[index] is a valid pointer to a null-terminated string placed by the kernel.
+    let ptr = unsafe { *argv.add(index) };
+    if ptr.is_null() {
+        return None;
+    }
+    let mut len = 0usize;
+    // Safety: we scan forward until null byte; the kernel guarantees the string is valid and null-terminated.
+    unsafe {
+        while *ptr.add(len) != 0 {
+            len += 1;
+        }
+    }
+    // Safety: ptr points to a valid null-terminated UTF-8 string written by the kernel.
+    let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
+    core::str::from_utf8(bytes).ok()
+}
+
+/// Get the program name (argv[0]).
+pub fn program_name() -> Option<&'static str> {
+    arg(0)
+}
+
+/// Get the number of command-line arguments (including argv[0]).
+pub fn argc() -> usize {
+    let (ac, _) = args();
+    ac
+}
+
+/// Get a command-line argument as a C string pointer (for passing to other functions).
+pub fn arg_ptr(index: usize) -> Option<*const u8> {
+    let (ac, argv) = args();
+    if index >= ac {
+        return None;
+    }
+    let ptr = unsafe { *argv.add(index) };
+    if ptr.is_null() { None } else { Some(ptr) }
+}
+
+/// Get the number of arguments after the program name.
+pub fn args_after_prog_count() -> usize {
+    let (ac, _) = args();
+    if ac > 1 { ac - 1 } else { 0 }
+}
+
+/// Get the i-th argument after the program name (i=0 is argv[1]).
+pub fn arg_after_prog(index: usize) -> Option<&'static str> {
+    arg(index + 1)
+}
+
 pub fn wait(status: *mut i32) -> u64 {
     syscall1(Syscall::Wait as u64, status as u64)
 }
@@ -157,6 +232,25 @@ pub fn write(fd: u64, buf: &[u8]) -> Option<u64> {
         buf.len() as u64,
     );
     if (res as i64) < 0 { None } else { Some(res) }
+}
+
+/// Write all bytes to a file descriptor, retrying on partial writes.
+pub fn write_all(fd: u64, mut buf: &[u8]) -> bool {
+    while !buf.is_empty() {
+        match write(fd, buf) {
+            Some(0) => return false,
+            Some(n) => {
+                buf = &buf[n as usize..];
+            }
+            None => return false,
+        }
+    }
+    true
+}
+
+/// Write a string to a file descriptor.
+pub fn write_str(fd: u64, s: &str) -> bool {
+    write_all(fd, s.as_bytes())
 }
 
 pub fn getuid() -> u64 {
