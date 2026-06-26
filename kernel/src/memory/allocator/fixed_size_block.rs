@@ -54,6 +54,16 @@ unsafe impl GlobalAlloc for super::Locked<FixedSizeBlockAllocator> {
             return ptr;
         }
 
+        // Check cgroup memory limit BEFORE taking the allocator lock.
+        // cgroup_try_reserve_memory is lock-free (uses atomics + try_lock).
+        let cgroup_pid = crate::task::scheduler::get_current_process_id()
+            .map(|p| p.0 as u32)
+            .unwrap_or(0);
+        let reserved = crate::cgroup::cgroup_try_reserve_memory(cgroup_pid, layout.size() as u64);
+        if !reserved {
+            return core::ptr::null_mut();
+        }
+
         let mut allocator = self.lock();
         let ptr = match list_index(&layout) {
             Some(index) => match allocator.list_heads[index].take() {
@@ -74,6 +84,9 @@ unsafe impl GlobalAlloc for super::Locked<FixedSizeBlockAllocator> {
         if !ptr.is_null() {
             let alloc_size = layout.size();
             crate::memory::kasan::alloc_poison(ptr as usize, alloc_size);
+        } else {
+            // Allocation failed — undo the cgroup reservation
+            crate::cgroup::cgroup_release_memory(cgroup_pid, layout.size() as u64);
         }
         ptr
     }
@@ -104,5 +117,12 @@ unsafe impl GlobalAlloc for super::Locked<FixedSizeBlockAllocator> {
                 allocator.fallback_allocator.deallocate(ptr, layout);
             }
         }
+        drop(allocator);
+
+        // Release cgroup memory accounting AFTER dropping the allocator lock
+        let cgroup_pid = crate::task::scheduler::get_current_process_id()
+            .map(|p| p.0 as u32)
+            .unwrap_or(0);
+        crate::cgroup::cgroup_release_memory(cgroup_pid, alloc_size as u64);
     }
 }

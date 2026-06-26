@@ -1,11 +1,17 @@
 use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
+#[cfg(unix)]
+use std::os::unix::net::{UnixListener, UnixStream};
+
+#[cfg(unix)]
 use log_daemon::{FileKernelLogSource, KernelLogSource, LogEntry, LogRotator};
+#[cfg(not(unix))]
+use log_daemon::{LogEntry, LogRotator};
+#[cfg(unix)]
 use turnix_ipc_proto::{
     ERROR_INTERNAL, ERROR_INVALID_ARGS, IpcError, IpcMessage, IpcValue, decode_message,
     encode_message,
@@ -15,16 +21,19 @@ use turnix_ipc_proto::{
 // Shorthand helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn ipc_str(s: &str) -> IpcValue {
     IpcValue::String(s.to_string())
 }
 
+#[cfg(unix)]
 fn send_msg(stream: &mut UnixStream, msg: &IpcMessage) {
     if let Ok(bytes) = encode_message(msg) {
         let _ = stream.write_all(&bytes);
     }
 }
 
+#[cfg(unix)]
 fn recv_msg(stream: &mut UnixStream) -> Option<IpcMessage> {
     let mut len_buf = [0u8; 4];
     if stream.read_exact(&mut len_buf).is_err() {
@@ -45,16 +54,19 @@ fn recv_msg(stream: &mut UnixStream) -> Option<IpcMessage> {
 // HMAC key — in production the kernel provides this at boot
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 const HMAC_KEY: &[u8] = b"turnix-kernel-log-key-2026";
 
 // ---------------------------------------------------------------------------
 // Application state
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 struct LogDaemon {
     rotator: Mutex<LogRotator>,
 }
 
+#[cfg(unix)]
 impl LogDaemon {
     fn open(log_base: &Path) -> Result<Self, String> {
         let rotator = LogRotator::open(log_base)?;
@@ -100,7 +112,10 @@ impl LogDaemon {
 // Main
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn main() {
+    use std::os::unix::net::{UnixListener, UnixStream};
+
     // Ensure /var/log exists
     let _ = fs::create_dir_all("/var/log");
 
@@ -215,6 +230,13 @@ fn main() {
     }
 }
 
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("log-daemon: requires Unix domain sockets; not supported on Windows");
+    std::process::exit(1);
+}
+
+#[cfg(unix)]
 fn accept_one(listener: &UnixListener) -> Option<UnixStream> {
     match listener.accept() {
         Ok((stream, _)) => {
@@ -230,6 +252,7 @@ fn accept_one(listener: &UnixListener) -> Option<UnixStream> {
 // IPC handlers
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn handle_ipc(daemon: &LogDaemon, broker: &mut UnixStream, msg: IpcMessage) {
     if let IpcMessage::MethodCall {
         id, method, args, ..
@@ -293,6 +316,7 @@ fn handle_ipc(daemon: &LogDaemon, broker: &mut UnixStream, msg: IpcMessage) {
     }
 }
 
+#[cfg(unix)]
 fn ipc_value_from_json(val: serde_json::Value) -> IpcValue {
     match val {
         serde_json::Value::Null => IpcValue::Null,

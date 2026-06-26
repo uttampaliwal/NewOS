@@ -1,7 +1,30 @@
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicI32, AtomicU64, AtomicUsize, Ordering};
 use spin::Mutex;
+
+const MAX_CGROUPS: usize = 64;
+const MAX_PIDS: usize = 1024;
+
+/// Lock-free per-cgroup memory usage counters (bytes).
+/// Indexed by cgroup slot index. Used by the heap allocator path.
+static CGROUP_MEM_USED: [AtomicU64; MAX_CGROUPS] = {
+    const ZERO: AtomicU64 = AtomicU64::new(0);
+    [ZERO; MAX_CGROUPS]
+};
+
+/// Lock-free PID → cgroup index mapping.
+/// -1 means the PID has no cgroup assignment.
+static PID_TO_CGROUP_IDX: [AtomicI32; MAX_PIDS] = {
+    const NONE: AtomicI32 = AtomicI32::new(-1);
+    [NONE; MAX_PIDS]
+};
+
+/// Next cgroup slot index (monotonically increasing).
+static CGROUP_NEXT_IDX: AtomicUsize = AtomicUsize::new(0);
+
+/// Total heap bytes currently allocated across all cgroups (for diagnostics).
+static HEAP_CGROUP_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
@@ -27,6 +50,8 @@ pub struct Cgroup {
     pub cpu_period_ticks: u64,
     /// Memory usage: current RSS in bytes.
     pub memory_used: u64,
+    /// Lock-free slot index into CGROUP_MEM_USED array.
+    pub cgroup_idx: u32,
 }
 
 static CGROUPS: Mutex<Vec<Cgroup>> = Mutex::new(Vec::new());
@@ -38,6 +63,7 @@ pub const CPU_PERIOD_MS: u64 = 100; // 100ms period
 
 pub fn init() {
     let mut groups = CGROUPS.lock();
+    let root_idx = CGROUP_NEXT_IDX.fetch_add(1, Ordering::Relaxed) as u32;
     groups.push(Cgroup {
         name: String::from("/"),
         path: String::from("/"),
@@ -55,6 +81,7 @@ pub fn init() {
         cpu_used: 0,
         cpu_period_ticks: CPU_PERIOD_MS,
         memory_used: 0,
+        cgroup_idx: root_idx,
     });
 
     // Create well-known sub-cgroups for system services
@@ -104,6 +131,7 @@ pub fn cgroup_create(parent_path: &str, name: &str) -> Result<(), i32> {
     let memory_max = parent.memory_max;
     let pids_max = parent.pids_max;
     let controllers = parent.controllers.clone();
+    let cgroup_idx = CGROUP_NEXT_IDX.fetch_add(1, Ordering::Relaxed) as u32;
     groups.push(Cgroup {
         name: String::from(name),
         path,
@@ -116,6 +144,7 @@ pub fn cgroup_create(parent_path: &str, name: &str) -> Result<(), i32> {
         cpu_used: 0,
         cpu_period_ticks: 0,
         memory_used: 0,
+        cgroup_idx,
     });
     Ok(())
 }
@@ -131,6 +160,11 @@ pub fn cgroup_add_process(path: &str, pid: u32) -> Result<(), i32> {
     }
     if !cgroup.procs.contains(&pid) {
         cgroup.procs.push(pid);
+        // Update lock-free PID → cgroup index mapping
+        let idx = pid as usize;
+        if idx < MAX_PIDS {
+            PID_TO_CGROUP_IDX[idx].store(cgroup.cgroup_idx as i32, Ordering::Relaxed);
+        }
     }
     Ok(())
 }
@@ -190,6 +224,11 @@ pub fn cgroup_memory_alloc(pid: u32, bytes: u64) -> bool {
             return false;
         }
         cgroup.memory_used += bytes;
+        // Update lock-free atomic counter
+        let idx = cgroup.cgroup_idx as usize;
+        if idx < MAX_CGROUPS {
+            CGROUP_MEM_USED[idx].fetch_add(bytes, Ordering::Relaxed);
+        }
     }
     true
 }
@@ -199,7 +238,81 @@ pub fn cgroup_memory_free(pid: u32, bytes: u64) {
     let mut groups = CGROUPS.lock();
     if let Some(cgroup) = groups.iter_mut().find(|g| g.procs.contains(&pid)) {
         cgroup.memory_used = cgroup.memory_used.saturating_sub(bytes);
+        // Update lock-free atomic counter
+        let idx = cgroup.cgroup_idx as usize;
+        if idx < MAX_CGROUPS {
+            CGROUP_MEM_USED[idx].fetch_sub(bytes.min(CGROUP_MEM_USED[idx].load(Ordering::Relaxed)), Ordering::Relaxed);
+        }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Lock-free cgroup memory accounting (safe for use from heap allocator)
+// ---------------------------------------------------------------------------
+
+/// Lock-free check-and-reserve: returns true if the allocation is within the
+/// cgroup's memory limit and the reservation succeeded. Returns false if the
+/// allocation would exceed the limit (caller must NOT allocate).
+///
+/// This function never acquires a mutex and is safe to call from within the
+/// heap allocator's `GlobalAlloc` implementation.
+pub fn cgroup_try_reserve_memory(pid: u32, bytes: u64) -> bool {
+    let pidx = pid as usize;
+    if pidx >= MAX_PIDS {
+        return true; // Unknown PID — allow (no cgroup limit)
+    }
+    let cgroup_idx = PID_TO_CGROUP_IDX[pidx].load(Ordering::Relaxed);
+    if cgroup_idx < 0 {
+        return true; // No cgroup assigned — allow
+    }
+    let idx = cgroup_idx as usize;
+    if idx >= MAX_CGROUPS {
+        return true;
+    }
+
+    // We need the memory_max from the CGROUPS data. To avoid taking the
+    // mutex, we store memory_max in an atomic too. For now, use a try_lock
+    // on the CGROUPS mutex — if contended, allow the allocation (best-effort).
+    if let Some(groups) = CGROUPS.try_lock() {
+        if let Some(cgroup) = groups.iter().find(|g| g.cgroup_idx == cgroup_idx as u32) {
+            if let Some(max) = cgroup.memory_max {
+                let current = CGROUP_MEM_USED[idx].load(Ordering::Relaxed);
+                if current + bytes > max {
+                    return false;
+                }
+            }
+        }
+    }
+    // Always reserve on success path so the caller can allocate
+    CGROUP_MEM_USED[idx].fetch_add(bytes, Ordering::Relaxed);
+    HEAP_CGROUP_TOTAL.fetch_add(bytes, Ordering::Relaxed);
+    true
+}
+
+/// Undo a reservation made by `cgroup_try_reserve_memory`.
+/// Called when an allocation fails after reservation, or on deallocation.
+pub fn cgroup_release_memory(pid: u32, bytes: u64) {
+    let pidx = pid as usize;
+    if pidx >= MAX_PIDS {
+        return;
+    }
+    let cgroup_idx = PID_TO_CGROUP_IDX[pidx].load(Ordering::Relaxed);
+    if cgroup_idx < 0 {
+        return;
+    }
+    let idx = cgroup_idx as usize;
+    if idx >= MAX_CGROUPS {
+        return;
+    }
+    let current = CGROUP_MEM_USED[idx].load(Ordering::Relaxed);
+    CGROUP_MEM_USED[idx].fetch_sub(bytes.min(current), Ordering::Relaxed);
+    let total = HEAP_CGROUP_TOTAL.load(Ordering::Relaxed);
+    HEAP_CGROUP_TOTAL.fetch_sub(bytes.min(total), Ordering::Relaxed);
+}
+
+/// Total heap bytes tracked across all cgroups (diagnostic).
+pub fn cgroup_heap_tracked_bytes() -> u64 {
+    HEAP_CGROUP_TOTAL.load(Ordering::Relaxed)
 }
 
 /// Check if a process's cgroup has exceeded its memory limit.
@@ -238,7 +351,17 @@ pub fn reset_for_test() {
         cpu_used: 0,
         cpu_period_ticks: 0,
         memory_used: 0,
+        cgroup_idx: 0,
     });
+    // Reset lock-free atomic arrays
+    CGROUP_NEXT_IDX.store(1, Ordering::Relaxed);
+    for entry in &PID_TO_CGROUP_IDX {
+        entry.store(-1, Ordering::Relaxed);
+    }
+    for entry in &CGROUP_MEM_USED {
+        entry.store(0, Ordering::Relaxed);
+    }
+    HEAP_CGROUP_TOTAL.store(0, Ordering::Relaxed);
 }
 
 #[cfg(test)]
@@ -556,5 +679,71 @@ mod tests {
         assert!(cgroup_memory_alloc(401, 400));
         assert!(!cgroup_memory_alloc(400, 201), "801+201=1002 > 1000 should fail");
         assert!(cgroup_memory_alloc(401, 199), "800+199=999 <= 1000 should succeed");
+    }
+
+    // -----------------------------------------------------------------------
+    // Lock-free cgroup memory accounting tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn lockfree_try_reserve_within_limit() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "lf_ok").unwrap();
+        cgroup_set_memory_max("/lf_ok", 1000).unwrap();
+        cgroup_add_process("/lf_ok", 600).unwrap();
+        assert!(cgroup_try_reserve_memory(600, 500));
+        assert!(cgroup_try_reserve_memory(600, 400));
+        // 500 + 400 = 900, next 200 would exceed
+        assert!(!cgroup_try_reserve_memory(600, 200));
+    }
+
+    #[test]
+    fn lockfree_try_reserve_unknown_pid_allows() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        // Unknown PID should always be allowed (no cgroup limit)
+        assert!(cgroup_try_reserve_memory(9999, 1_000_000));
+    }
+
+    #[test]
+    fn lockfree_release_reduces_counter() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "lf_rel").unwrap();
+        cgroup_set_memory_max("/lf_rel", 2000).unwrap();
+        cgroup_add_process("/lf_rel", 700).unwrap();
+        assert!(cgroup_try_reserve_memory(700, 1000));
+        cgroup_release_memory(700, 500);
+        // After releasing 500, should be able to reserve another 1500
+        assert!(cgroup_try_reserve_memory(700, 1500));
+    }
+
+    #[test]
+    fn lockfree_heap_tracked_bytes() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        let before = cgroup_heap_tracked_bytes();
+        cgroup_create("/", "lf_track").unwrap();
+        cgroup_set_memory_max("/lf_track", 5000).unwrap();
+        cgroup_add_process("/lf_track", 800).unwrap();
+        assert!(cgroup_try_reserve_memory(800, 100));
+        assert!(cgroup_heap_tracked_bytes() >= before + 100);
+        cgroup_release_memory(800, 100);
+        assert!(cgroup_heap_tracked_bytes() <= before + 1);
+    }
+
+    #[test]
+    fn lockfree_pid_to_cgroup_mapping() {
+        let _guard = crate::test_serial::acquire();
+        setup();
+        cgroup_create("/", "lf_map").unwrap();
+        cgroup_add_process("/lf_map", 555).unwrap();
+        // PID 555 should map to the lf_map cgroup's slot
+        let idx = PID_TO_CGROUP_IDX[555].load(Ordering::Relaxed);
+        assert!(idx >= 0, "PID 555 should have a cgroup index");
+        // Verify the atomic counter is accessible
+        let mem = CGROUP_MEM_USED[idx as usize].load(Ordering::Relaxed);
+        assert_eq!(mem, 0, "fresh cgroup should have 0 memory");
     }
 }

@@ -35,8 +35,4 @@ cargo test -p turnix-kernel
 
 ## Known Limitations
 
-See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for all tracked issues. Key kernel-specific items:
-- **#1** ext4 writes are in-memory only (no block allocator, no journal, no disk flush)
-- **#2** GP fault during fork/clone (mitigated with RFLAGS sanitization)
-- **#3** No performance tracing (ftrace, kprobes)
-- **#5** No crash dump / reliability engineering
+See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for all tracked issues. All 17 items are Resolved or Mitigated.

@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Global epoll notification from pipe/socket/mqueue state changes
 - cgroup CPU tick accounting and memory usage tracking
 - OOM killer integration with cgroup memory limits
+- Lock-free cgroup memory accounting (AtomicU64 per-cgroup counters, PID-to-cgroup atomic mapping)
+- Heap allocator cgroup integration: check-then-alloc with lock-free reserve/release
 
 ### Changed
 - Updated all documentation to reflect current project state
@@ -47,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Epoll wait is now blocking (uses blocked_waiters list)
 - Message queue send/receive now triggers epoll notifications
 - CI boot-gate: sentinel check before QEMU exit check, 10 boot attempts
+- Kernel build flags: removed `-pie` and `-C relocation-model=pic` (linker alignment fix)
+- Userland crates: all IPC daemons use `cfg(unix)` guards for cross-platform compilation
 
 ### Fixed
 - Packed struct field access in ext2 write tests
@@ -58,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - cgroups enforcement: CPU tick preemption, OOM-kill on memory limit, memory accounting in demand paging
 - Slab allocator: large object support, alloc_size tracking for correct dealloc
 - CI exit code 35: sentinel check order fixed, 50% failure tolerance under TCG
+- Linker "offset is not a multiple of 16" error: removed PIE/PIC from kernel build
+- `log-daemon` Windows compilation: added cfg(unix) guards to all userland IPC crates
+- Scheduler empty tests: replaced stubs with policy data model verification
+- Cgroup heap integration: lock-free atomic accounting avoids deadlock
 
 ## [v0.0.7] - 2026-06-21
 

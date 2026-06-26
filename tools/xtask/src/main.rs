@@ -418,7 +418,7 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
         workspace_root,
         &[(
             "RUSTFLAGS",
-            "-C link-arg=-Tkernel/linker.ld -C link-arg=-pie -C link-arg=-z -C link-arg=max-page-size=0x1000 -C relocation-model=pic",
+            "-C link-arg=-Tkernel/linker.ld -C link-arg=-z -C link-arg=max-page-size=0x1000 -C relocation-model=static",
         )],
     );
 

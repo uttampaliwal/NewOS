@@ -1,7 +1,12 @@
-use ipc_broker::{Broker, BrokerError, ServiceRegistration, SocketTransport, Transport};
-use std::os::unix::net::UnixListener;
+#[cfg(unix)]
+use ipc_broker::{Broker, ServiceRegistration, SocketTransport, Transport};
+#[cfg(unix)]
+use turnix_ipc_proto::{IpcMessage, IpcValue};
 
+#[cfg(unix)]
 fn main() {
+    use std::os::unix::net::UnixListener;
+
     // Remove stale socket file
     let socket_path = "/run/ipc.sock";
     let _ = std::fs::remove_file(socket_path);
@@ -33,7 +38,7 @@ fn main() {
                         // to "org.turnix.Broker" / "Register" conveying the
                         // interface name and methods.
                         match &msg {
-                            turnix_ipc_proto::IpcMessage::MethodCall {
+                            IpcMessage::MethodCall {
                                 id: _,
                                 interface,
                                 method,
@@ -49,9 +54,9 @@ fn main() {
                                     Ok(()) => {
                                         // Send acknowledgment
                                         if let Err(e) = transport.send(
-                                            &turnix_ipc_proto::IpcMessage::MethodReturn {
+                                            &IpcMessage::MethodReturn {
                                                 id: 1,
-                                                result: Ok(turnix_ipc_proto::IpcValue::Null),
+                                                result: Ok(IpcValue::Null),
                                             },
                                         ) {
                                             eprintln!("ipc-broker: ack send failed: {e}");
@@ -88,11 +93,18 @@ fn main() {
     }
 }
 
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("ipc-broker: Unix domain sockets required; not supported on Windows");
+    std::process::exit(1);
+}
+
+#[cfg(unix)]
 fn run_connection(
     broker: &mut Broker,
     conn_id: u64,
     mut transport: SocketTransport,
-) -> Result<(), BrokerError> {
+) -> Result<(), ipc_broker::BrokerError> {
     loop {
         let msg = transport.recv()?;
         let outputs = broker.handle_message(conn_id, msg)?;

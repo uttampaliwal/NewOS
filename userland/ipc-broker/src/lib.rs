@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use turnix_ipc_proto::{IpcError, IpcMessage, IpcValue, decode_message, encode_message};
+use turnix_ipc_proto::{IpcError, IpcMessage, IpcValue};
+#[cfg(unix)]
+use turnix_ipc_proto::{decode_message, encode_message};
 
 // ---------------------------------------------------------------------------
 // BrokerError
@@ -80,14 +82,16 @@ impl Transport for ChannelTransport {
 }
 
 // ---------------------------------------------------------------------------
-// SocketTransport — Unix domain socket transport
+// SocketTransport — Unix domain socket transport (Unix only)
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 pub struct SocketTransport {
     stream: std::io::BufReader<std::os::unix::net::UnixStream>,
     write_stream: std::os::unix::net::UnixStream,
 }
 
+#[cfg(unix)]
 impl SocketTransport {
     pub fn connect(path: &str) -> Result<Self, BrokerError> {
         let stream = std::os::unix::net::UnixStream::connect(path)
@@ -110,6 +114,7 @@ impl SocketTransport {
     }
 }
 
+#[cfg(unix)]
 impl Transport for SocketTransport {
     fn send(&mut self, msg: &IpcMessage) -> Result<(), BrokerError> {
         use std::io::Write;
@@ -151,6 +156,39 @@ impl Transport for SocketTransport {
         self.write_stream
             .shutdown(Shutdown::Both)
             .map_err(|e| BrokerError::TransportError(format!("shutdown failed: {e}")))?;
+        Ok(())
+    }
+}
+
+/// Windows stub — Unix domain sockets are not available on Windows.
+/// Named pipe transport can be added here when needed.
+#[cfg(not(unix))]
+pub struct SocketTransport;
+
+#[cfg(not(unix))]
+impl SocketTransport {
+    pub fn connect(_path: &str) -> Result<Self, BrokerError> {
+        Err(BrokerError::TransportError(
+            "Unix domain sockets not available on Windows".into(),
+        ))
+    }
+
+    pub fn from_stream(_: std::net::TcpStream) -> Self {
+        Self
+    }
+}
+
+#[cfg(not(unix))]
+impl Transport for SocketTransport {
+    fn send(&mut self, _msg: &IpcMessage) -> Result<(), BrokerError> {
+        Err(BrokerError::TransportError("not supported on Windows".into()))
+    }
+
+    fn recv(&mut self) -> Result<IpcMessage, BrokerError> {
+        Err(BrokerError::TransportError("not supported on Windows".into()))
+    }
+
+    fn close(&mut self) -> Result<(), BrokerError> {
         Ok(())
     }
 }

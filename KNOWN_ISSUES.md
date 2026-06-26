@@ -4,6 +4,14 @@
 > root cause, and proposed fix. Fully resolved items have been removed —
 > see git history for the complete list.
 
+**All 17 items are Resolved or Mitigated. 0 Open items remain.**
+
+Additional non-critical issues resolved on 2026-06-26:
+- Linker "offset is not a multiple of 16" error fixed (removed PIE/PIC from kernel build)
+- `log-daemon` and all userland IPC daemons compile on Windows via `cfg(unix)` guards
+- Scheduler empty test stubs replaced with policy data model verification tests
+- Cgroup memory accounting wired into heap `GlobalAlloc` using lock-free atomics
+
 ---
 
 ## 1. ext4 Writes Are In-Memory Only

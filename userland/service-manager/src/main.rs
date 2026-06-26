@@ -1,10 +1,13 @@
 use std::collections::HashMap;
-use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+
 use service_manager::{ServiceManager, ServiceState, ServiceUnit};
+#[cfg(unix)]
 use turnix_ipc_proto::{
     ERROR_INTERNAL, ERROR_INVALID_ARGS, ERROR_SERVICE_NOT_FOUND, IpcError, IpcMessage, IpcValue,
     decode_message, encode_message,
@@ -14,12 +17,14 @@ use turnix_ipc_proto::{
 // Helpers for IPC broker communication
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn send_msg(stream: &mut UnixStream, msg: &IpcMessage) {
     let bytes = encode_message(msg).unwrap_or_default();
     use std::io::Write;
     let _ = stream.write_all(&bytes);
 }
 
+#[cfg(unix)]
 fn recv_msg(stream: &mut UnixStream) -> Option<IpcMessage> {
     use std::io::Read;
     let mut len_buf = [0u8; 4];
@@ -37,10 +42,12 @@ fn recv_msg(stream: &mut UnixStream) -> Option<IpcMessage> {
     decode_message(&full).ok().map(|(m, _)| m)
 }
 
+#[cfg(unix)]
 fn ipc_value_string(s: &str) -> IpcValue {
     IpcValue::String(s.to_string())
 }
 
+#[cfg(unix)]
 fn serialize_state(state: &ServiceState) -> IpcValue {
     match state {
         ServiceState::Stopped => ipc_value_string("stopped"),
@@ -70,6 +77,7 @@ fn serialize_state(state: &ServiceState) -> IpcValue {
 // Tracked child process
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 struct TrackedService {
     unit: ServiceUnit,
     child: Option<Child>,
@@ -77,6 +85,7 @@ struct TrackedService {
     started_at: Instant,
 }
 
+#[cfg(unix)]
 impl TrackedService {
     fn new(unit: ServiceUnit) -> Self {
         Self {
@@ -92,7 +101,10 @@ impl TrackedService {
 // Daemon entry point
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn main() {
+    use std::os::unix::net::UnixStream;
+
     let units = load_service_units("/etc/turnix/services/");
     eprintln!("service-manager: loaded {} service units", units.len());
 
@@ -165,10 +177,17 @@ fn main() {
     }
 }
 
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("service-manager: requires Unix domain sockets; not supported on Windows");
+    std::process::exit(1);
+}
+
 // ---------------------------------------------------------------------------
 // Service loading
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn load_service_units(dir: &str) -> Vec<ServiceUnit> {
     let mut units = Vec::new();
     let dir_path = Path::new(dir);
@@ -199,6 +218,7 @@ fn load_service_units(dir: &str) -> Vec<ServiceUnit> {
 // Service start
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn start_service(
     _manager: &ServiceManager,
     tracked: &mut HashMap<String, TrackedService>,
@@ -219,6 +239,7 @@ fn start_service(
     };
 
     // Socket activation
+    #[cfg(unix)]
     if let Some(ref spec) = socket_spec {
         match std::os::unix::net::UnixListener::bind(&spec.path) {
             Ok(listener) => {
@@ -231,6 +252,10 @@ fn start_service(
                 eprintln!("service-manager: cannot bind socket {}: {e}", spec.path);
             }
         }
+    }
+    #[cfg(not(unix))]
+    if let Some(ref _spec) = socket_spec {
+        eprintln!("service-manager: socket activation not supported on Windows");
     }
 
     eprintln!("service-manager: starting {name}...");
@@ -280,6 +305,7 @@ fn start_service(
 // Service health check
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn check_services(_manager: &ServiceManager, tracked: &mut HashMap<String, TrackedService>) {
     let names: Vec<String> = tracked.keys().cloned().collect();
     for name in names {
@@ -320,6 +346,7 @@ fn check_services(_manager: &ServiceManager, tracked: &mut HashMap<String, Track
 // IPC message handler
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn handle_ipc_message(
     manager: &ServiceManager,
     tracked: &mut HashMap<String, TrackedService>,

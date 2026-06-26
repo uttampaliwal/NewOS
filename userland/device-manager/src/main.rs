@@ -1,11 +1,17 @@
 use std::io::{Read, Write};
+
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
+#[cfg(unix)]
 use std::time::Duration;
 
 use device_manager::{
-    DeviceBus, DriverRuleTable, HotplugEventType, HotplugSource, RawHotplugEvent,
-    default_driver_rules, parse_hotplug_event,
+    DeviceBus, HotplugEventType, HotplugSource, RawHotplugEvent,
+    parse_hotplug_event,
 };
+#[cfg(unix)]
+use device_manager::{DriverRuleTable, default_driver_rules};
+#[cfg(unix)]
 use turnix_ipc_proto::{IpcError, IpcMessage, IpcValue, decode_message, encode_message};
 
 // ---------------------------------------------------------------------------
@@ -57,10 +63,12 @@ impl HotplugSource for KernelHotplugSource {
 // CLI helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 struct CliConfig {
     rules_path: String,
 }
 
+#[cfg(unix)]
 fn parse_args() -> CliConfig {
     let args: Vec<String> = std::env::args().collect();
     let mut rules_path = "/etc/turnix/driver-rules.toml".to_string();
@@ -95,12 +103,14 @@ fn parse_args() -> CliConfig {
 // IPC helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn send_msg(stream: &mut UnixStream, msg: &IpcMessage) {
     if let Ok(encoded) = encode_message(msg) {
         let _ = stream.write_all(&encoded);
     }
 }
 
+#[cfg(unix)]
 fn recv_msg(stream: &mut UnixStream) -> Option<IpcMessage> {
     let mut len_buf = [0u8; 4];
     if stream.read_exact(&mut len_buf).is_err() {
@@ -117,6 +127,7 @@ fn recv_msg(stream: &mut UnixStream) -> Option<IpcMessage> {
     decode_message(&full).ok().map(|(m, _)| m)
 }
 
+#[cfg(unix)]
 fn call_method(
     stream: &mut UnixStream,
     interface: &str,
@@ -145,7 +156,10 @@ fn call_method(
 // Main
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn main() {
+    use std::os::unix::net::UnixStream;
+
     let config = parse_args();
 
     // Load driver rules from TOML (fall back to defaults)
@@ -221,6 +235,13 @@ fn main() {
     }
 }
 
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("device-manager: requires Unix domain sockets; not supported on Windows");
+    std::process::exit(1);
+}
+
+#[cfg(unix)]
 fn handle_ipc(stream: &mut UnixStream, dm: &mut device_manager::DeviceManager, msg: IpcMessage) {
     let resp = match msg {
         IpcMessage::MethodCall { id, method, .. } => {
@@ -286,6 +307,7 @@ fn handle_ipc(stream: &mut UnixStream, dm: &mut device_manager::DeviceManager, m
     }
 }
 
+#[cfg(unix)]
 fn mock_boot_devices() -> Vec<RawHotplugEvent> {
     vec![
         RawHotplugEvent {

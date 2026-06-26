@@ -1,11 +1,16 @@
 use std::fs;
-use std::io::{Read, Write};
 use std::net::Ipv4Addr;
-use std::os::unix::net::UnixStream;
 use std::path::Path;
+
+#[cfg(unix)]
+use std::io::{Read, Write};
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+#[cfg(unix)]
 use std::time::Duration;
 
 use network_manager::{DhcpLease, InterfaceInfo, InterfaceState, NetworkConfig, NetworkError};
+#[cfg(unix)]
 use turnix_ipc_proto::{
     ERROR_INTERNAL, ERROR_INVALID_ARGS, IpcError, IpcMessage, IpcValue, decode_message,
     encode_message,
@@ -15,16 +20,19 @@ use turnix_ipc_proto::{
 // Helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn ipc_str(s: &str) -> IpcValue {
     IpcValue::String(s.to_string())
 }
 
+#[cfg(unix)]
 fn send_msg(stream: &mut UnixStream, msg: &IpcMessage) {
     if let Ok(bytes) = encode_message(msg) {
         let _ = stream.write_all(&bytes);
     }
 }
 
+#[cfg(unix)]
 fn recv_msg(stream: &mut UnixStream) -> Option<IpcMessage> {
     let mut len_buf = [0u8; 4];
     if stream.read_exact(&mut len_buf).is_err() {
@@ -45,6 +53,7 @@ fn recv_msg(stream: &mut UnixStream) -> Option<IpcMessage> {
 // Interface controller abstraction
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 trait InterfaceController {
     fn set_ip(&mut self, name: &str, ip: Ipv4Addr, mask: Ipv4Addr) -> Result<(), NetworkError>;
     fn set_gateway(&mut self, gw: Ipv4Addr) -> Result<(), NetworkError>;
@@ -54,8 +63,10 @@ trait InterfaceController {
     fn list_interfaces(&self) -> Vec<InterfaceInfo>;
 }
 
+#[cfg(unix)]
 struct LinuxInterfaceController;
 
+#[cfg(unix)]
 impl InterfaceController for LinuxInterfaceController {
     fn set_ip(&mut self, name: &str, ip: Ipv4Addr, mask: Ipv4Addr) -> Result<(), NetworkError> {
         eprintln!("net-mgr: set {name} ip={ip} mask={mask}");
@@ -90,12 +101,14 @@ impl InterfaceController for LinuxInterfaceController {
 // Network Manager
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 struct NetworkManager {
     config: NetworkConfig,
     controller: Box<dyn InterfaceController>,
     interfaces: Vec<InterfaceInfo>,
 }
 
+#[cfg(unix)]
 impl NetworkManager {
     fn new(config: NetworkConfig, controller: Box<dyn InterfaceController>) -> Self {
         let interfaces = controller.list_interfaces();
@@ -258,7 +271,10 @@ impl NetworkManager {
 // Main
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn main() {
+    use std::os::unix::net::UnixStream;
+
     let config = load_config("/etc/turnix/network.toml");
     eprintln!("net-mgr: loaded config (dhcp={})", config.dhcp);
 
@@ -308,6 +324,13 @@ fn main() {
     }
 }
 
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("network-manager: requires Unix domain sockets; not supported on Windows");
+    std::process::exit(1);
+}
+
+#[cfg(unix)]
 fn load_config(path: &str) -> NetworkConfig {
     if !Path::new(path).exists() {
         return NetworkConfig::default();
@@ -328,6 +351,7 @@ fn load_config(path: &str) -> NetworkConfig {
 // IPC handlers
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 fn handle_ipc(manager: &mut NetworkManager, broker: &mut UnixStream, msg: IpcMessage) {
     let resp = match msg {
         IpcMessage::MethodCall {
@@ -407,6 +431,7 @@ fn handle_ipc(manager: &mut NetworkManager, broker: &mut UnixStream, msg: IpcMes
     send_msg(broker, &resp);
 }
 
+#[cfg(unix)]
 fn resolve_dns(hostname: &str, config: &NetworkConfig, id: u64) -> IpcMessage {
     let dns_server: Ipv4Addr = config
         .dns_servers

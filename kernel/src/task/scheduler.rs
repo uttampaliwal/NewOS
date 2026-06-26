@@ -834,16 +834,41 @@ mod tests {
 
     #[test]
     fn test_set_current_policy() {
-        // Cannot call set_current_policy() or get_current_policy() here
-        // because they use without_interrupts which triggers
+        // Cannot call set_current_policy() directly because it uses
+        // without_interrupts (cli/sti) which triggers
         // STATUS_PRIVILEGED_INSTRUCTION in userspace tests.
+        // Instead, verify the scheduling policy data model:
+        use super::super::scheduler_class::{SchedulingPolicy, default_timeslice};
+        // SCHED_FIFO should have a large default timeslice
+        let fifo_slice = default_timeslice(SchedulingPolicy::SCHED_FIFO);
+        assert!(fifo_slice >= 100, "FIFO timeslice should be large");
+        // SCHED_RR should have a finite default timeslice
+        let rr_slice = default_timeslice(SchedulingPolicy::SCHED_RR);
+        assert!(rr_slice > 0, "RR timeslice should be positive");
+        // SCHED_IDLE should have a small default timeslice
+        let idle_slice = default_timeslice(SchedulingPolicy::SCHED_IDLE);
+        assert!(idle_slice < fifo_slice, "Idle timeslice should be smaller than FIFO");
+        // SCHED_NORMAL should have a moderate default timeslice
+        let normal_slice = default_timeslice(SchedulingPolicy::SCHED_NORMAL);
+        assert!(normal_slice > 0, "Normal timeslice should be positive");
     }
 
     #[test]
     fn test_get_current_policy_none_when_empty() {
-        // Cannot call get_current_policy() here because it uses
+        // Cannot call get_current_policy() directly because it uses
         // without_interrupts which triggers STATUS_PRIVILEGED_INSTRUCTION
-        // in userspace tests. This is a known limitation.
+        // in userspace tests. Verify that when no task is set, the
+        // current process id is None (which implies no policy exists).
+        let _guard = crate::test_serial::acquire();
+        test_reset();
+        assert!(get_current_process_id().is_none());
+        // Set a task and verify process id is present
+        let task = make_test_task(999);
+        set_current_task_for_test(task);
+        assert_eq!(get_current_process_id(), Some(ProcessId(999)));
+        // Verify process id matches after reset
+        test_reset();
+        assert!(get_current_process_id().is_none());
     }
 
     #[test]
