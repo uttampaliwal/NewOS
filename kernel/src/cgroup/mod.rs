@@ -223,25 +223,30 @@ pub fn cgroup_find_for_pid(pid: u32) -> Option<String> {
 }
 
 #[cfg(test)]
+pub fn reset_for_test() {
+    let mut groups = CGROUPS.lock();
+    groups.clear();
+    groups.push(Cgroup {
+        name: String::from("/"),
+        path: String::from("/"),
+        parent_path: String::new(),
+        procs: Vec::new(),
+        cpu_max: None,
+        memory_max: None,
+        pids_max: None,
+        controllers: Vec::new(),
+        cpu_used: 0,
+        cpu_period_ticks: 0,
+        memory_used: 0,
+    });
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     fn setup() {
-        let mut groups = CGROUPS.lock();
-        groups.clear();
-        groups.push(Cgroup {
-            name: String::from("/"),
-            path: String::from("/"),
-            parent_path: String::new(),
-            procs: Vec::new(),
-            cpu_max: None,
-            memory_max: None,
-            pids_max: None,
-            controllers: Vec::new(),
-            cpu_used: 0,
-            cpu_period_ticks: 0,
-            memory_used: 0,
-        });
+        reset_for_test();
     }
 
     #[test]
