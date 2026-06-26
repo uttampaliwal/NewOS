@@ -163,26 +163,51 @@ Total: 1051 tests pass.
 
 ---
 
-## 8. No Hypervisor / Virtualization Support
+## 8. ~~No Hypervisor / Virtualization Support~~ (Resolved)
 
 | | |
 |---|---|
 | **Severity** | Medium |
-| **Component** | `kernel/src/kvm/` (new) |
-| **Status** | Open |
+| **Component** | `kernel/src/kvm/` |
+| **Status** | Resolved |
 
-**Impact:** Cannot run guest VMs. Modern OSes increasingly support
-virtualization for containers (KVM), security sandboxing, and running
-legacy software.
+**Resolution:** Full KVM/hypervisor subsystem implemented across 6 modules:
 
-**Proposed Fix:**
-- VT-x/AMD-V: VMCS/VMCB management, VM entry/exit handling
-- Nested paging: EPT/NPT for guest physical → host physical mapping
-- Virtual devices: VirtIO net, block, console, input for guests
-- /dev/kvm interface for userspace hypervisors
-- VM launch: load ELF kernel into guest physical memory, set up CR3/CR4
+- **VMCS** (`vmcs.rs`): Intel VT-x Virtual Machine Control Structure management.
+  `Vmcs` struct with `vmread`/`vmwrite`/`vmclear`/`vmptrld` instruction wrappers.
+  `VmcsField` enum for all standard VMCS fields (guest state, host state, exit info).
+  8 tests.
 
-**Tracking:** `docs/roadmap.md` Phase 16
+- **VMCB** (`vmcb.rs`): AMD-V Virtual Machine Control Block management.
+  `VmcbControl` and `VmcbSave` structs for control and guest register state.
+  `vmrun` instruction wrapper. `VmcbExitCode` enum for exit reason decoding.
+  Dirty tracking for lazy state restore. 8 tests.
+
+- **EPT** (`ept.rs`): Extended Page Tables for Intel VT-x guest physical → host
+  physical memory mapping. 4-level hierarchy (PML4→PDPT→PD→PT) with on-demand
+  intermediate table allocation. `map_page`/`unmap_page`/`resolve` API.
+  10 tests.
+
+- **VM lifecycle** (`vm.rs`): Virtual machine creation, destruction, and state
+  management. `VmManager` with global registry. `VirtualMachine` struct with
+  EPT, guest memory, and vCPU state. `Vcpu` struct with full register state.
+  State transitions: Created→Running→Paused→Halted. 12 tests.
+
+- **VM exit handling** (`vmentry.rs`): VM exit reason decoding and dispatch.
+  `ExitReason` enum (Hlt, IoInstruction, Cpuid, MsrAccess, EptViolation,
+  TripleFault, etc.). CPUID leaf emulation, I/O instruction handling.
+  10 tests.
+
+- **/dev/kvm** (`kvm_dev.rs`): Userspace hypervisor interface. `kvm_ioctl`
+  dispatch for KVM_GET_API_VERSION, KVM_CREATE_VM, KVM_CREATE_VCPU, KVM_RUN,
+  KVM_SET_USER_MEMORY_REGION. `KvmRun` shared memory structure.
+  8 tests.
+
+- **VirtIO devices** (`virtio.rs`): Paravirtualized I/O for guest VMs.
+  Virtqueue management with descriptor chains, available/used rings.
+  `VirtioNet` (MAC, link status, packet send/recv), `VirtioBlock` (sector R/W),
+  `VirtioConsole` (character I/O). Device manager with registration.
+  16 tests.
 
 ---
 
@@ -392,7 +417,7 @@ tests for basic lifecycle only — no data path or connection tests.
 | 5 | No crash dump / reliability engineering | High | Resolved |
 | 6 | No kernel crypto API | Medium | Resolved |
 | 7 | No device driver PM / hotplug framework | Medium | Resolved |
-| 8 | No hypervisor / virtualization support | Medium | Open |
+| 8 | No hypervisor / virtualization support | Medium | Resolved |
 | 9 | No userspace coreutils / POSIX utilities | Medium | Resolved |
 | 10 | No io_uring or zero-copy networking | High | Resolved |
 | 11 | No huge pages, THP, NUMA, or KSM | High | Partially Addressed |

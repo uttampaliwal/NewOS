@@ -77,6 +77,8 @@ pub mod fs;
 pub mod input;
 #[cfg(feature = "arch-x86_64")]
 pub mod ipc;
+#[cfg(feature = "arch-x86_64")]
+pub mod kvm;
 pub mod log_ring;
 #[cfg(feature = "arch-x86_64")]
 pub mod memory;
