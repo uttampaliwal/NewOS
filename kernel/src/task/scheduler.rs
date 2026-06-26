@@ -8,15 +8,24 @@ use spin::Mutex;
 static UPTIME_TICKS: AtomicU64 = AtomicU64::new(0);
 
 lazy_static! {
-    static ref SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler::new());
+    pub(crate) static ref SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler::new());
 }
 
-struct Scheduler {
+pub(crate) struct Scheduler {
+    #[cfg(test)]
+    pub(crate) cpu_queues: alloc::vec::Vec<BTreeMap<u64, Task>>,
+    #[cfg(not(test))]
     cpu_queues: alloc::vec::Vec<BTreeMap<u64, Task>>,
     cpu_current: alloc::vec::Vec<Option<Task>>,
     cpu_current_id: alloc::vec::Vec<Option<TaskId>>,
     blocked_tasks: alloc::vec::Vec<Task>,
+    #[cfg(test)]
+    pub(crate) task_count: usize,
+    #[cfg(not(test))]
     task_count: usize,
+    #[cfg(test)]
+    pub(crate) min_vruntime: u64,
+    #[cfg(not(test))]
     min_vruntime: u64,
 }
 
@@ -46,7 +55,15 @@ impl Scheduler {
     }
 
     /// Find the CPU with the shortest run queue for load balancing.
+    #[cfg(test)]
+    pub(crate) fn least_loaded_cpu(&self) -> usize {
+        self.least_loaded_cpu_inner()
+    }
+    #[cfg(not(test))]
     fn least_loaded_cpu(&self) -> usize {
+        self.least_loaded_cpu_inner()
+    }
+    fn least_loaded_cpu_inner(&self) -> usize {
         let mut min_len = usize::MAX;
         let mut min_cpu = 0;
         for (cpu, queue) in self.cpu_queues.iter().enumerate() {
@@ -59,7 +76,15 @@ impl Scheduler {
     }
 
     /// Steal a task from the busiest CPU.
+    #[cfg(test)]
+    pub(crate) fn steal_task(&mut self) -> Option<Task> {
+        self.steal_task_inner()
+    }
+    #[cfg(not(test))]
     fn steal_task(&mut self) -> Option<Task> {
+        self.steal_task_inner()
+    }
+    fn steal_task_inner(&mut self) -> Option<Task> {
         let my_cpu = self.current_cpu_id();
         let mut max_len = 0;
         let mut max_cpu = 0;
@@ -79,7 +104,7 @@ impl Scheduler {
 
 /// Compute the EEVDF virtual deadline for a task.
 /// deadline = vruntime + (time_slice_ticks * 1024 / weight)
-fn compute_deadline(vruntime: u64, time_slice: u32, weight: u32) -> u64 {
+pub(crate) fn compute_deadline(vruntime: u64, time_slice: u32, weight: u32) -> u64 {
     if weight == 0 {
         return vruntime;
     }
@@ -89,13 +114,13 @@ fn compute_deadline(vruntime: u64, time_slice: u32, weight: u32) -> u64 {
 
 /// Pick the next task to run using EEVDF logic.
 /// Returns the eligible task with the earliest (smallest) virtual deadline.
-fn pick_eevdf(queue: &BTreeMap<u64, Task>) -> Option<&Task> {
+pub(crate) fn pick_eevdf(queue: &BTreeMap<u64, Task>) -> Option<&Task> {
     queue.values().filter(|t| t.eligible).min_by_key(|t| t.deadline)
 }
 
 /// Update a task's vruntime after running for one tick.
 /// vruntime increment = (1024 * delta) / weight, where delta is ticks.
-fn update_vruntime(task: &mut Task, ticks: u32) {
+pub(crate) fn update_vruntime(task: &mut Task, ticks: u32) {
     if task.weight > 0 {
         let delta = (1024u64 * ticks as u64) / task.weight as u64;
         task.vruntime = task.vruntime.saturating_add(delta.max(1));

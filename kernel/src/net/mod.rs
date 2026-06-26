@@ -1,5 +1,6 @@
 pub mod smoltcp_iface;
 pub mod socket;
+pub mod socket_tests;
 
 use spin::Mutex;
 

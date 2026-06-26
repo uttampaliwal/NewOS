@@ -7,13 +7,16 @@ use x86_64::structures::paging::{
 
 pub mod allocator;
 pub mod aslr;
+pub mod compaction;
 pub mod compress;
 pub mod demand;
 pub mod heap;
 pub mod hugepage;
+pub mod hugetlb;
 pub mod kasan;
 pub mod kfence;
 pub mod ksm;
+pub mod migration;
 pub mod numa;
 pub mod oom;
 pub mod page_cache;

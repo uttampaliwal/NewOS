@@ -8,6 +8,7 @@ use x86_64::structures::paging::{
 
 pub mod scheduler;
 pub mod scheduler_class;
+pub mod scheduler_extra_tests;
 pub mod signals;
 
 #[cfg(target_arch = "x86_64")]
