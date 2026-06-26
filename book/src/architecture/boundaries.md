@@ -36,7 +36,7 @@ defines what runs where.
 
 Userland communicates with the kernel via:
 
-1. **System calls** — 58 syscalls via `int 0x81` / `syscall` instruction
+1. **System calls** — 87 syscalls via `syscall` instruction
 2. **Shared memory** — `mmap` for framebuffer and IPC buffers
 3. **Device files** — `/dev/` entries for block/char devices
 

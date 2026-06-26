@@ -1,6 +1,6 @@
 # System Call Interface
 
-Turnix exposes 78 system calls through a ring 3 to ring 0 transition mechanism defined
+Turnix exposes 87 system calls through a ring 3 to ring 0 transition mechanism defined
 in `kernel/src/syscall/handler.rs` and the shared ABI crate (`shared/abi/`).
 
 ## Transition Mechanism
@@ -27,6 +27,9 @@ appropriate handler.
 - **System**: `uptime`, `dmesg`, `chdir`, `mount`, `umount`
 - **Network**: `net_set_addr`, `net_set_route`, `net_query`
 - **GPU**: `drm_page_flip`, `gbm_create`, `gbm_map`, `gbm_destroy`, `input_read`
+- **eventfd**: `eventfd_create`, `eventfd_read`, `eventfd_write`
+- **timerfd**: `timerfd_create`, `timerfd_settime`, `timerfd_gettime`
+- **io_uring**: `io_uring_setup`, `io_uring_submit`, `io_uring_complete`
 
 ## Argument Validation
 

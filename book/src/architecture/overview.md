@@ -42,7 +42,7 @@ Turnix is organized into four main vertical layers:
 
 | Subsystem | Location | Purpose |
 |-----------|----------|---------|
-| Scheduler | `kernel/src/task/` | Round-robin preemptive scheduling |
+| Scheduler | `kernel/src/task/` | EEVDF preemptive scheduling with CFS-style vruntime, cgroups v2 |
 | VMM | `kernel/src/memory/` | Demand paging, ASLR, W^X |
 | VFS | `kernel/src/fs/` | Mount tables, tmpfs, ext4 |
 | IPC | `kernel/src/ipc/` | Pipes, Unix domain sockets |

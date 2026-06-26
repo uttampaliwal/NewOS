@@ -1,4 +1,4 @@
-# ADR 0002: UEFI-First Bring-Up
+# ADR 0008: UEFI-First Bring-Up
 
 ## Status
 

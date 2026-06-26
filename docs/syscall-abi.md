@@ -98,6 +98,15 @@ turnix uses the `syscall` and `sysret` instructions for system calls on x86-64.
 | 76 | `CgroupSetCpuMax` | Set cgroup CPU quota |
 | 77 | `CgroupSetMemoryMax` | Set cgroup memory limit |
 | 78 | `CgroupSetPidsMax` | Set cgroup PID limit |
+| 79 | `EventfdCreate` | Create eventfd file descriptor |
+| 80 | `EventfdRead` | Read from eventfd |
+| 81 | `EventfdWrite` | Write to eventfd |
+| 82 | `TimerfdCreate` | Create timerfd file descriptor |
+| 83 | `TimerfdSettime` | Set timerfd interval |
+| 84 | `TimerfdGettime` | Get timerfd remaining time |
+| 85 | `IoUringSetup` | Set up io_uring submission/completion queues |
+| 86 | `IoUringSubmit` | Submit entries to io_uring |
+| 87 | `IoUringComplete` | Reap completions from io_uring |
 
 ## Error Handling
 Syscalls return a 64-bit value in `rax`. Negative values indicate errors.

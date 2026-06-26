@@ -81,7 +81,7 @@ Run this checklist locally:
 ```bash
 cargo fmt --check                          # formatting
 RUSTFLAGS="-D warnings" cargo clippy      # zero warnings
-cargo test --workspace                     # ~974 tests pass
+cargo test --workspace                     # ~1594 tests pass
 cargo xtask build-uefi && cargo xtask build-kernel  # builds succeed
 ```
 

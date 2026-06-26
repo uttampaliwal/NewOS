@@ -1,4 +1,4 @@
-# ADR 0001: Project Direction
+# ADR 0007: Project Direction
 
 ## Status
 

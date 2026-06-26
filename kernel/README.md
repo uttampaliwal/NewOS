@@ -22,7 +22,7 @@ The `kernel` crate is the core of Turnix OS — a no_std, higher-half, x86_64 mo
 | `security` | Capabilities, namespaces, seccomp-BPF, LSM hooks, IMA/EVM |
 | `serial` | Serial port (COM1) output for kernel logging |
 | `smp` | Symmetric multiprocessing (AP bring-up, per-CPU scheduling) |
-| `syscall` | System call dispatch and handler (78 syscalls) |
+| `syscall` | System call dispatch and handler (87 syscalls) |
 | `task` | Task structures, CFS vruntime scheduler, scheduler classes |
 | `time` | Monotonic clock (uptime in microseconds) |
 | `tty` | Terminal I/O |

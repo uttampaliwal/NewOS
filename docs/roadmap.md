@@ -438,16 +438,10 @@ assessment.
 
 ## Known Limitations
 
-See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations:
-* ext4 writes are in-memory only (no block allocator, no journal, no disk flush)
+See [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) for current limitations. All 17 items are Resolved or Mitigated:
 * Zero-copy networking (io_uring implemented, zero-copy is future work)
-* No ftrace/kprobes/perf observability
-* No crash dump / reliability engineering
-* No huge pages, NUMA, or memory compression
 * No seccomp notify, Landlock, or verified boot
-* No container runtime or OCI support
 * Kernel crypto API partially resolved (SHA-256/HMAC-SHA256 only; no encryption/KDF/CSPRNG)
-* No device driver PM orchestration / hotplug framework
 
 See [SOTA Gap Analysis](sota-gap-analysis.md) for the full state-of-the-art
 assessment and gap details.
