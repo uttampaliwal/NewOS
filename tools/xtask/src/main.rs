@@ -132,6 +132,7 @@ fn build_uefi(workspace_root: &Path) -> PathBuf {
     run_or_die(
         "cargo",
         [
+            "-Zbuild-std=core,alloc",
             "build",
             "-p",
             "turnix-uefi-loader",
@@ -174,6 +175,7 @@ fn build_userland(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
+            "-Zbuild-std=core,alloc",
             "build",
             "-p",
             "init",
@@ -207,6 +209,7 @@ fn build_shell(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
+            "-Zbuild-std=core,alloc",
             "build",
             "-p",
             "shell",
@@ -240,6 +243,7 @@ fn build_fault_tester(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
+            "-Zbuild-std=core,alloc",
             "build",
             "-p",
             "fault-tester",
@@ -273,6 +277,7 @@ fn build_benchmarks(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
+            "-Zbuild-std=core,alloc",
             "build",
             "-p",
             "benchmarks",
@@ -306,6 +311,7 @@ fn build_compositor(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
+            "-Zbuild-std=core,alloc",
             "build",
             "-p",
             "compositor",
@@ -339,6 +345,7 @@ fn build_display_manager(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
+            "-Zbuild-std=core,alloc",
             "build",
             "-p",
             "display-manager",
@@ -372,6 +379,7 @@ fn build_desktop_shell(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
+            "-Zbuild-std=core,alloc",
             "build",
             "-p",
             "desktop-shell",
@@ -405,6 +413,7 @@ fn build_kernel_image(workspace_root: &Path) -> PathBuf {
     run_or_die_with_env(
         "cargo",
         [
+            "-Zbuild-std=core,alloc",
             "build",
             "-p",
             "turnix-kernel",
