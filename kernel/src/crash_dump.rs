@@ -10,6 +10,27 @@ const REG_DUMP_MAX: usize = 1024;
 /// Maximum number of log entries to capture from the ring buffer.
 const LOG_ENTRIES_TO_CAPTURE: usize = 32;
 
+/// Panic severity levels for structured output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanicSeverity {
+    /// Non-recoverable kernel panic.
+    Kernel,
+    /// Recoverable oops (process killed, kernel continues).
+    Oops,
+    /// Hardware fault requiring reset.
+    Hardware,
+}
+
+impl PanicSeverity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PanicSeverity::Kernel => "KERNEL PANIC",
+            PanicSeverity::Oops => "KERNEL OOPS",
+            PanicSeverity::Hardware => "HARDWARE FAULT",
+        }
+    }
+}
+
 /// A captured panic report, stored in a static so it survives across
 /// the panic path (and in real hardware could be read from reserved
 /// memory after a warm reboot).
@@ -25,6 +46,12 @@ pub struct PanicReport {
     pub uptime_ticks: u64,
     /// Whether this report is valid (has been written).
     pub valid: bool,
+    /// Panic severity.
+    pub severity: PanicSeverity,
+    /// Task ID that caused the panic (-1 for kernel context).
+    pub task_id: i32,
+    /// CPU that captured the panic.
+    pub cpu_id: u32,
 }
 
 impl PanicReport {
@@ -36,6 +63,9 @@ impl PanicReport {
             registers_len: 0,
             uptime_ticks: 0,
             valid: false,
+            severity: PanicSeverity::Kernel,
+            task_id: -1,
+            cpu_id: 0,
         }
     }
 }
@@ -210,7 +240,6 @@ pub fn has_panic_report() -> bool {
 pub fn read_panic_report() -> Option<PanicReport> {
     let report = PANIC_REPORT.lock();
     if report.valid {
-        // Return a copy of the report
         Some(PanicReport {
             message: report.message,
             message_len: report.message_len,
@@ -218,6 +247,9 @@ pub fn read_panic_report() -> Option<PanicReport> {
             registers_len: report.registers_len,
             uptime_ticks: report.uptime_ticks,
             valid: true,
+            severity: report.severity,
+            task_id: report.task_id,
+            cpu_id: report.cpu_id,
         })
     } else {
         None
@@ -228,11 +260,16 @@ pub fn read_panic_report() -> Option<PanicReport> {
 pub fn print_panic_report() {
     if let Some(report) = read_panic_report() {
         crate::serial::print(format_args!(
-            "\n========== PREVIOUS PANIC REPORT ==========\n"
+            "\n========== {} ==========\n",
+            report.severity.as_str()
         ));
         if let Ok(msg) = core::str::from_utf8(&report.message[..report.message_len]) {
             crate::serial::print(format_args!("Panic: {}\n", msg));
         }
+        if report.task_id >= 0 {
+            crate::serial::print(format_args!("Task ID: {}\n", report.task_id));
+        }
+        crate::serial::print(format_args!("CPU: {}\n", report.cpu_id));
         if let Ok(regs) = core::str::from_utf8(&report.registers[..report.registers_len]) {
             crate::serial::print(format_args!("{}\n", regs));
         }

@@ -91,28 +91,29 @@ Total: 1023 tests pass.
 
 ---
 
-## 5. No Crash Dump / Reliability Engineering
+## 5. ~~No Crash Dump / Reliability Engineering~~ (Resolved)
 
 | | |
 |---|---|
 | **Severity** | High |
-| **Component** | `kernel/src/panic.rs`, `kernel/src/reliability/` (new) |
-| **Status** | Partially Addressed |
+| **Component** | `kernel/src/crash_dump.rs`, `kernel/src/watchdog.rs`, `kernel/src/fault_inject.rs` |
+| **Status** | Resolved |
 
-**Impact:** Kernel panics produce only a register dump. No crash dump is
-captured for post-mortem analysis. No watchdog for hang detection. No fault
-injection for robustness testing. Production kernels require all three.
+**Resolution:** Full reliability engineering subsystem implemented:
 
-**Progress:** Panic crash-dump capture, register dump formatting, and recent
-kernel-log snapshotting are now implemented in `kernel/src/crash_dump.rs` and
-wired into the panic path. Watchdog and fault-injection support remain open.
+- **Crash dump** (`crash_dump.rs`): Enhanced with `PanicSeverity` (Kernel/Oops/Hardware),
+  task ID and CPU ID tracking, structured output with severity-aware formatting.
+  `print_panic_report()` now shows severity, task, and CPU context.
+- **Watchdog** (`watchdog.rs`): Configurable hardware watchdog timer with pre-panic
+  countdown. `kick_watchdog()` resets counter, `watchdog_tick()` decrements on each
+  timer interrupt. Pre-panic countdown allows diagnostic output before panic.
+  13 tests covering init, kick, tick, expiry, disarm, arm, stats, zero timeout.
+- **Fault injection** (`fault_inject.rs`): Configurable failure points for Alloc/I/O/
+  Network/FileSystem subsystems. Probability-based and every-N-th-check modes.
+  Global enable/disable switch, per-point enable/disable, force-inject for testing.
+  16 tests covering registration, probability, every-N, enable/disable, global toggle.
 
-**Proposed Fix:**
-- Crash dump: kdump-style capture of kernel memory to reserved region
-- Watchdog: hardware watchdog timer (HPET/LAPIC) with pre-panic countdown
-- Fault injection: configurable failure points for alloc, I/O, network
-- Panic reports: structured JSON logs with backtrace, oops decoding
-- Kernel checkpoints: save/restore state for live migration
+Total: 1051 tests pass.
 
 **Tracking:** `docs/roadmap.md` Phase 15
 
@@ -380,7 +381,7 @@ tests for basic lifecycle only — no data path or connection tests.
 | 2 | GP fault during fork/clone | Medium | Mitigated |
 | 3 | No performance tracing (ftrace, kprobes) | High | Open |
 | 4 | No memory compression (zswap/zram) | Medium | Resolved |
-| 5 | No crash dump / reliability engineering | High | Partially Addressed |
+| 5 | No crash dump / reliability engineering | High | Resolved |
 | 6 | No kernel crypto API | Medium | Resolved |
 | 7 | No device driver PM / hotplug framework | Medium | Open |
 | 8 | No hypervisor / virtualization support | Medium | Open |

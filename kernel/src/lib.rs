@@ -53,6 +53,8 @@ pub mod block;
 pub mod cgroup;
 pub mod crash_dump;
 pub mod crypto;
+pub mod fault_inject;
+pub mod watchdog;
 
 // Re-export arch-specific modules at their original paths so
 // existing `crate::gdt::*` and `crate::interrupts::*` references
