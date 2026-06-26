@@ -3,6 +3,7 @@
 
 pub mod ext2;
 pub mod ext4;
+pub mod overlay;
 pub mod tmpfs;
 pub mod vfs;
 

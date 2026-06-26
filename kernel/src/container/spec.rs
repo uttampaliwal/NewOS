@@ -72,6 +72,9 @@ pub struct OciProcess {
 pub struct OciRoot {
     pub path: String,
     pub readonly: bool,
+    /// Content hashes of image layers (e.g., "sha256:abc123...").
+    /// Ordered from bottom (base) to top (most recent).
+    pub diff_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +112,7 @@ pub fn parse_default_spec(root_path: &str, args: &[&str]) -> OciSpec {
         root: OciRoot {
             path: String::from(root_path),
             readonly: false,
+            diff_ids: Vec::new(),
         },
         linux: OciLinux {
             namespaces: vec![
