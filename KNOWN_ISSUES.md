@@ -67,23 +67,27 @@ All 39 tracing tests pass. Total test count: 979.
 
 ---
 
-## 4. No Memory Compression (zswap/zram)
+## 4. ~~No Memory Compression (zswap/zram)~~ (Resolved)
 
 | | |
 |---|---|
 | **Severity** | Medium |
-| **Component** | `kernel/src/mm/swap.rs` |
-| **Status** | Open |
+| **Component** | `kernel/src/memory/` |
+| **Status** | Resolved |
 
-**Impact:** Swap goes directly to block device. Compressed swap (zswap/zram)
-can hold 2-3x more data in RAM, reducing disk I/O and improving
-responsiveness under memory pressure.
+**Resolution:** Full memory compression subsystem implemented across three modules:
 
-**Proposed Fix:**
-- zswap: compressed write-back cache in front of swap device
-- zram: compressed block device in RAM
-- LZ4 or ZSTD compression for swap pages
-- same-page merging (KSM) for deduplication
+- **Compression engine** (`compress.rs`): tag-based encoding with literal runs and back-references
+  (0x00 = literal, 0x01 = back-ref), `find_match()` with 4 KiB search window, up to 65540-byte
+  matches. 15 compression tests.
+- **zswap** (`zswap.rs`): compressed write-back cache in front of the swap device. Stores compressed
+  pages in a bounded vector with LRU eviction. Falls through to backing device on cache miss.
+  `MockSwapDevice` for testing. 14 tests including store/retrieve, LRU eviction, stats tracking.
+- **zram** (`zram.rs`): compressed block device in RAM (IS the swap device, no backing store).
+  Implements `SwapDevice` trait for drop-in use with the swap manager. Per-slot compression with
+  stats tracking. 15 tests including round-trips, compression ratios, overwrite, and trait API.
+
+Total: 1023 tests pass.
 
 ---
 
@@ -375,7 +379,7 @@ tests for basic lifecycle only — no data path or connection tests.
 | 1 | ext4 writes are in-memory only | Medium | Resolved |
 | 2 | GP fault during fork/clone | Medium | Mitigated |
 | 3 | No performance tracing (ftrace, kprobes) | High | Open |
-| 4 | No memory compression (zswap/zram) | Medium | Open |
+| 4 | No memory compression (zswap/zram) | Medium | Resolved |
 | 5 | No crash dump / reliability engineering | High | Partially Addressed |
 | 6 | No kernel crypto API | Medium | Resolved |
 | 7 | No device driver PM / hotplug framework | Medium | Open |

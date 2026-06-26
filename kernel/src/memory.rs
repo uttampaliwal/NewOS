@@ -7,6 +7,7 @@ use x86_64::structures::paging::{
 
 pub mod allocator;
 pub mod aslr;
+pub mod compress;
 pub mod demand;
 pub mod heap;
 pub mod hugepage;
@@ -23,6 +24,8 @@ pub mod thp;
 pub mod user;
 pub mod vma;
 pub mod wx;
+pub mod zram;
+pub mod zswap;
 
 pub const PAGE_SIZE: u64 = 4096;
 const LOW_MEMORY_CUTOFF: u64 = 0x100000;
