@@ -39,7 +39,7 @@ The root cause may still require QEMU-level debugging to fully resolve.
 
 ---
 
-## 3. No Performance Tracing (ftrace, kprobes)
+## 3. ~~No Performance Tracing (ftrace, kprobes)~~ (Resolved)
 
 | | |
 |---|---|
@@ -47,11 +47,21 @@ The root cause may still require QEMU-level debugging to fully resolve.
 | **Component** | `kernel/src/tracing/` |
 | **Status** | Resolved |
 
-**Resolution:** Added a lightweight in-kernel tracing subsystem with a bounded
-ring-buffered event store, category-based event recording, global trace APIs,
-and regression tests. The implementation provides a reusable foundation for
-recording boot, scheduling, and syscall events and can be extended to richer
-ftrace-style instrumentation later.
+**Resolution:** Full in-kernel tracing subsystem implemented across four modules:
+
+- **Base trace buffer** (`mod.rs`): bounded ring-buffered event store with category-based
+  recording, global `trace()` API, `trace_event!` macro, snapshot/clear operations.
+- **Function tracer** (`function_trace.rs`): per-function entry/exit tracing with TSC
+  timestamps, per-CPU trace buffers (64 CPUs supported), function registry with
+  name/module lookup, formatted output with `drain_to_global()` for integration.
+- **Kprobes** (`kprobes.rs`): dynamic kernel probes at arbitrary instruction addresses,
+  register/ unregister/arm/disarm lifecycle, register snapshot (RIP/RDI/RSI/RDX/RCX/R8/R9),
+  address-based lookup, event buffer with eviction.
+- **Trace pipe** (`trace_pipe.rs`): unified streaming output merging all sources (base buffer,
+  function trace, kprobes) with category prefix filtering, `read_line()`/`peek_line()`/
+  `read_all()` API, rewind/clear, global singleton with `refresh()`.
+
+All 39 tracing tests pass. Total test count: 979.
 
 **Tracking:** `docs/roadmap.md` Phase 14, `docs/sota-gap-analysis.md` #10
 

@@ -3,6 +3,15 @@
 //! The tracing subsystem provides a bounded ring buffer for trace events that
 //! can be inspected from tests and later surfaced through the kernel's
 //! observability interfaces.
+//!
+//! Sub-modules:
+//! - `function_trace`: per-function entry/exit tracing with timestamps
+//! - `kprobes`: dynamic kernel probes at instruction addresses
+//! - `trace_pipe`: unified streaming output with category filtering
+
+pub mod function_trace;
+pub mod kprobes;
+pub mod trace_pipe;
 
 use alloc::{string::String, vec::Vec};
 use spin::Mutex;
@@ -56,7 +65,7 @@ impl TraceBuffer {
     }
 }
 
-static GLOBAL_TRACE_BUFFER: Mutex<Option<TraceBuffer>> = Mutex::new(None);
+pub(crate) static GLOBAL_TRACE_BUFFER: Mutex<Option<TraceBuffer>> = Mutex::new(None);
 
 /// Initialize the global trace buffer.
 pub fn init_trace_buffer(max_events: usize) {
@@ -101,6 +110,7 @@ mod tests {
 
     #[test]
     fn trace_buffer_records_and_snapshots_events() {
+        let _s = crate::test_serial::acquire();
         let mut buffer = TraceBuffer::new(8);
         buffer.record("boot", "kernel entered");
         buffer.record("sched", "context switch");
@@ -115,6 +125,7 @@ mod tests {
 
     #[test]
     fn trace_buffer_drops_oldest_entries_when_full() {
+        let _s = crate::test_serial::acquire();
         let mut buffer = TraceBuffer::new(2);
         buffer.record("a", "first");
         buffer.record("b", "second");
@@ -130,6 +141,7 @@ mod tests {
 
     #[test]
     fn global_trace_buffer_can_be_initialized_and_cleared() {
+        let _s = crate::test_serial::acquire();
         init_trace_buffer(4);
         clear_trace();
         trace("boot", "kernel entered");
