@@ -208,24 +208,29 @@ Zero-copy networking remains future work.
 
 ---
 
-## 11. No Huge Pages, THP, NUMA, or KSM
+## 11. ~~No Huge Pages, THP, NUMA, or KSM~~ (Partially Addressed)
 
 | | |
 |---|---|
 | **Severity** | High |
 | **Component** | `kernel/src/memory/` |
-| **Status** | Open |
+| **Status** | Partially Addressed |
 
 **Impact:** 4KB pages only. TLB pressure is high on large-memory workloads.
 No NUMA awareness means poor performance on multi-socket systems.
 
-**Proposed Fix:**
-- Huge pages: 2MB/1GB via hugetlbfs
-- Transparent Huge Pages: automatic promotion/demotion
-- NUMA: node-local allocation, memory policies, page migration
-- KSM: same-page merging for deduplication
-- Memory compression: zswap/zram
-- Memory compaction: defragmentation for contiguous allocations
+**Progress:** All four core subsystems implemented with full test coverage:
+- **Huge Pages** (`hugepage.rs`): 2MB/1GB pool allocator with alloc/free/stats, 12 tests
+- **KSM** (`ksm.rs`): content-hash-based page deduplication with stable tree, COW fault handling, 12 tests
+- **NUMA** (`numa.rs`): multi-node tracking, 5 allocation policies (Local/Bind/Interleave/Preferred/Default), distance matrix, memory tiers, 18 tests
+- **THP** (`thp.rs`): region-based promotion/demotion with access-count threshold, 15 tests
+
+**Remaining:**
+- Memory compression (zswap/zram) — tracked as separate item
+- Memory compaction for contiguous allocations
+- Integration with page fault handler for automatic THP promotion
+- hugetlbfs mount point and sysctl interface
+- NUMA page migration and memory hotplug
 
 **Tracking:** `docs/roadmap.md` Phase 16
 
@@ -367,7 +372,7 @@ tests for basic lifecycle only — no data path or connection tests.
 | 8 | No hypervisor / virtualization support | Medium | Open |
 | 9 | No userspace coreutils / POSIX utilities | Medium | Open |
 | 10 | No io_uring or zero-copy networking | High | Resolved |
-| 11 | No huge pages, THP, NUMA, or KSM | High | Open |
+| 11 | No huge pages, THP, NUMA, or KSM | High | Partially Addressed |
 | 12 | No workqueues, softirqs, or tasklets | High | Resolved |
 | 13 | No KASAN/KFENCE memory safety detection | High | Resolved |
 | 14 | No lockdep or completion variables | Medium | Resolved |
