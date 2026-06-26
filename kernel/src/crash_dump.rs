@@ -122,7 +122,7 @@ pub fn capture_panic(info: &core::panic::PanicInfo<'_>) {
     // Safety: reading register values has no memory side effects.
     unsafe {
         core::arch::asm!(
-            "mov {rip}, rip",
+            "lea {rip}, [rip]",
             "mov {rsp}, rsp",
             "mov {rbp}, rbp",
             "pushfq",
