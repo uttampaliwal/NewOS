@@ -138,26 +138,28 @@ Total: 1051 tests pass.
 
 ---
 
-## 7. No Device Driver PM / Hotplug Framework
+## 7. ~~No Device Driver PM / Hotplug Framework~~ (Resolved)
 
 | | |
 |---|---|
 | **Severity** | Medium |
 | **Component** | `kernel/src/drv/` |
-| **Status** | Open |
+| **Status** | Resolved |
 
-**Impact:** Drivers are standalone with no power management or hotplug
-support. Cannot suspend/resume, cannot handle USB/PCI hot-plug events,
-cannot do runtime power management. Laptops and servers require all three.
+**Resolution:** Full device driver subsystem implemented across three modules:
 
-**Proposed Fix:**
-- Driver model: Bus, Device, Driver trait objects with probe/remove/suspend/resume
-- Runtime PM: reference-counted autosuspend, runtime_get_sync/put_suspend
-- System PM: suspend-to-idle, suspend-to-RAM, hibernation
-- Hotplug: USB device insertion/removal events, PCI hot-add/hot-remove
-- Device tree or ACPI-based enumeration
-
-**Tracking:** `docs/roadmap.md` Phase 16
+- **Driver model** (`mod.rs`): Bus/Device/Driver abstraction with `BusType` enum,
+  `register_device()`, `register_driver()`, `probe_device()`, `remove_driver()`,
+  `suspend_device()`, `resume_device()`, `suspend_all_devices()`, `resume_all_devices()`.
+  Device capabilities bitmask, device/driver lookup and listing. 16 tests.
+- **Runtime PM** (`runtime_pm.rs`): Reference-counted autosuspend with
+  `runtime_get_sync()` / `runtime_put_suspend()` API. Per-device auto-suspend delay,
+  global tick-based auto-suspend processing, enable/disable per-device and globally.
+  `MockSwapDevice` for testing. 16 tests.
+- **Hotplug framework** (`hotplug.rs`): Event-driven device insertion/removal system.
+  Listener registration with event-type filtering (DeviceAdd/Remove, DriverBind/Unbind).
+  Pending add/remove queue with `hotplug_process_pending()` dispatch. Event log with
+  configurable max size. 15 tests.
 
 ---
 
@@ -379,11 +381,11 @@ tests for basic lifecycle only — no data path or connection tests.
 |---|-------|----------|--------|
 | 1 | ext4 writes are in-memory only | Medium | Resolved |
 | 2 | GP fault during fork/clone | Medium | Mitigated |
-| 3 | No performance tracing (ftrace, kprobes) | High | Open |
+| 3 | No performance tracing (ftrace, kprobes) | High | Resolved |
 | 4 | No memory compression (zswap/zram) | Medium | Resolved |
 | 5 | No crash dump / reliability engineering | High | Resolved |
 | 6 | No kernel crypto API | Medium | Resolved |
-| 7 | No device driver PM / hotplug framework | Medium | Open |
+| 7 | No device driver PM / hotplug framework | Medium | Resolved |
 | 8 | No hypervisor / virtualization support | Medium | Open |
 | 9 | No userspace coreutils / POSIX utilities | Medium | Open |
 | 10 | No io_uring or zero-copy networking | High | Resolved |

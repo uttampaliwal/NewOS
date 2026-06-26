@@ -69,6 +69,7 @@ pub mod acpi;
 pub mod boot;
 #[cfg(feature = "arch-x86_64")]
 pub mod drivers;
+pub mod drv;
 pub mod elf;
 #[cfg(feature = "arch-x86_64")]
 pub mod fs;
