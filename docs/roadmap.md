@@ -7,6 +7,38 @@ assessment.
 
 ---
 
+## Current-State Assessment and Next Milestones
+
+Turnix is now best described as an advanced research operating system with a
+mature architecture and many implemented subsystems, but it is still
+experimental rather than a general-purpose daily-driver OS. The most important
+next step is not simply to add more features, but to prove that the existing
+subsystems work reliably end to end.
+
+### Priority work areas for later development
+
+* Validate boot and hardware compatibility in QEMU, VirtualBox, and real hardware,
+  especially around UEFI, ACPI, PCIe, and device bring-up.
+* Prove core kernel behavior under real workloads: shell startup, process
+  creation, signal handling, IPC, VFS operations, and recovery from faults.
+* Strengthen storage and filesystem durability with journaling, crash recovery,
+  and stronger persistence guarantees.
+* Expand networking maturity beyond basic TCP/IP: IPv6, routing, DNS, NAT,
+  TLS, and interoperability testing.
+* Harden security posture with Secure Boot validation, CFI/shadow stacks,
+  IOMMU support, Landlock-style sandboxing, and stronger attestation.
+* Mature virtualization and container support with nested virtualization,
+  OCI/runtime compatibility, resource accounting, and isolation testing.
+* Improve observability and reliability with tracing, crash dumps, fault
+  injection, and broader automated regression coverage.
+* Increase ecosystem compatibility through POSIX/LTP coverage, Linux syscall
+  translation, and better user-space library support.
+
+These goals should guide the next round of work after the current foundational
+and subsystem milestones are stabilized.
+
+---
+
 ## Phase 0: Foundation (Complete)
 * Repository layout scaffolding and subdirectories structures.
 * Setup guidelines for host environments.

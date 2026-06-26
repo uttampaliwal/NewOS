@@ -67,6 +67,37 @@ a strong emphasis on safety and modern design. Phases 1-8, 10, 12, and 13 are co
 
 **Overall maturity: ~7/10** — Exceptional for a hobby OS, approaching research OS level.
 
+### Practical Assessment
+
+The repository structure and design documentation show that Turnix has moved well
+beyond an early hobby kernel. It now has the breadth of an advanced research OS,
+however maturity should still be judged by verified behavior rather than by the
+presence of files or planned subsystems alone. In practice, the most important
+future work is to turn implemented features into dependable, tested, and
+interoperable systems.
+
+Priority work items for the next stage of development:
+
+* Boot reliability and hardware compatibility validation in emulation and on real
+  hardware.
+* End-to-end verification of the kernel shell, process lifecycle, scheduler,
+  IPC, VFS, and storage persistence.
+* Filesystem robustness, including journaling, crash recovery, and stronger
+  durability guarantees.
+* Networking completeness beyond the current baseline: IPv6, routing, DNS,
+  NAT, TLS, and compatibility testing.
+* Security hardening and attestation: Secure Boot, CFI/shadow stacks,
+  IOMMU, Landlock-style sandboxing, and stronger measured boot integration.
+* Virtualization and containers: nested virtualization, OCI/runtime compatibility,
+  isolation, and performance validation.
+* Observability and reliability: tracing, crash dumps, fault injection,
+  stress testing, and regression coverage.
+* Ecosystem compatibility: broader POSIX/LTP coverage, Linux syscall translation,
+  and user-space compatibility layers.
+
+These items are the most relevant long-term roadmap themes for moving from an
+ambitious research platform toward a broadly usable operating system.
+
 ### Already Completed (Phases 1-8, 10, 12, 13)
 
 - **Boot & Drivers:** UEFI boot, ACPI, PCIe, VirtIO-Net, NVMe, XHCI USB, GPU DRM/KMS
