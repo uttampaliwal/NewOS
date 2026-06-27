@@ -684,7 +684,7 @@ fn run_uefi(workspace_root: &Path) {
             .expect("ESP root should exist"),
     );
     let mut qemu = ProcessCommand::new("qemu-system-x86_64");
-    qemu.arg("-cpu").arg("max");
+    qemu.arg("-cpu").arg("qemu64");
     qemu.arg("-machine")
         .arg("q35")
         .arg("-m")
@@ -997,7 +997,10 @@ fn stage_ovmf_vars(workspace_root: &Path, source: &Path) -> PathBuf {
     fs::create_dir_all(&firmware_dir).expect("creating firmware staging directory should succeed");
 
     let destination = firmware_dir.join("edk2-x86_64-vars.fd");
-    fs::copy(source, &destination).expect("copying the EDK2 vars image should succeed");
+    let source_is_i386 = source.to_string_lossy().contains("i386");
+    if !destination.exists() || !source_is_i386 {
+        fs::copy(source, &destination).expect("copying the EDK2 vars image should succeed");
+    }
     destination
 }
 

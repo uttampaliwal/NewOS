@@ -21,7 +21,7 @@ use uefi::{Status, cstr16};
 use x86_64::VirtAddr;
 use x86_64::registers::control::{Cr3, Cr3Flags};
 use x86_64::structures::paging::{
-    Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size2MiB, Size4KiB,
+    Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size1GiB, Size2MiB, Size4KiB,
 };
 
 const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
@@ -97,7 +97,7 @@ fn main() -> Status {
         .expect("failed to allocate BootInfo");
     let boot_info_ptr = boot_info_page.as_ptr() as *mut BootInfo;
 
-    let scratchpad_pages = 2048; // 1 TiB phys offset + kernel + ramdisk
+    let scratchpad_pages = 256; // 1 GiB pages: only need PDPTs, minimal scratch
     let scratchpad_ptr = boot::allocate_pages(
         AllocateType::AnyPages,
         MemoryType::LOADER_DATA,
@@ -120,9 +120,9 @@ fn main() -> Status {
 
     // Compute the highest physical address needed. The memory map only covers
     // system RAM, not PCI MMIO BARs, so we also include a generous upper bound.
-    // Map physical memory up to 1 TiB (PML4E 256 + 257) so 64-bit PCI MMIO BARs
-    // allocated by OVMF (often in the hundreds-of-GiB range) are accessible.
-    let max_phys_addr = 1024u64 * 1024 * 1024 * 1024;
+    // Map physical memory up to 4 TiB so 64-bit PCI MMIO BARs (which QEMU
+    // places at multi-TiB physical addresses) are accessible via the HHDM.
+    let max_phys_addr = 4096u64 * 1024 * 1024 * 1024; // 4 TiB
 
     // 4. Build the NEW PML4 while we still have Boot Services
     let new_pml4_phys = scratchpad_phys;
@@ -338,23 +338,22 @@ unsafe fn setup_mappings(
     }
 
     // 4. Map physical RAM to Higher-Half Offset (0xffff800000000000)
-    // USING 2MB HUGE PAGES for efficiency.
-    let phys_map_entries = (max_phys_addr / (2 * 1024 * 1024)) as usize;
+    // USING 1GB HUGE PAGES for efficiency and to cover the full 4 TiB range
+    // with minimal page table overhead.
+    let phys_map_entries = (max_phys_addr / (1024 * 1024 * 1024)) as usize;
+    serial_println!("[UEFI] Mapping {} 1GiB HHDM entries (max_phys={:#x})", phys_map_entries, max_phys_addr);
     for i in 0..phys_map_entries {
-        let addr = PHYSICAL_MEMORY_OFFSET + (i as u64) * 2 * 1024 * 1024;
-        let page: x86_64::structures::paging::Page<Size2MiB> =
+        let addr = PHYSICAL_MEMORY_OFFSET + (i as u64) * 1024 * 1024 * 1024;
+        let page: x86_64::structures::paging::Page<Size1GiB> =
             x86_64::structures::paging::Page::containing_address(VirtAddr::new(addr));
-        let frame = PhysFrame::<Size2MiB>::containing_address(x86_64::PhysAddr::new(
-            (i as u64) * 2 * 1024 * 1024,
+        let frame = PhysFrame::<Size1GiB>::containing_address(x86_64::PhysAddr::new(
+            (i as u64) * 1024 * 1024 * 1024,
         ));
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
 
         unsafe {
-            // map_to for 2MiB pages requires a different mapper trait or manual entry
-            // For simplicity and compatibility, we'll use manual entry setting for the 2MB pages
             let pml4_idx = page.start_address().p4_index();
             let pdpt_idx = page.start_address().p3_index();
-            let pd_idx = page.start_address().p2_index();
 
             // Ensure PDPT exists
             if pml4[pml4_idx].is_unused() {
@@ -368,20 +367,8 @@ unsafe fn setup_mappings(
             let pdpt =
                 &mut *(pml4[pml4_idx].frame().unwrap().start_address().as_u64() as *mut PageTable);
 
-            // Ensure PD exists
-            if pdpt[pdpt_idx].is_unused() {
-                let new_frame = scratch_alloc.0(4096);
-                pdpt[pdpt_idx].set_frame(
-                    new_frame,
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-                );
-                core::ptr::write_bytes(new_frame.start_address().as_u64() as *mut u8, 0, 4096);
-            }
-            let pd =
-                &mut *(pdpt[pdpt_idx].frame().unwrap().start_address().as_u64() as *mut PageTable);
-
-            // Set 2MB entry with HUGE_PAGE flag
-            pd[pd_idx].set_addr(frame.start_address(), flags | PageTableFlags::HUGE_PAGE);
+            // Set 1GB entry with HUGE_PAGE flag on PDPT entry
+            pdpt[pdpt_idx].set_addr(frame.start_address(), flags | PageTableFlags::HUGE_PAGE);
         }
     }
 }

@@ -666,6 +666,19 @@ impl DeviceDriver for XhciDriver {
         let phys_mem_offset = get_phys_mem_offset();
         let bar0 = phys_mem_offset.as_u64() + bar0_phys;
 
+        // Check if the BAR address is within the HHDM range. QEMU places PCI MMIO
+        // BARs at very high physical addresses (e.g., 3+ TiB) that may exceed the
+        // HHDM mapping. Skip the probe gracefully if the address is unreachable.
+        const HHDM_MAX_PHYS: u64 = 4096u64 * 1024 * 1024 * 1024; // 4 TiB
+        if bar0_phys >= HHDM_MAX_PHYS {
+            crate::serial::println!(
+                "[XHCI] Probe skipped: BAR0 phys {:#x} exceeds HHDM range ({:#x})",
+                bar0_phys,
+                HHDM_MAX_PHYS
+            );
+            return Err(XhciError::ProbeFailed("BAR0 exceeds HHDM range"));
+        }
+
         crate::serial::println!(
             "[XHCI] Probing XHCI controller at {:02x}:{:02x}.{:02x} (BAR0 phys={:#x})",
             info.bus,
