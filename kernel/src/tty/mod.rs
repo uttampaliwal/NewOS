@@ -41,21 +41,24 @@ impl Tty {
                 self.input_queue.push_back(line);
                 self.line_buffer.clear();
 
+                crate::serial_print!("\r\n");
                 if let Some(ref mut console) = *CONSOLE.lock() {
                     console.write_char('\n');
                 }
             }
             '\x08' | '\x7f' => {
                 // Backspace
-                if self.line_buffer.pop().is_some()
-                    && let Some(ref mut console) = *CONSOLE.lock()
-                {
-                    console.backspace();
+                if self.line_buffer.pop().is_some() {
+                    crate::serial_print!("\x08 \x08");
+                    if let Some(ref mut console) = *CONSOLE.lock() {
+                        console.backspace();
+                    }
                 }
             }
             _ => {
                 if !c.is_control() {
                     self.line_buffer.push(c);
+                    crate::serial_print!("{}", c);
                     if let Some(ref mut console) = *CONSOLE.lock() {
                         console.write_char(c);
                     }
@@ -95,6 +98,9 @@ impl Tty {
     }
 
     pub fn write(&mut self, s: &str) {
+        // Echo to serial so output is visible in the QEMU terminal
+        // even when the compositor covers the framebuffer console.
+        crate::serial_print!("{}", s);
         if let Some(ref mut console) = *CONSOLE.lock() {
             console.write_str(s);
         }

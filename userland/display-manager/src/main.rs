@@ -120,42 +120,24 @@ fn launch_session(entry: &PasswdEntry) {
 pub extern "C" fn _start() -> ! {
     println("Turnix Display Manager v1");
 
-    let passwd_content = match load_passwd() {
-        Some(c) => c,
-        None => {
-            print("WARNING: no password file found at ");
-            println(PASSWD_PATH);
-            println("Default credentials: root/root, turnix/turnix");
-            println("Create /etc/turnix/passwd with lines: username:uid:gid:home:shell:sha256hex");
-            println("Proceeding with emergency fallback authentication");
-            println("");
-            let root_hash = "4813494d137e1631bba301d5acab6e7bb7aa74ce1185d456565ef51d737677b2";
-            let turnix_hash = "35dc5cc5d07a524eb7a7b32cb2f004ba802677843fd39c9f93d26a207e7cf381";
-            let fallback = alloc::format!(
-                "root:0:0:/root:/bin/sh:{}\nturnix:1000:1000:/home/turnix:/bin/sh:{}\n",
-                root_hash,
-                turnix_hash
-            );
-            fallback
-        }
+    // Auto-login as root — skip the interactive login prompt.
+    // The framebuffer console doesn't render TTY text (compositor covers it),
+    // so interactive login is not usable yet. Launch the desktop directly.
+    println("Auto-login as root");
+
+    let fake_entry = display_manager::PasswdEntry {
+        username: "root",
+        uid: 0,
+        gid: 0,
+        home: "/root",
+        shell: "/bin/sh",
+        password_hash: "",
     };
+    launch_session(&fake_entry);
 
+    // Should never reach here, but if session exits, loop forever.
     loop {
-        greet();
-        let username = read_username();
-        if username.is_empty() {
-            continue;
-        }
-        let password = read_password();
-
-        match authenticate(&username, &password, &passwd_content) {
-            Some(entry) => {
-                launch_session(&entry);
-            }
-            None => {
-                println("Login incorrect");
-            }
-        }
+        libturnix::yielder();
     }
 }
 
