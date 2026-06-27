@@ -701,7 +701,9 @@ fn run_uefi(workspace_root: &Path) {
         .arg("-device")
         .arg("qemu-xhci,id=xhci")
         .arg("-device")
-        .arg("usb-kbd");
+        .arg("usb-kbd")
+        .arg("-device")
+        .arg("usb-tablet");
 
     if let Ok(accel) = env::var("TURNIX_QEMU_ACCEL") {
         qemu.arg("-accel").arg(accel);
