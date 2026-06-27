@@ -554,6 +554,37 @@ pub fn handle_read(args: SyscallArgs) -> SyscallResult {
     // Safety: buf_ptr is validated non-null and buf_len > 0 above; caller guarantees the pointer
     // references a valid writable buffer of at least buf_len bytes.
     let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
+
+    // TTY reads: handle outside the VFS lock so we can block for input.
+    // The TTY is a line-buffered device; read one byte at a time, blocking
+    // until input is available.
+    {
+        let tty_fd = {
+            let vfs = VFS.lock();
+            vfs.get_fd_name(fd).map(|s| s == "tty")
+        };
+        if tty_fd == Some(true) {
+            let mut filled = 0usize;
+            while filled < buf_len {
+                let byte = loop {
+                    if let Some(b) = crate::tty::TTY.lock().read_byte() {
+                        break b;
+                    }
+                    // No input available — yield so the keyboard IRQ can fire.
+                    crate::task::scheduler::yield_task();
+                };
+                buf[filled] = byte;
+                filled += 1;
+                // Stop after newline (canonical mode): the display manager and
+                // shell both read line-by-line.
+                if byte == b'\n' {
+                    break;
+                }
+            }
+            return SyscallResult::Success(filled as u64);
+        }
+    }
+
     let mut vfs = VFS.lock();
     match vfs.read(fd, buf) {
         Some(len) => SyscallResult::Success(len as u64),

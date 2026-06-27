@@ -932,6 +932,11 @@ impl Vfs {
         self.open_files.get(&fd_idx).cloned()
     }
 
+    /// Return the name associated with a file descriptor, if it exists.
+    pub fn get_fd_name(&self, fd_idx: usize) -> Option<alloc::string::String> {
+        self.open_files.get(&fd_idx).map(|fd| fd.name.clone())
+    }
+
     /// Insert a FileDescriptor at a free index and return the index.
     /// Used by tests and init setup.
     pub fn insert_fd(&mut self, fd: FileDescriptor) -> usize {
