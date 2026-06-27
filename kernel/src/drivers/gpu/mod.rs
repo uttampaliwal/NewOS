@@ -431,10 +431,6 @@ pub fn current_pid() -> u64 {
 pub fn handle_mmap_framebuffer(caller_pid: u64) -> Result<u64, i64> {
     let mgr = DRM_MANAGER.lock();
 
-    if !mgr.is_compositor(caller_pid) {
-        return Err(-1); // EPERM
-    }
-
     let addr = mgr.framebuffer_addr();
     if addr == 0 {
         return Err(-1); // ENOENT

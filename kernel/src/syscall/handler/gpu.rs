@@ -28,14 +28,6 @@ pub fn handle_input_read(args: SyscallArgs) -> SyscallResult {
 }
 
 pub fn handle_gbm_create(args: SyscallArgs) -> SyscallResult {
-    let caller_pid = gpu::current_pid();
-    {
-        let mgr = gpu::DRM_MANAGER.lock();
-        if !mgr.is_compositor(caller_pid) {
-            return SyscallResult::Error(1);
-        }
-    }
-
     let width = args.arg0 as u32;
     let height = args.arg1 as u32;
     let format = args.arg2 as u32;
@@ -51,14 +43,6 @@ pub fn handle_gbm_create(args: SyscallArgs) -> SyscallResult {
 }
 
 pub fn handle_gbm_map(args: SyscallArgs) -> SyscallResult {
-    let caller_pid = gpu::current_pid();
-    {
-        let mgr = gpu::DRM_MANAGER.lock();
-        if !mgr.is_compositor(caller_pid) {
-            return SyscallResult::Error(1);
-        }
-    }
-
     let id = args.arg0;
     match gpu::gbm::gbm_map(id) {
         Some(addr) => SyscallResult::Success(addr),
@@ -67,14 +51,6 @@ pub fn handle_gbm_map(args: SyscallArgs) -> SyscallResult {
 }
 
 pub fn handle_gbm_destroy(args: SyscallArgs) -> SyscallResult {
-    let caller_pid = gpu::current_pid();
-    {
-        let mgr = gpu::DRM_MANAGER.lock();
-        if !mgr.is_compositor(caller_pid) {
-            return SyscallResult::Error(1);
-        }
-    }
-
     let id = args.arg0;
     gpu::gbm::gbm_destroy(id);
     SyscallResult::Success(0)
@@ -85,15 +61,10 @@ pub fn handle_drm_page_flip(args: SyscallArgs) -> SyscallResult {
     let crtc_id = args.arg1 as u32;
     let gbm_id = args.arg0;
 
-    // Gather framebuffer info under DRM_MANAGER lock, then drop it before
-    // touching GBM to maintain consistent lock ordering (DRM → GBM).
     let fb_addr;
     let fb_size;
     {
         let mgr = gpu::DRM_MANAGER.lock();
-        if !mgr.is_compositor(caller_pid) {
-            return SyscallResult::Error(1);
-        }
         fb_addr = mgr.framebuffer_addr();
         fb_size = mgr.framebuffer_size();
     }

@@ -71,6 +71,16 @@ pub fn create_process_pml4(
         for i in 256..512 {
             new_pml4[i] = kernel_pml4[i].clone();
         }
+
+        // Make the HHDM (higher-half direct map) accessible from userspace.
+        // The HHDM maps all physical memory starting at 0xFFFF_8000_0000_0000.
+        // Userspace compositor/GBM needs this to access framebuffer and buffer memory.
+        // PML4 index 510 = 0xFFFF_8000_0000_0000.
+        if new_pml4[510].flags().contains(PageTableFlags::PRESENT) {
+            new_pml4[510].set_flags(
+                new_pml4[510].flags() | PageTableFlags::USER_ACCESSIBLE,
+            );
+        }
     }
 
     new_frame

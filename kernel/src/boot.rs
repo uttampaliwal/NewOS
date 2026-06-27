@@ -217,10 +217,8 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         }
     }
 
-    // Register PID 1 (init) as the Compositor process
-    crate::drivers::gpu::DRM_MANAGER
-        .lock()
-        .set_compositor_pid(1);
+    // Compositor PID is registered dynamically after init forks it.
+    // Do NOT hardcode PID 1 here — PID 1 is init, not the compositor.
 
     // 3.5 Initialize network stack (uses MAC from virtio-net)
     crate::drivers::net::init();
