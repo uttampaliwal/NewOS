@@ -1,11 +1,23 @@
 use super::{Task, TaskId};
 use crate::process::{Process, ProcessId};
 use alloc::collections::BTreeMap;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use lazy_static::lazy_static;
 use spin::Mutex;
 
 static UPTIME_TICKS: AtomicU64 = AtomicU64::new(0);
+
+/// Set to `true` once `start_scheduling()` is about to be called.
+/// Guards early-boot heap allocations from touching the scheduler lock.
+static SCHEDULER_READY: AtomicBool = AtomicBool::new(false);
+
+pub fn set_scheduler_ready() {
+    SCHEDULER_READY.store(true, Ordering::Release);
+}
+
+pub fn is_scheduler_ready() -> bool {
+    SCHEDULER_READY.load(Ordering::Acquire)
+}
 
 lazy_static! {
     pub(crate) static ref SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler::new());
@@ -434,6 +446,9 @@ pub fn get_current_policy() -> Option<(super::scheduler_class::SchedulingPolicy,
 }
 
 pub fn get_current_process_id() -> Option<ProcessId> {
+    if !SCHEDULER_READY.load(Ordering::Acquire) {
+        return None;
+    }
     let sched = SCHEDULER.lock();
     let cpu = sched.current_cpu_id();
     sched.cpu_current[cpu].as_ref().map(|t| t.process.id())

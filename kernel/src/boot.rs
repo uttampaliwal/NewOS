@@ -464,6 +464,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     x86_64::instructions::interrupts::enable();
     let _ = writeln!(writer, "[STG: INTR_ENABLED]");
     let _ = writeln!(writer, "[STG: SCHED_START]");
+    crate::task::scheduler::set_scheduler_ready();
     let _ = writeln!(writer, "[BOOT OK]");
 
     crate::task::scheduler::start_scheduling();

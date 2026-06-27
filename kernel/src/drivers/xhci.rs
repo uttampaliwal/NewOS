@@ -657,27 +657,20 @@ impl DeviceDriver for XhciDriver {
             return Err(XhciError::ProbeFailed("not an XHCI controller"));
         }
 
-        let bar0_phys = match info.bars[0] {
-            Some(super::framework::Bar::Memory32 { base, .. }) => base as u64,
-            Some(super::framework::Bar::Memory64 { base, .. }) => base,
+        let (bar0_phys, bar0_size) = match info.bars[0] {
+            Some(super::framework::Bar::Memory32 { base, size, .. }) => (base as u64, size as u64),
+            Some(super::framework::Bar::Memory64 { base, size, .. }) => (base, size),
             _ => return Err(XhciError::ProbeFailed("no valid BAR0")),
         };
 
         let phys_mem_offset = get_phys_mem_offset();
-        let bar0 = phys_mem_offset.as_u64() + bar0_phys;
-
-        // Check if the BAR address is within the HHDM range. QEMU places PCI MMIO
-        // BARs at very high physical addresses (e.g., 3+ TiB) that may exceed the
-        // HHDM mapping. Skip the probe gracefully if the address is unreachable.
-        const HHDM_MAX_PHYS: u64 = 4096u64 * 1024 * 1024 * 1024; // 4 TiB
-        if bar0_phys >= HHDM_MAX_PHYS {
-            crate::serial::println!(
-                "[XHCI] Probe skipped: BAR0 phys {:#x} exceeds HHDM range ({:#x})",
-                bar0_phys,
-                HHDM_MAX_PHYS
-            );
-            return Err(XhciError::ProbeFailed("BAR0 exceeds HHDM range"));
+        // Map the BAR through explicit page table entries instead of relying on
+        // the HHDM, which may not cover very high physical addresses used by
+        // QEMU for PCI MMIO BARs.
+        let bar0 = unsafe {
+            crate::memory::paging::map_mmio_region(bar0_phys, bar0_size.max(4096), phys_mem_offset)
         }
+        .as_u64();
 
         crate::serial::println!(
             "[XHCI] Probing XHCI controller at {:02x}:{:02x}.{:02x} (BAR0 phys={:#x})",

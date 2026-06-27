@@ -74,11 +74,13 @@ unsafe impl GlobalAlloc for super::Locked<FixedSizeBlockAllocator> {
         if !ptr.is_null() {
             let alloc_size = layout.size();
             crate::memory::kasan::alloc_poison(ptr as usize, alloc_size);
-        } else {
+            // Reserve cgroup memory accounting on successful allocation.
+            // get_current_process_id() returns None before the scheduler is
+            // ready (early boot), in which case PID 0 (root cgroup) is used.
             let cgroup_pid = crate::task::scheduler::get_current_process_id()
                 .map(|p| p.0 as u32)
                 .unwrap_or(0);
-            crate::cgroup::cgroup_release_memory(cgroup_pid, layout.size() as u64);
+            crate::cgroup::cgroup_try_reserve_memory(cgroup_pid, alloc_size as u64);
         }
         ptr
     }

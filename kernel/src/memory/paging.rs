@@ -403,3 +403,130 @@ pub unsafe fn set_user_accessible(virt_addr: VirtAddr, size: u64, physical_mem_o
         Cr0::update(|f| f.insert(Cr0Flags::WRITE_PROTECT));
     }
 }
+
+use core::sync::atomic::{AtomicU64, Ordering};
+
+/// Virtual address bump allocator for MMIO regions.
+/// Starts at 0xFFFF_C000_0000_0000 and grows upward.
+static MMIO_VIRT_NEXT: AtomicU64 = AtomicU64::new(0xFFFF_C000_0000_0000);
+
+/// Map a physical MMIO region into kernel virtual address space using 4 KiB pages.
+///
+/// Returns the virtual address corresponding to `phys_addr`. The mapping uses
+/// `NO_CACHE | WRITABLE | PRESENT` flags appropriate for device MMIO.
+///
+/// # Safety
+///
+/// `phys_addr` must refer to a valid MMIO region and `size` must not exceed
+/// the region's actual length. The caller must ensure the returned virtual
+/// address is used only for volatile MMIO accesses.
+pub unsafe fn map_mmio_region(phys_addr: u64, size: u64, phys_mem_offset: VirtAddr) -> VirtAddr {
+    let phys_start = phys_addr & !0xFFF;
+    let phys_end = (phys_addr + size + 0xFFF) & !0xFFF;
+    let num_pages = (phys_end - phys_start) / 4096;
+
+    // Allocate virtual address range
+    let virt_start = MMIO_VIRT_NEXT.fetch_add(num_pages * 4096, Ordering::Relaxed);
+    let offset_in_page = phys_addr & 0xFFF;
+
+    // Disable write protection to modify page tables
+    unsafe {
+        Cr0::update(|f| f.remove(Cr0Flags::WRITE_PROTECT));
+    }
+
+    let (pml4_frame, _) = Cr3::read();
+    let pml4 = unsafe {
+        &mut *((phys_mem_offset + pml4_frame.start_address().as_u64()).as_mut_ptr::<PageTable>())
+    };
+
+    for page_idx in 0..num_pages {
+        let vaddr = VirtAddr::new(virt_start + page_idx * 4096);
+        let paddr = phys_start + page_idx * 4096;
+
+        let p4_idx = vaddr.p4_index();
+        let p3_idx = vaddr.p3_index();
+        let p2_idx = vaddr.p2_index();
+        let p1_idx = vaddr.p1_index();
+
+        // Ensure PDPT exists (level 4 → level 3)
+        if pml4[p4_idx].is_unused() {
+            let frame = crate::boot::FRAME_ALLOCATOR
+                .lock()
+                .as_mut()
+                .expect("FRAME_ALLOCATOR not initialized")
+                .allocate_frame()
+                .expect("failed to allocate PDPT for MMIO mapping");
+            pml4[p4_idx].set_frame(
+                frame,
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+            );
+            let pdpt_ptr = (phys_mem_offset + frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+            unsafe { core::ptr::write_bytes(pdpt_ptr, 0, 1) };
+        }
+        let pdpt = unsafe {
+            &mut *((phys_mem_offset + pml4[p4_idx].frame().unwrap().start_address().as_u64())
+                .as_mut_ptr::<PageTable>())
+        };
+
+        // Ensure PD exists (level 3 → level 2)
+        if pdpt[p3_idx].is_unused() {
+            let frame = crate::boot::FRAME_ALLOCATOR
+                .lock()
+                .as_mut()
+                .expect("FRAME_ALLOCATOR not initialized")
+                .allocate_frame()
+                .expect("failed to allocate PD for MMIO mapping");
+            pdpt[p3_idx].set_frame(
+                frame,
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+            );
+            let pd_ptr = (phys_mem_offset + frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+            unsafe { core::ptr::write_bytes(pd_ptr, 0, 1) };
+        }
+        let pd = unsafe {
+            &mut *((phys_mem_offset + pdpt[p3_idx].frame().unwrap().start_address().as_u64())
+                .as_mut_ptr::<PageTable>())
+        };
+
+        // Ensure PT exists (level 2 → level 1)
+        if pd[p2_idx].is_unused() {
+            let frame = crate::boot::FRAME_ALLOCATOR
+                .lock()
+                .as_mut()
+                .expect("FRAME_ALLOCATOR not initialized")
+                .allocate_frame()
+                .expect("failed to allocate PT for MMIO mapping");
+            pd[p2_idx].set_frame(
+                frame,
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+            );
+            let pt_ptr = (phys_mem_offset + frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
+            unsafe { core::ptr::write_bytes(pt_ptr, 0, 1) };
+        }
+        let pt = unsafe {
+            &mut *((phys_mem_offset + pd[p2_idx].frame().unwrap().start_address().as_u64())
+                .as_mut_ptr::<PageTable>())
+        };
+
+        // Map the page
+        let frame = PhysFrame::containing_address(x86_64::PhysAddr::new(paddr));
+        let flags = PageTableFlags::PRESENT
+            | PageTableFlags::WRITABLE
+            | PageTableFlags::NO_CACHE
+            | PageTableFlags::WRITE_THROUGH;
+        pt[p1_idx].set_frame(frame, flags);
+    }
+
+    // Re-enable write protection
+    unsafe {
+        Cr0::update(|f| f.insert(Cr0Flags::WRITE_PROTECT));
+    }
+
+    // Flush TLB for the mapped range
+    for page_idx in 0..num_pages {
+        let vaddr = VirtAddr::new(virt_start + page_idx * 4096);
+        x86_64::instructions::tlb::flush(vaddr);
+    }
+
+    VirtAddr::new(virt_start + offset_in_page)
+}
