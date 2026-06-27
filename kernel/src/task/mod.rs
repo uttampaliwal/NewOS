@@ -1,4 +1,4 @@
-use crate::process::Process;
+use crate::process::{Process, ProcessId};
 #[cfg(target_arch = "x86_64")]
 use x86_64::VirtAddr;
 #[cfg(target_arch = "x86_64")]
@@ -63,6 +63,8 @@ pub struct Task {
     pub(crate) stack_ptr: usize,
     pub(crate) kernel_stack_top: usize,
     pub(crate) process: Process,
+    /// Cached process ID — avoids re-locking `process.inner` (spin::Mutex is not re-entrant).
+    pub(crate) pid: ProcessId,
     pub state: TaskState,
     pub policy: scheduler_class::SchedulingPolicy,
     pub priority: u8,
@@ -77,11 +79,13 @@ pub struct Task {
 impl Task {
     /// Create a minimal test task with default scheduling fields.
     pub fn new_test(id: TaskId, process: Process, state: TaskState) -> Self {
+        let pid = process.id();
         Task {
             id,
             stack_ptr: 0,
             kernel_stack_top: 0,
             process,
+            pid,
             state,
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(
@@ -210,11 +214,13 @@ impl Task {
         }
 
         let process = Process::kernel_process();
+        let pid = process.id();
         let task = Self {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
             process: process.clone(),
+            pid,
             state: TaskState::Ready,
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(
@@ -330,11 +336,13 @@ impl Task {
         }
 
         process.add_thread(id);
+        let pid = process.id();
         Ok(Self {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
             process,
+            pid,
             state: TaskState::Ready,
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(
@@ -520,11 +528,13 @@ impl Task {
         }
 
         process.add_thread(id);
+        let pid = process.id();
         Ok(Self {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
             process,
+            pid,
             state: TaskState::Ready,
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(
@@ -641,11 +651,13 @@ impl Task {
         }
 
         process.add_thread(id);
+        let pid = process.id();
         Ok(Self {
             id,
             stack_ptr: stack_ptr as usize,
             kernel_stack_top: stack_top_virt.as_u64() as usize,
             process,
+            pid,
             state: TaskState::Ready,
             policy: scheduler_class::SchedulingPolicy::SCHED_NORMAL,
             priority: scheduler_class::base_priority(

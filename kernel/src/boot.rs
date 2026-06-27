@@ -75,7 +75,9 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     let _ = writeln!(writer, "[STG: KSTACK_REGION_INIT]");
 
     // Store the frame allocator in the global mutex after heap is ready
-    *FRAME_ALLOCATOR.lock() = Some(frame_allocator);
+    // Relocate boot_info to kernel heap so it's accessible from user page tables
+    let relocated = crate::memory::FrameAllocator::relocate_boot_info(boot_info);
+    *FRAME_ALLOCATOR.lock() = Some(relocated);
 
     // 2.5 Initialize swap manager with in-memory backend
     {

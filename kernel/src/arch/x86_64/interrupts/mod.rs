@@ -105,8 +105,9 @@ pub fn init(phys_mem_offset: VirtAddr) {
             let mut lapic = LAPIC.lock();
             *lapic = apic::LocalApic::new(lapic_virt);
             lapic.initialize();
-            // Start timer with a reasonable count for periodic interrupts
-            lapic.start_timer(0x10000);
+            // Start timer with a larger count to avoid interrupt storms
+            // (timer fires while handler runs, pending on iretq return)
+            lapic.start_timer(0x100000);
         }
 
         // Initialize IOAPIC and route Keyboard (IRQ 1)

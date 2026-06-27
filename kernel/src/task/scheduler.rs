@@ -577,7 +577,7 @@ pub fn get_current_process_id() -> Option<ProcessId> {
     }
     let sched = SCHEDULER.lock();
     let cpu = sched.current_cpu_id();
-    sched.cpu_current[cpu].as_ref().map(|t| t.process.id())
+    sched.cpu_current[cpu].as_ref().map(|t| t.pid)
 }
 
 pub fn block_current() {

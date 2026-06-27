@@ -460,11 +460,13 @@ pub fn handle_exec(args: SyscallArgs) -> SyscallResult {
 }
 
 pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::SyscallFrame) -> u64 {
+    crate::serial::println!("[fork] handle_fork_with_frame entered");
     // 1. Get the current (parent) process
     let parent_process = match crate::task::scheduler::get_current_process() {
         Some(p) => p,
         None => return !0, // error
     };
+    crate::serial::println!("[fork] got parent process, locking frame allocator");
 
     // 2. Get access to frame allocator and physical memory offset
     let mut frame_allocator_guard = crate::boot::get_frame_allocator().lock();
@@ -475,13 +477,16 @@ pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::Syscall
     let phys_mem_offset = crate::boot::get_phys_mem_offset();
 
     // 3. Create child process via Process::fork
+    crate::serial::println!("[fork] calling parent_process.fork()");
     let child_process = parent_process.fork(frame_allocator, phys_mem_offset);
     let child_pid = child_process.id().0 as u64;
+    crate::serial::println!("[fork] fork() returned, child_pid={}", child_pid);
 
     // 4. Drop frame allocator guard before we try to get the mapper, since it's holding the lock
     drop(frame_allocator_guard);
 
     // 5. Create a new kernel task for the child process using new_forked_user
+    crate::serial::println!("[fork] creating child task...");
     // To get a mapper, we need to get the current kernel page table
     let (kernel_pml4_frame, _) = x86_64::registers::control::Cr3::read();
     // Safety: kernel_pml4_frame is the current kernel page table from Cr3, phys_mem_offset is valid.

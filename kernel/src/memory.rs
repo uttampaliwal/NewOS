@@ -81,6 +81,17 @@ pub struct FrameAllocator<'a> {
     free_list: Vec<u64>,
 }
 
+/// Owned copy of BootInfo + its descriptor array, allocated on the kernel heap.
+/// This is needed because the original BootInfo lives in UEFI-provided lower-half
+/// memory that is not mapped in user process page tables (entries 0..255 are not
+/// copied to process PML4s). Without this, any kernel path that runs with a user
+/// CR3 and accesses the frame allocator will page-fault.
+pub struct OwnedBootInfo {
+    info: BootInfo,
+    #[allow(dead_code)]
+    descriptors: Vec<BootMemoryDescriptor>,
+}
+
 unsafe impl Sync for FrameAllocator<'static> {}
 unsafe impl Send for FrameAllocator<'static> {}
 
@@ -88,6 +99,46 @@ impl<'a> FrameAllocator<'a> {
     pub fn new(boot_info: &'a BootInfo) -> Self {
         Self {
             boot_info,
+            next_address: LOW_MEMORY_CUTOFF,
+            free_list: Vec::new(),
+        }
+    }
+
+    /// Relocate the BootInfo to kernel heap memory so it is accessible from
+    /// user process page tables (which only map the higher half).
+    ///
+    /// Must be called after heap initialization and before any user process
+    /// runs. The caller must replace the global FRAME_ALLOCATOR with the
+    /// returned allocator.
+    pub fn relocate_boot_info(boot_info_ref: &BootInfo) -> Self {
+        use alloc::vec;
+        // Copy the descriptors array to kernel heap
+        let old_map = &boot_info_ref.memory_map;
+        let count = old_map.entry_count();
+        let mut descriptors: Vec<BootMemoryDescriptor> = vec![BootMemoryDescriptor {
+            ty: 0,
+            reserved: 0,
+            phys_start: 0,
+            virt_start: 0,
+            page_count: 0,
+            att: 0,
+        }; count];
+        for i in 0..count {
+            if let Some(desc) = old_map.get(i) {
+                descriptors[i] = *desc;
+            }
+        }
+        // Build a new BootInfo on the kernel heap with the copied descriptors
+        let mut info = *boot_info_ref;
+        info.memory_map.descriptors = descriptors.as_ptr();
+        info.memory_map.map_size = count * core::mem::size_of::<BootMemoryDescriptor>();
+
+        let owned = alloc::boxed::Box::new(OwnedBootInfo { info, descriptors });
+        // Leak the Box so the reference is 'static
+        let owned_ref: &'static OwnedBootInfo = unsafe { &*alloc::boxed::Box::into_raw(owned) };
+
+        Self {
+            boot_info: &owned_ref.info,
             next_address: LOW_MEMORY_CUTOFF,
             free_list: Vec::new(),
         }

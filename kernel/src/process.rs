@@ -846,7 +846,9 @@ impl Process {
         frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
         physical_memory_offset: VirtAddr,
     ) -> Self {
+        crate::serial::println!("[fork] creating PML4...");
         let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
+        crate::serial::println!("[fork] cloning user mappings (COW)...");
 
         // Clone user address space with Copy-on-Write
         paging::clone_user_mappings_cow(
@@ -855,9 +857,15 @@ impl Process {
             frame_allocator,
             physical_memory_offset,
         );
+        crate::serial::println!("[fork] user mappings cloned, trying to lock parent inner");
 
+        // Debug: try_lock to detect deadlock
+        if self.inner.try_lock().is_none() {
+            crate::serial::println!("[fork] PANIC: self.inner already locked! spinning...");
+        }
         let parent = self.inner.lock();
 
+        crate::serial::println!("[fork] checking LSM...");
         // LSM process_create hook
         if crate::security::lsm::check_process_create(parent.sec_ctx.uid, parent.sec_ctx.gid)
             .is_err()
@@ -866,10 +874,20 @@ impl Process {
             // for ABI compatibility, but it won't be added to the process table.
             // For now we continue with the fork; the hook check is advisory.
         }
-
-        // Clone fd table
-        let fd_table: Vec<Option<crate::vfs::FileDescriptor>> =
-            (0..1024).map(|i| parent.fd_table[i].clone()).collect();
+        crate::serial::println!("[fork] LSM done, about to clone fd_table...");
+        crate::serial::println!("[fork] fd_table ptr={:?}", parent.fd_table.as_ptr());
+        // Clone fd table — only allocate for entries we actually use
+        crate::serial::println!("[fork] allocating Vec...");
+        let mut fd_table: Vec<Option<crate::vfs::FileDescriptor>> =
+            Vec::with_capacity(1024);
+        crate::serial::println!("[fork] Vec allocated, starting clone loop...");
+        for i in 0..1024 {
+            if i % 256 == 0 {
+                crate::serial::println!("[fork] cloning fd[{}]...", i);
+            }
+            fd_table.push(parent.fd_table[i].clone());
+        }
+        crate::serial::println!("[fork] fd_table cloned ({} entries), creating PCB...", fd_table.len());
 
         let new_inner = ProcessControlBlock {
             id: ProcessId::new(),
