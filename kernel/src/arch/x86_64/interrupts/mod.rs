@@ -265,17 +265,6 @@ pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
     let cs = unsafe { core::ptr::read_volatile((stack_ptr + 128) as *const u64) as u16 };
     if cs & 0x3 == 0x3 {
         // Came from user mode — preemption allowed.
-        // ── DIAGNOSTIC: trace the first few user-mode timer interrupts ─
-        static USER_TIMER_COUNT: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
-        let count = USER_TIMER_COUNT.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-        if count < 8 {
-            let user_rip = unsafe { core::ptr::read_volatile((stack_ptr + 120) as *const u64) };
-            let user_rsp = unsafe { core::ptr::read_volatile((stack_ptr + 144) as *const u64) };
-            crate::serial::println!(
-                "[TIMER] user_tick #{}: rip={:#x} rsp={:#x} cs={:#x}",
-                count, user_rip, user_rsp, cs,
-            );
-        }
         // Network polling is safe here because user code cannot hold kernel locks.
         #[cfg(feature = "arch-x86_64")]
         crate::net::smoltcp_iface::poll_stack();
@@ -441,13 +430,7 @@ extern "x86-interrupt" fn page_fault_handler(
 
     // Attempt demand paging for user-mode faults
     if stack_frame.code_segment.0 & 0x3 == 0x3 {
-        // ── DIAGNOSTIC: always log user-mode page faults ─────
-        crate::serial::println!(
-            "[PF_USER] addr={:#x} err={:?} rip={:#x}",
-            addr.as_u64(), error_code, stack_frame.instruction_pointer.as_u64(),
-        );
         if crate::memory::demand::handle_demand_fault() {
-            crate::serial::println!("[PF_USER] demand fault HANDLED for {:#x}", addr.as_u64());
             return;
         }
         crate::serial::println!(
@@ -458,32 +441,10 @@ extern "x86-interrupt" fn page_fault_handler(
         crate::task::scheduler::exit_current_task();
     }
 
-    crate::serial::println!("[STG: PF_KERNEL addr={:?} err={:?} cs={:#x} rip={:?}]", addr, error_code, stack_frame.code_segment.0, stack_frame.instruction_pointer);
-
     {
         use x86_64::registers::control::Cr3;
         let (cr3_val, _) = Cr3::read();
         let pml4_phys = cr3_val.start_address();
-        crate::serial::println!(
-            "[PF] CR3={:#x} RSP=0x{:x}",
-            pml4_phys.as_u64(),
-            stack_frame.stack_pointer.as_u64(),
-        );
-        // Dump current instruction bytes at RIP if we can read them safely
-        let rip = stack_frame.instruction_pointer;
-        crate::serial::print(format_args!("[PF] RIP bytes:"));
-        for i in 0..16 {
-            let byte_ptr = (rip.as_u64() + i) as *const u8;
-            // SAFETY: We are in a page fault handler on the panic path.
-            // read_volatile prevents the compiler from optimizing away the
-            // diagnostic read. If the address is unmapped, the serial output
-            // before this point will have been printed.
-            unsafe {
-                let val = core::ptr::read_volatile(byte_ptr);
-                crate::serial::print(format_args!(" {:02x}", val));
-            }
-        }
-        crate::serial::println!("");
     }
 
     let gs_base = GsBase::read();

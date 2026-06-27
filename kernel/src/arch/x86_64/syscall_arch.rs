@@ -143,8 +143,6 @@ fn evaluate_seccomp(
 pub extern "C" fn syscall_dispatch(frame: &mut SyscallFrame) -> u64 {
     use turnix_abi::syscall::{Syscall, SyscallArgs};
     let syscall_num = frame.rax as u16;
-    crate::serial::println!("[syscall] ENTER: nr={} rdi={:#x} rsi={:#x} rip={:#x} rsp={:#x}",
-        syscall_num, frame.rdi, frame.rsi, frame.user_rip, frame.user_rsp);
     let args = SyscallArgs {
         arg0: frame.rdi,
         arg1: frame.rsi,

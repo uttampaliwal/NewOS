@@ -411,30 +411,8 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 next_task = sched.steal_task();
             }
 
-            let queue_depth = sched.cpu_queues[cpu].len();
-            let prev_id = prev_task.id.0;
-
-            if let Some(ref n) = next_task {
-                crate::serial::println!(
-                    "[tick] prev=task{} ts={} was={} zomb={} preempt={} eevdf={} queue_depth={} next=task{}",
-                    prev_id, prev_task.time_slice, was_running, is_zombie,
-                    should_preempt, eevdf_preempt, queue_depth, n.id.0,
-                );
-            } else {
-                crate::serial::println!(
-                    "[tick] prev=task{} ts={} was={} zomb={} preempt={} eevdf={} queue_depth={} next=NONE",
-                    prev_id, prev_task.time_slice, was_running, is_zombie,
-                    should_preempt, eevdf_preempt, queue_depth,
-                );
-            }
-
             if let Some(mut next_task) = next_task {
-                let next_id = next_task.id.0;
                 if was_running && should_preempt {
-                    crate::serial::println!(
-                        "[tick]   -> PREEMPT task{} (put back to queue), run task{}",
-                        prev_id, next_id,
-                    );
                     prev_task.state = super::TaskState::Ready;
                     prev_task.time_slice =
                         super::scheduler_class::default_timeslice(prev_task.policy);
@@ -448,10 +426,6 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                     prev_task.eligible = prev_task.vruntime <= min_vr;
                     sched.cpu_queues[cpu].insert((deadline, prev_task.id.0), prev_task);
                 } else if was_running {
-                    crate::serial::println!(
-                        "[tick]   -> KEEP task{} (not preempted), queue task{} instead",
-                        prev_id, next_id,
-                    );
                     let min_vr = sched.min_vruntime;
                     let deadline = compute_deadline(
                         next_task.vruntime,
@@ -467,14 +441,9 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 next_task.switch_to();
                 next_task.state = super::TaskState::Running;
                 let next_ptr = next_task.stack_ptr;
-                let next_id = next_task.id.0;
                 sched.cpu_current[cpu] = Some(next_task);
                 sched.cpu_current_id[cpu] = sched.cpu_current[cpu].as_ref().map(|t| t.id);
 
-                crate::serial::println!(
-                    "[tick]   -> RETURN task{} stack={:#x}",
-                    next_id, next_ptr,
-                );
                 return next_ptr;
             } else {
                 if is_zombie && sched.task_count == 0 {
@@ -485,10 +454,6 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 }
                 sched.cpu_current[cpu] = Some(prev_task);
                 sched.cpu_current_id[cpu] = sched.cpu_current[cpu].as_ref().map(|t| t.id);
-                crate::serial::println!(
-                    "[tick]   -> NO PREEMPT task{} (no next), keep running",
-                    prev_id,
-                );
             }
         }
     }

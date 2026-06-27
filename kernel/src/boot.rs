@@ -41,16 +41,12 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
 
     let mut frame_allocator = FrameAllocator::new(boot_info);
 
-    let _ = writeln!(writer, "[STG: KERNEL_REACHED]");
-    let _ = writeln!(
-        writer,
-        "Ramdisk: addr=0x{:016x}, size={} bytes",
+    let _ = writeln!(writer, "Ramdisk: addr=0x{:016x}, size={} bytes",
         boot_info.ramdisk_addr, boot_info.ramdisk_size
     );
 
     // Safety: phys_mem_offset is validated by BootInfo checks and points to a valid physical memory mapping.
     let mut mapper = unsafe { crate::memory::paging::init(phys_mem_offset) };
-    let _ = writeln!(writer, "[STG: PAGING_INIT]");
 
     // 1a. W^X self-check: verify no kernel page is both writable and executable
     {
@@ -61,18 +57,14 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                 "[WARNING] W^X: {} kernel pages are W+X at boot (expected until NX enforcement is applied)",
                 violations
             );
-        } else {
-            let _ = writeln!(writer, "[STG: W^X_OK]");
         }
     }
 
     // 2. Initialize the kernel heap
     crate::memory::heap::init_heap(&mut mapper, &mut frame_allocator)
         .expect("heap initialization failed");
-    let _ = writeln!(writer, "[STG: HEAP_INIT]");
 
     crate::task::init_kernel_stack_region(&mut mapper, &mut frame_allocator);
-    let _ = writeln!(writer, "[STG: KSTACK_REGION_INIT]");
 
     // Store the frame allocator in the global mutex after heap is ready
     // Relocate boot_info to kernel heap so it's accessible from user page tables
@@ -87,17 +79,14 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
         );
         SwapManager::init(swap_device, 1024);
     }
-    let _ = writeln!(writer, "[STG: SWAP_INIT]");
 
     // 2.6 Initialize security subsystem (capabilities, LSM, etc.)
     crate::security::init();
-    let _ = writeln!(writer, "[STG: SECURITY_INIT]");
 
     // 3. Initialize Architecture
     crate::gdt::init();
     crate::interrupts::init(phys_mem_offset);
     crate::syscall::init();
-    let _ = writeln!(writer, "[STG: ARCH_INIT]");
 
     // Check kernel page flags for isolation verification
     {
@@ -113,15 +102,12 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
 
     // 3.1 Initialize Video Driver
     crate::drivers::video::init(&boot_info.framebuffer);
-    let _ = writeln!(writer, "[STG: VIDEO_INIT]");
 
     // 3.2 Initialize PCI Driver
     crate::drivers::pci::init(phys_mem_offset);
-    let _ = writeln!(writer, "[STG: PCI_INIT]");
 
     // 3.3 Enumerate PCIe devices via ECAM (ACPI MCFG)
     crate::drivers::pcie::enumerate(boot_info.rsdp_addr, phys_mem_offset);
-    let _ = writeln!(writer, "[STG: PCIE_ENUM]");
 
     // 3.4 Probe virtio-net driver and register in DeviceRegistry
     {
@@ -145,7 +131,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
             }
         }
     }
-    let _ = writeln!(writer, "[STG: VIRTIO_NET_PROBE]");
 
     // 3.4a Probe NVMe driver and register in DeviceRegistry
     {
@@ -169,7 +154,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
             }
         }
     }
-    let _ = writeln!(writer, "[STG: NVME_PROBE]");
 
     // 3.4b Probe XHCI USB driver and register in DeviceRegistry
     {
@@ -193,7 +177,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
             }
         }
     }
-    let _ = writeln!(writer, "[STG: XHCI_PROBE]");
 
     // 3.4c Probe GPU driver and register in DeviceRegistry
     {
@@ -217,7 +200,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
             }
         }
     }
-    let _ = writeln!(writer, "[STG: GPU_PROBE]");
 
     // 3.4d Probe TPM 2.0 TIS driver
     {
@@ -234,32 +216,26 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
             }
         }
     }
-    let _ = writeln!(writer, "[STG: TPM_PROBE]");
 
     // Register PID 1 (init) as the Compositor process
     crate::drivers::gpu::DRM_MANAGER
         .lock()
         .set_compositor_pid(1);
-    let _ = writeln!(writer, "[STG: COMPOSITOR_PID_SET]");
 
     // 3.5 Initialize network stack (uses MAC from virtio-net)
     crate::drivers::net::init();
-    let _ = writeln!(writer, "[STG: NET_INIT]");
 
     // 3.6 Initialize ACPI after PCIe enumeration so AML _PRT routing can
     // resolve against the discovered device registry.
     crate::acpi::init(boot_info.rsdp_addr, phys_mem_offset);
-    let _ = writeln!(writer, "[STG: ACPI_INIT]");
 
     // 3.7 Initialize SMP
     crate::smp::init(phys_mem_offset);
-    let _ = writeln!(writer, "[STG: SMP_INIT]");
 
     // 4. Initialize VFS
     crate::vfs::VFS
         .lock()
         .init_from_ramdisk(boot_info.ramdisk_addr, boot_info.ramdisk_size);
-    let _ = writeln!(writer, "[STG: VFS_INIT]");
 
     // 4.2 Mount tmpfs at "/" and ext4 stub at "/mnt"
     {
@@ -271,8 +247,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                 .mount("/", tmpfs, crate::fs::vfs::MountFlags::default())
         {
             crate::serial::println!("[FS] Failed to mount tmpfs at /: {:?}", e);
-        } else {
-            let _ = writeln!(writer, "[STG: TMPFS_MOUNTED]");
         }
 
         let ext4: Arc<dyn crate::fs::vfs::FsBackend> =
@@ -283,8 +257,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                 .mount("/mnt", ext4, crate::fs::vfs::MountFlags::default())
         {
             crate::serial::println!("[FS] Failed to mount ext4 at /mnt: {:?}", e);
-        } else {
-            let _ = writeln!(writer, "[STG: EXT4_MOUNTED]");
         }
     }
 
@@ -296,37 +268,29 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
             let mut font_data = alloc::vec![0u8; stat.size as usize];
             if let Some(len) = vfs.read(fd, &mut font_data) {
                 crate::drivers::video::init_console(font_data[..len].to_vec());
-                let _ = writeln!(writer, "[STG: CONSOLE_INIT]");
             }
         }
     }
 
     // 5. Load and start the init process from ELF
-    let _ = writeln!(writer, "[STG: INIT_LOAD]");
     {
         let mut vfs = crate::vfs::VFS.lock();
         if let Some(fd) = vfs.open("init") {
             let stat = vfs.stat("init").unwrap();
-            let _ = writeln!(writer, "[STG: INIT_SIZE={}]", stat.size);
             let mut elf_data = alloc::vec![0u8; stat.size as usize];
             if let Some(len) = vfs.read(fd, &mut elf_data) {
-                let _ = writeln!(writer, "[STG: INIT_READ_DONE]");
-                let _ = writeln!(writer, "[STG: INIT_PROC_BUILD]");
-
                 let init_proc = crate::process::Process::new_from_elf(
                     &elf_data[..len],
                     get_frame_allocator().lock().as_mut().unwrap(),
                     phys_mem_offset,
                 )
                 .expect("failed to load init process ELF");
-                let _ = writeln!(writer, "[STG: INIT_PROC_BUILT]");
 
                 // Add init process to PROCESS_TABLE
                 {
                     let mut process_table = crate::process::PROCESS_TABLE.lock();
                     process_table.insert(init_proc.id(), init_proc.inner.clone());
                 }
-                let _ = writeln!(writer, "[STG: INIT_PROC_REGISTERED]");
 
                 let init_task = crate::task::Task::new_user(
                     init_proc.clone(),
@@ -335,28 +299,23 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                     phys_mem_offset,
                 )
                 .expect("failed to create init task");
-                let _ = writeln!(writer, "[STG: INIT_TASK_BUILT]");
                 crate::acpi::register_init_task(init_task.id);
                 crate::task::scheduler::add_task(init_task);
-                let _ = writeln!(writer, "[STG: INIT_TASK_ADDED]");
 
                 // 5.1 Load shell process
                 if let Some(shell_fd) = vfs.open("shell") {
                     let shell_stat = vfs.stat("shell").unwrap();
                     let mut shell_elf_data = alloc::vec![0u8; shell_stat.size as usize];
                     if let Some(shell_len) = vfs.read(shell_fd, &mut shell_elf_data) {
-                        let _ = writeln!(writer, "[STG: SHELL_PROC_BUILD]");
                         let shell_proc = match crate::process::Process::new_from_elf(
                             &shell_elf_data[..shell_len],
                             get_frame_allocator().lock().as_mut().unwrap(),
                             phys_mem_offset,
                         ) {
                             Ok(p) => {
-                                let _ = writeln!(writer, "[STG: SHELL_PROC_BUILT]");
                                 Some(p)
                             }
-                            Err(e) => {
-                                let _ = writeln!(writer, "[STG: SHELL_ELF_ERR {:?}]", e);
+                            Err(_) => {
                                 None
                             }
                         };
@@ -367,7 +326,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                                 let mut process_table = crate::process::PROCESS_TABLE.lock();
                                 process_table.insert(shell_proc.id(), shell_proc.inner.clone());
                             }
-                            let _ = writeln!(writer, "[STG: SHELL_PROC_REGISTERED]");
 
                             crate::task::scheduler::add_task(crate::task::Task::new_user(
                                 shell_proc.clone(),
@@ -376,9 +334,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                                 phys_mem_offset,
                             )
                             .expect("failed to create shell task"));
-                            let _ = writeln!(writer, "[STG: SHELL_TASK_ADDED]");
                         }
-                        let _ = writeln!(writer, "[STG: SHELL_READY]");
                     }
                 }
 
@@ -387,18 +343,15 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                     let fault_stat = vfs.stat("fault-tester").unwrap();
                     let mut fault_elf_data = alloc::vec![0u8; fault_stat.size as usize];
                     if let Some(fault_len) = vfs.read(fault_fd, &mut fault_elf_data) {
-                        let _ = writeln!(writer, "[STG: FAULT_PROC_BUILD]");
                         let fault_proc = match crate::process::Process::new_from_elf(
                             &fault_elf_data[..fault_len],
                             get_frame_allocator().lock().as_mut().unwrap(),
                             phys_mem_offset,
                         ) {
                             Ok(p) => {
-                                let _ = writeln!(writer, "[STG: FAULT_PROC_BUILT]");
                                 Some(p)
                             }
-                            Err(e) => {
-                                let _ = writeln!(writer, "[STG: FAULT_ELF_ERR {:?}]", e);
+                            Err(_) => {
                                 None
                             }
                         };
@@ -409,7 +362,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                                 let mut process_table = crate::process::PROCESS_TABLE.lock();
                                 process_table.insert(fault_proc.id(), fault_proc.inner.clone());
                             }
-                            let _ = writeln!(writer, "[STG: FAULT_PROC_REGISTERED]");
 
                             crate::task::scheduler::add_task(crate::task::Task::new_user(
                                 fault_proc.clone(),
@@ -418,9 +370,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                                 phys_mem_offset,
                             )
                             .expect("failed to create fault-tester task"));
-                            let _ = writeln!(writer, "[STG: FAULT_TASK_ADDED]");
                         }
-                        let _ = writeln!(writer, "[STG: FAULT_TESTER_READY]");
                     }
                 }
 
@@ -435,11 +385,7 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
                         pcb.fd_table[2] = vfs.get_fd(2);
                     }
                 }
-
-                let _ = writeln!(writer, "[STG: INIT_READY]");
             }
-        } else {
-            let _ = writeln!(writer, "[STG: INIT_NOT_FOUND]");
         }
     }
 
@@ -464,8 +410,6 @@ pub fn early_boot(boot_info: &'static BootInfo) -> BootOutcome {
     .expect("failed to create idle task"));
 
     x86_64::instructions::interrupts::enable();
-    let _ = writeln!(writer, "[STG: INTR_ENABLED]");
-    let _ = writeln!(writer, "[STG: SCHED_START]");
     crate::task::scheduler::set_scheduler_ready();
     let _ = writeln!(writer, "[BOOT OK]");
 

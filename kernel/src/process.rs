@@ -294,14 +294,10 @@ impl Process {
         physical_memory_offset: VirtAddr,
     ) -> Result<Self, elf::ParseError> {
         let header = elf::parse_header(elf_data)?;
-        crate::serial::println!("[STG: PROC_NEW_HEADER]");
         let aslr_base = aslr::randomise_load_base(&header);
         let virtual_base = compute_load_base(elf_data, &header)?;
-        crate::serial::println!("[STG: PROC_NEW_BASE]");
 
-        crate::serial::println!("[STG: PROC_CREATE_PML4]");
         let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
-        crate::serial::println!("[STG: PROC_NEW_PML4]");
         let stack_size: u64 = 4096 * 8;
         let stack_base = aslr::randomise_stack_base();
         let stack_start = stack_base;
@@ -333,11 +329,9 @@ impl Process {
             cwd: alloc::string::String::from("/"),
         };
 
-        crate::serial::println!("[STG: PROC_INNER_BUILT]");
         let process = Self {
             inner: Arc::new(Mutex::new(inner)),
         };
-        crate::serial::println!("[STG: PROC_ARC_BUILT]");
 
         // Safety: pml4_frame and physical_memory_offset are valid; map_user_region handles page table setup.
         unsafe {
@@ -349,14 +343,12 @@ impl Process {
                 frame_allocator,
                 physical_memory_offset,
             );
-            crate::serial::println!("[STG: PROC_NEW_STACK]");
 
             // Map ELF Segments
             // Safety: pml4_frame is freshly allocated; physical_memory_offset maps physical memory.
             let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
                 .as_mut_ptr::<PageTable>();
             let process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
-            crate::serial::println!("[STG: PROC_NEW_MAPPER]");
 
             // Track executable segments for post-load write revocation
             let mut exec_segments: Vec<(VirtAddr, u64)> = Vec::new();
@@ -430,11 +422,9 @@ impl Process {
                     }
                 }
             }
-            crate::serial::println!("[STG: PROC_NEW_SEGMENTS]");
 
             // Finalise executable segments: strip WRITABLE and clear NO_EXECUTE
             // so they become R-X before the entry point runs (req 14.4).
-            crate::serial::println!("[STG: PROC_NEW_RELOCATE]");
             apply_relative_relocations(
                 elf_data,
                 &header,
@@ -443,7 +433,6 @@ impl Process {
                 &process_mapper,
                 physical_memory_offset,
             )?;
-            crate::serial::println!("[STG: PROC_NEW_RELOCATED]");
             for (seg_start, seg_size) in &exec_segments {
                 wx::clear_write_and_allow_exec(
                     pml4_frame,
@@ -453,66 +442,7 @@ impl Process {
                 );
             }
 
-            // ── DIAGNOSTIC: Verify code page table entries after W^X ─────
-            for (seg_start, seg_size) in &exec_segments {
-                let page = x86_64::structures::paging::Page::<Size4KiB>::containing_address(*seg_start);
-                let vaddr = page.start_address();
-                let p4_idx = vaddr.p4_index();
-                let p3_idx = vaddr.p3_index();
-                let p2_idx = vaddr.p2_index();
-                let p1_idx = vaddr.p1_index();
-
-                let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
-                    .as_mut_ptr::<PageTable>();
-                let pml4_table = unsafe { &*pml4_ptr };
-
-                crate::serial::println!(
-                    "[PROC] EXEC_SEG VERIFY: seg_start={:#x} seg_size={:#x} entry_vaddr={:#x}",
-                    seg_start.as_u64(), seg_size, vaddr.as_u64(),
-                );
-
-                if pml4_table[p4_idx].is_unused() {
-                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PML4[{:?}] UNUSED!", p4_idx);
-                    continue;
-                }
-                let pdpt = unsafe { &*((physical_memory_offset + pml4_table[p4_idx].frame().unwrap().start_address().as_u64()).as_ptr::<PageTable>()) };
-                if pdpt[p3_idx].is_unused() {
-                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PDPT[{:?}] UNUSED!", p3_idx);
-                    continue;
-                }
-                let pd = unsafe { &*((physical_memory_offset + pdpt[p3_idx].frame().unwrap().start_address().as_u64()).as_ptr::<PageTable>()) };
-                if pd[p2_idx].is_unused() {
-                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PD[{:?}] UNUSED!", p2_idx);
-                    continue;
-                }
-                if pd[p2_idx].flags().contains(PageTableFlags::HUGE_PAGE) {
-                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PD[{:?}] 2MiB HUGE flags={:?}", p2_idx, pd[p2_idx].flags());
-                    continue;
-                }
-                let pt = unsafe { &*((physical_memory_offset + pd[p2_idx].frame().unwrap().start_address().as_u64()).as_ptr::<PageTable>()) };
-                if pt[p1_idx].is_unused() {
-                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PT[{:?}] UNUSED — CODE PAGE NOT MAPPED!", p1_idx);
-                    continue;
-                }
-                let flags = pt[p1_idx].flags();
-                let phys = pt[p1_idx].frame().unwrap().start_address();
-                crate::serial::println!(
-                    "[PROC] EXEC_SEG VERIFY: first page flags={:?} phys={:#x}",
-                    flags, phys.as_u64(),
-                );
-                // Read first 16 bytes to confirm data was copied
-                let code_ptr = (physical_memory_offset + phys.as_u64()).as_ptr::<u8>();
-                crate::serial::print(format_args!("[PROC] EXEC_SEG VERIFY: first 16 bytes:"));
-                for i in 0..16u64 {
-                    unsafe {
-                        let b = core::ptr::read_volatile(code_ptr.add(i as usize));
-                        crate::serial::print(format_args!(" {:02x}", b));
-                    }
-                }
-                crate::serial::println!("");
-            }
         }
-        crate::serial::println!("[STG: PROC_NEW_DONE]");
         Ok(process)
     }
 
@@ -846,9 +776,7 @@ impl Process {
         frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
         physical_memory_offset: VirtAddr,
     ) -> Self {
-        crate::serial::println!("[fork] creating PML4...");
         let pml4_frame = paging::create_process_pml4(frame_allocator, physical_memory_offset);
-        crate::serial::println!("[fork] cloning user mappings (COW)...");
 
         // Clone user address space with Copy-on-Write
         paging::clone_user_mappings_cow(
@@ -857,15 +785,9 @@ impl Process {
             frame_allocator,
             physical_memory_offset,
         );
-        crate::serial::println!("[fork] user mappings cloned, trying to lock parent inner");
 
-        // Debug: try_lock to detect deadlock
-        if self.inner.try_lock().is_none() {
-            crate::serial::println!("[fork] PANIC: self.inner already locked! spinning...");
-        }
         let parent = self.inner.lock();
 
-        crate::serial::println!("[fork] checking LSM...");
         // LSM process_create hook
         if crate::security::lsm::check_process_create(parent.sec_ctx.uid, parent.sec_ctx.gid)
             .is_err()
@@ -874,20 +796,13 @@ impl Process {
             // for ABI compatibility, but it won't be added to the process table.
             // For now we continue with the fork; the hook check is advisory.
         }
-        crate::serial::println!("[fork] LSM done, about to clone fd_table...");
-        crate::serial::println!("[fork] fd_table ptr={:?}", parent.fd_table.as_ptr());
-        // Clone fd table — only allocate for entries we actually use
-        crate::serial::println!("[fork] allocating Vec...");
+
+        // Clone fd table
         let mut fd_table: Vec<Option<crate::vfs::FileDescriptor>> =
             Vec::with_capacity(1024);
-        crate::serial::println!("[fork] Vec allocated, starting clone loop...");
         for i in 0..1024 {
-            if i % 256 == 0 {
-                crate::serial::println!("[fork] cloning fd[{}]...", i);
-            }
             fd_table.push(parent.fd_table[i].clone());
         }
-        crate::serial::println!("[fork] fd_table cloned ({} entries), creating PCB...", fd_table.len());
 
         let new_inner = ProcessControlBlock {
             id: ProcessId::new(),
