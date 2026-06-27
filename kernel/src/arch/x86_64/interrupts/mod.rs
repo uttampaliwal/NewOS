@@ -26,11 +26,44 @@ pub const YIELD_INTERRUPT_VECTOR: u8 = 0x81;
 pub static PICS: Mutex<ChainedPics> =
     Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
+/// HHDM-mapped LAPIC base address, set during init().
+/// The interrupt handler uses this directly to avoid relying on
+/// lazy_static replacement which may not persist across CR3 switches.
+static LAPIC_BASE: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+/// Write to a LAPIC register using the HHDM-mapped address.
+/// This is used by the interrupt handler to avoid page faults when
+/// running with a user process page table.
+#[inline(always)]
+unsafe fn lapic_write(offset: u32, value: u32) {
+    let base = LAPIC_BASE.load(core::sync::atomic::Ordering::Relaxed);
+    if base != 0 {
+        unsafe {
+            let ptr = (base + offset as u64) as *mut u32;
+            core::ptr::write_volatile(ptr, value);
+        }
+    }
+}
+
+/// Read from a LAPIC register using the HHDM-mapped address.
+#[inline(always)]
+unsafe fn lapic_read(offset: u32) -> u32 {
+    let base = LAPIC_BASE.load(core::sync::atomic::Ordering::Relaxed);
+    if base != 0 {
+        unsafe {
+            let ptr = (base + offset as u64) as *const u32;
+            core::ptr::read_volatile(ptr)
+        }
+    } else {
+        0
+    }
+}
+
 lazy_static! {
-    // SAFETY: The LAPIC base address is read from ACPI/MADT and is valid for
-    // MMIO access. Initialized during boot on the BSP with no concurrent access.
+    // SAFETY: The LAPIC base address is set during init() with the correct
+    // HHDM-mapped virtual address. Before init(), no code should access this.
     pub static ref LAPIC: Mutex<apic::LocalApic> =
-        Mutex::new(unsafe { apic::LocalApic::new(apic::get_base_addr()) });
+        Mutex::new(unsafe { apic::LocalApic::new(VirtAddr::new(0)) });
     // SAFETY: This is a placeholder initialization; the actual IOAPIC address
     // is set later in init(). The zero address is replaced before use.
     pub static ref IOAPIC: Mutex<apic::IoApic> =
@@ -62,6 +95,11 @@ pub fn init(phys_mem_offset: VirtAddr) {
         // Initialize modern APIC with correctly mapped virtual addresses
         let lapic_phys = apic::get_base_addr();
         let lapic_virt = phys_mem_offset + lapic_phys.as_u64();
+
+        // Store the HHDM-mapped address so the timer interrupt handler can
+        // use it directly without needing to lock the lazy_static LAPIC,
+        // which may not work after a CR3 switch to a user process page table.
+        LAPIC_BASE.store(lapic_virt.as_u64(), core::sync::atomic::Ordering::Release);
 
         {
             let mut lapic = LAPIC.lock();
@@ -208,11 +246,13 @@ unsafe extern "C" {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
-    // SAFETY: We are inside an interrupt handler. LAPIC.lock() provides
-    // exclusive access, and signal_eoi() writes to the LAPIC MMIO register
-    // to acknowledge the interrupt.
+    // SAFETY: We are inside an interrupt handler. We use LAPIC_BASE (set
+    // during init()) to write the EOI register directly instead of going
+    // through LAPIC.lock(), which can cause page faults when running with
+    // a user process page table (the lazy_static LAPIC may hold a
+    // non-HHDM address that isn't mapped in user PML4).
     unsafe {
-        LAPIC.lock().signal_eoi();
+        lapic_write(0xB0, 0);
     }
     // Read saved CS from the CPU interrupt frame.
     // After 15 saved GPRs (120 bytes), the CPU frame is:
@@ -224,6 +264,17 @@ pub extern "C" fn timer_interrupt_handler_inner(stack_ptr: usize) -> usize {
     let cs = unsafe { core::ptr::read_volatile((stack_ptr + 128) as *const u64) as u16 };
     if cs & 0x3 == 0x3 {
         // Came from user mode — preemption allowed.
+        // ── DIAGNOSTIC: trace the first few user-mode timer interrupts ─
+        static USER_TIMER_COUNT: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+        let count = USER_TIMER_COUNT.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        if count < 8 {
+            let user_rip = unsafe { core::ptr::read_volatile((stack_ptr + 120) as *const u64) };
+            let user_rsp = unsafe { core::ptr::read_volatile((stack_ptr + 144) as *const u64) };
+            crate::serial::println!(
+                "[TIMER] user_tick #{}: rip={:#x} rsp={:#x} cs={:#x}",
+                count, user_rip, user_rsp, cs,
+            );
+        }
         // Network polling is safe here because user code cannot hold kernel locks.
         #[cfg(feature = "arch-x86_64")]
         crate::net::smoltcp_iface::poll_stack();
@@ -320,27 +371,24 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
         }
     }
 
-    // SAFETY: We are inside an interrupt handler. LAPIC.lock() provides
-    // exclusive access, and signal_eoi() acknowledges the interrupt.
+    // SAFETY: Direct LAPIC EOI via LAPIC_BASE set during init().
     unsafe {
-        LAPIC.lock().signal_eoi();
+        lapic_write(0xB0, 0);
     }
 }
 
 extern "x86-interrupt" fn sci_interrupt_handler(_stack_frame: InterruptStackFrame) {
     crate::acpi::handle_sci_interrupt();
-    // SAFETY: We are inside an interrupt handler. LAPIC.lock() provides
-    // exclusive access, and signal_eoi() acknowledges the interrupt.
+    // SAFETY: Direct LAPIC EOI via LAPIC_BASE set during init().
     unsafe {
-        LAPIC.lock().signal_eoi();
+        lapic_write(0xB0, 0);
     }
 }
 
 extern "x86-interrupt" fn generic_external_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    // SAFETY: We are inside an interrupt handler. LAPIC.lock() provides
-    // exclusive access, and signal_eoi() acknowledges the interrupt.
+    // SAFETY: Direct LAPIC EOI via LAPIC_BASE set during init().
     unsafe {
-        LAPIC.lock().signal_eoi();
+        lapic_write(0xB0, 0);
     }
 }
 
@@ -388,11 +436,17 @@ extern "x86-interrupt" fn page_fault_handler(
     use x86_64::registers::control::Cr2;
     use x86_64::registers::model_specific::{GsBase, KernelGsBase};
 
-    let addr = Cr2::read();
+    let addr = Cr2::read().unwrap_or(VirtAddr::new(0xFFFF_FFFF_FFFF_FFFF));
 
     // Attempt demand paging for user-mode faults
     if stack_frame.code_segment.0 & 0x3 == 0x3 {
+        // ── DIAGNOSTIC: always log user-mode page faults ─────
+        crate::serial::println!(
+            "[PF_USER] addr={:#x} err={:?} rip={:#x}",
+            addr.as_u64(), error_code, stack_frame.instruction_pointer.as_u64(),
+        );
         if crate::memory::demand::handle_demand_fault() {
+            crate::serial::println!("[PF_USER] demand fault HANDLED for {:#x}", addr.as_u64());
             return;
         }
         crate::serial::println!(
@@ -403,7 +457,7 @@ extern "x86-interrupt" fn page_fault_handler(
         crate::task::scheduler::exit_current_task();
     }
 
-    crate::serial::println!("[STG: PF_KERNEL addr={:?} err={:?}]", addr, error_code);
+    crate::serial::println!("[STG: PF_KERNEL addr={:?} err={:?} cs={:#x} rip={:?}]", addr, error_code, stack_frame.code_segment.0, stack_frame.instruction_pointer);
 
     {
         use x86_64::registers::control::Cr3;

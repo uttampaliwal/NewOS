@@ -25,9 +25,9 @@ lazy_static! {
 
 pub(crate) struct Scheduler {
     #[cfg(test)]
-    pub(crate) cpu_queues: alloc::vec::Vec<BTreeMap<u64, Task>>,
+    pub(crate) cpu_queues: alloc::vec::Vec<BTreeMap<(u64, usize), Task>>,
     #[cfg(not(test))]
-    cpu_queues: alloc::vec::Vec<BTreeMap<u64, Task>>,
+    cpu_queues: alloc::vec::Vec<BTreeMap<(u64, usize), Task>>,
     cpu_current: alloc::vec::Vec<Option<Task>>,
     cpu_current_id: alloc::vec::Vec<Option<TaskId>>,
     blocked_tasks: alloc::vec::Vec<Task>,
@@ -126,7 +126,7 @@ pub(crate) fn compute_deadline(vruntime: u64, time_slice: u32, weight: u32) -> u
 
 /// Pick the next task to run using EEVDF logic.
 /// Returns the eligible task with the earliest (smallest) virtual deadline.
-pub(crate) fn pick_eevdf(queue: &BTreeMap<u64, Task>) -> Option<&Task> {
+pub(crate) fn pick_eevdf(queue: &BTreeMap<(u64, usize), Task>) -> Option<&Task> {
     queue.values().filter(|t| t.eligible).min_by_key(|t| t.deadline)
 }
 
@@ -150,7 +150,7 @@ pub fn add_task(task: Task) {
         let deadline = compute_deadline(task.vruntime, task.time_slice, task.weight);
         task.deadline = deadline;
         task.eligible = task.vruntime <= min_vr;
-        sched.cpu_queues[target].insert(deadline, task);
+        sched.cpu_queues[target].insert((deadline, task.id.0), task);
         sched.task_count += 1;
     });
 }
@@ -168,9 +168,9 @@ pub fn remove_task(task_id: TaskId) {
             return;
         }
         for queue in &mut sched.cpu_queues {
-            let deadline_to_remove = queue.iter().find(|(_, t)| t.id == task_id).map(|(d, _)| *d);
-            if let Some(d) = deadline_to_remove {
-                queue.remove(&d);
+            let key_to_remove = queue.iter().find(|(_, t)| t.id == task_id).map(|(k, _)| *k);
+            if let Some(k) = key_to_remove {
+                queue.remove(&k);
                 sched.task_count -= 1;
                 return;
             }
@@ -190,7 +190,92 @@ pub fn start_scheduling() -> ! {
 
         let mut sched = SCHEDULER.lock();
         let cpu = sched.current_cpu_id();
+        crate::serial::println!(
+            "[sched] CPU {}: {} tasks in queue, starting first task",
+            cpu,
+            sched.cpu_queues[cpu].len()
+        );
+        for (_, t) in sched.cpu_queues[cpu].iter() {
+            crate::serial::println!(
+                "[sched]   task_id={}, deadline={:?}, eligible={}, state={:?}",
+                t.id.0, t.deadline, t.eligible, t.state
+            );
+        }
         if let Some((_, mut next_task)) = sched.cpu_queues[cpu].pop_first() {
+            // ── DIAGNOSTIC: dump the iretq frame and entry point ───────
+            {
+                let entry = next_task.process.entry_point();
+                let stack_top = next_task.process.stack_top();
+                let pml4 = next_task.process.pml4_frame();
+                crate::serial::println!(
+                    "[sched] IRETQ DIAG: task_id={} entry={:#x} stack_top={:#x} pml4={:#x} stack_ptr={:#x}",
+                    next_task.id.0, entry.as_u64(), stack_top.as_u64(),
+                    pml4.start_address().as_u64(), next_task.stack_ptr,
+                );
+
+                // Walk the process page table at entry point to verify code page is mapped
+                let phys_offset = crate::boot::get_phys_mem_offset();
+                let entry_virt = entry;
+                let p4_idx = entry_virt.p4_index();
+                let p3_idx = entry_virt.p3_index();
+                let p2_idx = entry_virt.p2_index();
+                let p1_idx = entry_virt.p1_index();
+
+                let pml4_ptr = (phys_offset + pml4.start_address().as_u64())
+                    .as_mut_ptr::<x86_64::structures::paging::PageTable>();
+                let pml4 = unsafe { &*pml4_ptr };
+
+                if pml4[p4_idx].is_unused() {
+                    crate::serial::println!("[sched] IRETQ DIAG: PML4[{:?}] is UNUSED — entry page UNMAPPED!", p4_idx);
+                } else {
+                    let pdpt_ptr = (phys_offset + pml4[p4_idx].frame().unwrap().start_address().as_u64())
+                        .as_mut_ptr::<x86_64::structures::paging::PageTable>();
+                    let pdpt = unsafe { &*pdpt_ptr };
+                    if pdpt[p3_idx].is_unused() {
+                        crate::serial::println!("[sched] IRETQ DIAG: PDPT[{:?}] is UNUSED — entry page UNMAPPED!", p3_idx);
+                    } else {
+                        let pd_ptr = (phys_offset + pdpt[p3_idx].frame().unwrap().start_address().as_u64())
+                            .as_mut_ptr::<x86_64::structures::paging::PageTable>();
+                        let pd = unsafe { &*pd_ptr };
+                        if pd[p2_idx].is_unused() {
+                            crate::serial::println!("[sched] IRETQ DIAG: PD[{:?}] is UNUSED — entry page UNMAPPED!", p2_idx);
+                        } else if pd[p2_idx].flags().contains(x86_64::structures::paging::PageTableFlags::HUGE_PAGE) {
+                            crate::serial::println!("[sched] IRETQ DIAG: PD[{:?}] is 2MiB HUGE page, flags={:?}", p2_idx, pd[p2_idx].flags());
+                        } else {
+                            let pt_ptr = (phys_offset + pd[p2_idx].frame().unwrap().start_address().as_u64())
+                                .as_mut_ptr::<x86_64::structures::paging::PageTable>();
+                            let pt = unsafe { &*pt_ptr };
+                            if pt[p1_idx].is_unused() {
+                                crate::serial::println!("[sched] IRETQ DIAG: PT[{:?}] is UNUSED — entry page UNMAPPED!", p1_idx);
+                            } else {
+                                let flags = pt[p1_idx].flags();
+                                let phys = pt[p1_idx].frame().unwrap().start_address();
+                                crate::serial::println!(
+                                    "[sched] IRETQ DIAG: PT[{:?}] flags={:?} phys={:#x} — code page {}{}{}{}",
+                                    p1_idx, flags, phys.as_u64(),
+                                    if flags.contains(x86_64::structures::paging::PageTableFlags::PRESENT) { "PRESENT " } else { "NOT_PRESENT " },
+                                    if flags.contains(x86_64::structures::paging::PageTableFlags::USER_ACCESSIBLE) { "USER " } else { "KERN " },
+                                    if flags.contains(x86_64::structures::paging::PageTableFlags::WRITABLE) { "WRITABLE " } else { "RO " },
+                                    if flags.contains(x86_64::structures::paging::PageTableFlags::NO_EXECUTE) { "NX " } else { "EXEC " },
+                                );
+                                // Read first 64 bytes of code at entry point via physical mapping
+                                // entry_virt may not be page-aligned; add the page offset
+                                let page_offset = entry_virt.as_u64() & 0xFFF;
+                                let code_ptr = (phys_offset + phys.as_u64() + page_offset).as_ptr::<u8>();
+                                crate::serial::print(format_args!("[sched] IRETQ DIAG: entry_page_offset={:#x} first 64 code bytes at entry:", page_offset));
+                                for i in 0..64u64 {
+                                    unsafe {
+                                        let b = core::ptr::read_volatile(code_ptr.add(i as usize));
+                                        crate::serial::print(format_args!(" {:02x}", b));
+                                    }
+                                }
+                                crate::serial::println!("");
+                            }
+                        }
+                    }
+                }
+            }
+
             next_task.switch_to();
             next_task.state = super::TaskState::Running;
             sched.cpu_current[cpu] = Some(next_task);
@@ -200,6 +285,8 @@ pub fn start_scheduling() -> ! {
                 None => unreachable!("scheduler: cpu_current was just set to Some"),
             };
             drop(sched);
+
+            crate::serial::println!("[sched] IRETQ: about to iretq to user mode, rsp={:#x}", next_ptr);
 
             // Safety: next_ptr is a valid stack pointer from Task::new_user; pop pattern matches SyscallContext frame layout; iretq returns to user mode.
             unsafe {
@@ -263,12 +350,13 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                         if prev_task.vruntime > sched.min_vruntime {
                             sched.min_vruntime = prev_task.vruntime;
                         }
-                        // Recompute deadline after vruntime update
-                        prev_task.deadline = compute_deadline(
-                            prev_task.vruntime,
-                            prev_task.time_slice,
-                            prev_task.weight,
-                        );
+                        // NOTE: Do NOT recompute deadline here.
+                        // Recomputing with the updated vruntime would make the running
+                        // task's deadline later than all queued tasks (which still have
+                        // deadlines computed at their insertion time). This causes EEVDF
+                        // to preempt on every tick, preventing any task from running
+                        // more than one tick. Deadline is recomputed when the task is
+                        // actually reinserted into the queue (PREEMPT branch below).
                     }
                     _ => {}
                 }
@@ -292,7 +380,7 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
             }
 
             // EEVDF: preempt if running task's deadline exceeds the earliest eligible deadline
-            if was_running
+            let eevdf_preempt = if was_running
                 && matches!(
                     prev_task.policy,
                     super::scheduler_class::SchedulingPolicy::SCHED_NORMAL
@@ -302,14 +390,17 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 && prev_task.deadline > next.deadline
             {
                 should_preempt = true;
-            }
+                true
+            } else {
+                false
+            };
 
             // Try local queue first (pick eligible task with earliest deadline),
             // then steal from busiest CPU.
             let mut next_task = if let Some(key) = sched.cpu_queues[cpu]
                 .iter()
                 .filter(|(_, t)| t.eligible)
-                .min_by_key(|(k, _)| *k)
+                .min_by_key(|(k, _)| k.0)
                 .map(|(k, _)| *k)
             {
                 sched.cpu_queues[cpu].remove(&key)
@@ -320,8 +411,30 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 next_task = sched.steal_task();
             }
 
+            let queue_depth = sched.cpu_queues[cpu].len();
+            let prev_id = prev_task.id.0;
+
+            if let Some(ref n) = next_task {
+                crate::serial::println!(
+                    "[tick] prev=task{} ts={} was={} zomb={} preempt={} eevdf={} queue_depth={} next=task{}",
+                    prev_id, prev_task.time_slice, was_running, is_zombie,
+                    should_preempt, eevdf_preempt, queue_depth, n.id.0,
+                );
+            } else {
+                crate::serial::println!(
+                    "[tick] prev=task{} ts={} was={} zomb={} preempt={} eevdf={} queue_depth={} next=NONE",
+                    prev_id, prev_task.time_slice, was_running, is_zombie,
+                    should_preempt, eevdf_preempt, queue_depth,
+                );
+            }
+
             if let Some(mut next_task) = next_task {
+                let next_id = next_task.id.0;
                 if was_running && should_preempt {
+                    crate::serial::println!(
+                        "[tick]   -> PREEMPT task{} (put back to queue), run task{}",
+                        prev_id, next_id,
+                    );
                     prev_task.state = super::TaskState::Ready;
                     prev_task.time_slice =
                         super::scheduler_class::default_timeslice(prev_task.policy);
@@ -333,8 +446,12 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                     );
                     prev_task.deadline = deadline;
                     prev_task.eligible = prev_task.vruntime <= min_vr;
-                    sched.cpu_queues[cpu].insert(deadline, prev_task);
+                    sched.cpu_queues[cpu].insert((deadline, prev_task.id.0), prev_task);
                 } else if was_running {
+                    crate::serial::println!(
+                        "[tick]   -> KEEP task{} (not preempted), queue task{} instead",
+                        prev_id, next_id,
+                    );
                     let min_vr = sched.min_vruntime;
                     let deadline = compute_deadline(
                         next_task.vruntime,
@@ -343,16 +460,21 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                     );
                     next_task.deadline = deadline;
                     next_task.eligible = next_task.vruntime <= min_vr;
-                    sched.cpu_queues[cpu].insert(deadline, next_task);
+                    sched.cpu_queues[cpu].insert((deadline, next_task.id.0), next_task);
                     next_task = prev_task;
                 }
 
                 next_task.switch_to();
                 next_task.state = super::TaskState::Running;
                 let next_ptr = next_task.stack_ptr;
+                let next_id = next_task.id.0;
                 sched.cpu_current[cpu] = Some(next_task);
                 sched.cpu_current_id[cpu] = sched.cpu_current[cpu].as_ref().map(|t| t.id);
 
+                crate::serial::println!(
+                    "[tick]   -> RETURN task{} stack={:#x}",
+                    next_id, next_ptr,
+                );
                 return next_ptr;
             } else {
                 if is_zombie && sched.task_count == 0 {
@@ -363,6 +485,10 @@ pub fn timer_tick(current_stack_ptr: usize) -> usize {
                 }
                 sched.cpu_current[cpu] = Some(prev_task);
                 sched.cpu_current_id[cpu] = sched.cpu_current[cpu].as_ref().map(|t| t.id);
+                crate::serial::println!(
+                    "[tick]   -> NO PREEMPT task{} (no next), keep running",
+                    prev_id,
+                );
             }
         }
     }
@@ -481,7 +607,7 @@ pub fn wake_task_by_id(task_id: TaskId) {
                 let deadline = compute_deadline(task.vruntime, task.time_slice, task.weight);
                 task.deadline = deadline;
                 task.eligible = task.vruntime <= min_vr;
-                sched.cpu_queues[target].insert(deadline, task);
+                sched.cpu_queues[target].insert((deadline, task.id.0), task);
                 return;
             }
         }
@@ -515,7 +641,7 @@ pub fn wake_tasks_waiting_for_parent(parent_pid: ProcessId) {
                 let deadline = compute_deadline(task.vruntime, task.time_slice, task.weight);
                 task.deadline = deadline;
                 task.eligible = task.vruntime <= min_vr;
-                sched.cpu_queues[target].insert(deadline, task);
+                sched.cpu_queues[target].insert((deadline, task.id.0), task);
             } else {
                 i += 1;
             }
@@ -740,17 +866,17 @@ mod tests {
         let mut task_a = make_test_task(10);
         task_a.eligible = true;
         task_a.deadline = 100;
-        queue.insert(task_a.deadline, task_a);
+        queue.insert((task_a.deadline, task_a.id.0), task_a);
 
         let mut task_b = make_test_task(20);
         task_b.eligible = true;
         task_b.deadline = 50;
-        queue.insert(task_b.deadline, task_b);
+        queue.insert((task_b.deadline, task_b.id.0), task_b);
 
         let mut task_c = make_test_task(30);
         task_c.eligible = true;
         task_c.deadline = 200;
-        queue.insert(task_c.deadline, task_c);
+        queue.insert((task_c.deadline, task_c.id.0), task_c);
 
         let picked = pick_eevdf(&queue).expect("should pick a task");
         assert_eq!(picked.deadline, 50, "should pick task with earliest deadline (50)");
@@ -764,12 +890,12 @@ mod tests {
         let mut task_a = make_test_task(10);
         task_a.eligible = false;
         task_a.deadline = 10;
-        queue.insert(task_a.deadline, task_a);
+        queue.insert((task_a.deadline, task_a.id.0), task_a);
 
         let mut task_b = make_test_task(20);
         task_b.eligible = true;
         task_b.deadline = 100;
-        queue.insert(task_b.deadline, task_b);
+        queue.insert((task_b.deadline, task_b.id.0), task_b);
 
         let picked = pick_eevdf(&queue).expect("should pick a task");
         assert_eq!(picked.deadline, 100, "should skip ineligible task and pick next eligible");
@@ -790,12 +916,12 @@ mod tests {
         let mut task_a = make_test_task(10);
         task_a.eligible = false;
         task_a.deadline = 10;
-        queue.insert(task_a.deadline, task_a);
+        queue.insert((task_a.deadline, task_a.id.0), task_a);
 
         let mut task_b = make_test_task(20);
         task_b.eligible = false;
         task_b.deadline = 50;
-        queue.insert(task_b.deadline, task_b);
+        queue.insert((task_b.deadline, task_b.id.0), task_b);
 
         assert!(pick_eevdf(&queue).is_none());
     }
@@ -896,7 +1022,7 @@ mod tests {
             let mut task = make_test_task(pid);
             task.eligible = true;
             task.deadline = deadline;
-            queue.insert(deadline, task);
+            queue.insert((deadline, task.id.0), task);
         }
 
         let picked = pick_eevdf(&queue).unwrap();
@@ -912,19 +1038,19 @@ mod tests {
         let mut t1 = make_test_task(10);
         t1.eligible = false;
         t1.deadline = 10;
-        queue.insert(t1.deadline, t1);
+        queue.insert((t1.deadline, t1.id.0), t1);
 
         // Second earliest is eligible
         let mut t2 = make_test_task(20);
         t2.eligible = true;
         t2.deadline = 50;
-        queue.insert(t2.deadline, t2);
+        queue.insert((t2.deadline, t2.id.0), t2);
 
         // Third is eligible but later
         let mut t3 = make_test_task(30);
         t3.eligible = true;
         t3.deadline = 100;
-        queue.insert(t3.deadline, t3);
+        queue.insert((t3.deadline, t3.id.0), t3);
 
         let picked = pick_eevdf(&queue).unwrap();
         assert_eq!(picked.deadline, 50, "should skip ineligible deadline=10");
@@ -942,7 +1068,7 @@ mod tests {
         let mut task = task;
         task.deadline = deadline;
         task.eligible = task.vruntime <= sched.min_vruntime;
-        sched.cpu_queues[target].insert(deadline, task);
+        sched.cpu_queues[target].insert((deadline, task.id.0), task);
         sched.task_count += 1;
     }
 
@@ -1041,7 +1167,7 @@ mod tests {
         }
         let sched = SCHEDULER.lock();
         let queue = &sched.cpu_queues[0];
-        let deadlines: alloc::vec::Vec<u64> = queue.keys().copied().collect();
+        let deadlines: alloc::vec::Vec<(u64, usize)> = queue.keys().copied().collect();
         assert!(deadlines.windows(2).all(|w| w[0] <= w[1]), "deadlines should be sorted");
     }
 

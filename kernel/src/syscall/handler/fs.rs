@@ -529,11 +529,20 @@ pub fn handle_write(args: SyscallArgs) -> SyscallResult {
     let addr = args.arg0 as *const u8;
     let len = args.arg1 as usize;
 
+    crate::serial::println!("[syscall] write: addr={:#x} len={}", addr as usize, len);
+
     if addr.is_null() || len == 0 {
         return SyscallResult::Error(1);
     }
 
-    // Safety: In a real OS we'd verify this address belongs to the user
+    // Safety: In a real OS we'd verify this address belongs to the user.
+    // Validate the address is in userspace (lower half) before reading.
+    let addr_val = addr as u64;
+    if addr_val >= 0x0000_8000_0000_0000 {
+        crate::serial::println!("[syscall] write: rejected kernel addr={:#x} len={}", addr_val, len);
+        return SyscallResult::Error(1);
+    }
+
     let slice = unsafe { core::slice::from_raw_parts(addr, len) };
 
     let string = core::str::from_utf8(slice).unwrap_or("");

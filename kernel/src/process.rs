@@ -452,6 +452,65 @@ impl Process {
                     *seg_size,
                 );
             }
+
+            // ── DIAGNOSTIC: Verify code page table entries after W^X ─────
+            for (seg_start, seg_size) in &exec_segments {
+                let page = x86_64::structures::paging::Page::<Size4KiB>::containing_address(*seg_start);
+                let vaddr = page.start_address();
+                let p4_idx = vaddr.p4_index();
+                let p3_idx = vaddr.p3_index();
+                let p2_idx = vaddr.p2_index();
+                let p1_idx = vaddr.p1_index();
+
+                let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
+                    .as_mut_ptr::<PageTable>();
+                let pml4_table = unsafe { &*pml4_ptr };
+
+                crate::serial::println!(
+                    "[PROC] EXEC_SEG VERIFY: seg_start={:#x} seg_size={:#x} entry_vaddr={:#x}",
+                    seg_start.as_u64(), seg_size, vaddr.as_u64(),
+                );
+
+                if pml4_table[p4_idx].is_unused() {
+                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PML4[{:?}] UNUSED!", p4_idx);
+                    continue;
+                }
+                let pdpt = unsafe { &*((physical_memory_offset + pml4_table[p4_idx].frame().unwrap().start_address().as_u64()).as_ptr::<PageTable>()) };
+                if pdpt[p3_idx].is_unused() {
+                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PDPT[{:?}] UNUSED!", p3_idx);
+                    continue;
+                }
+                let pd = unsafe { &*((physical_memory_offset + pdpt[p3_idx].frame().unwrap().start_address().as_u64()).as_ptr::<PageTable>()) };
+                if pd[p2_idx].is_unused() {
+                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PD[{:?}] UNUSED!", p2_idx);
+                    continue;
+                }
+                if pd[p2_idx].flags().contains(PageTableFlags::HUGE_PAGE) {
+                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PD[{:?}] 2MiB HUGE flags={:?}", p2_idx, pd[p2_idx].flags());
+                    continue;
+                }
+                let pt = unsafe { &*((physical_memory_offset + pd[p2_idx].frame().unwrap().start_address().as_u64()).as_ptr::<PageTable>()) };
+                if pt[p1_idx].is_unused() {
+                    crate::serial::println!("[PROC] EXEC_SEG VERIFY: PT[{:?}] UNUSED — CODE PAGE NOT MAPPED!", p1_idx);
+                    continue;
+                }
+                let flags = pt[p1_idx].flags();
+                let phys = pt[p1_idx].frame().unwrap().start_address();
+                crate::serial::println!(
+                    "[PROC] EXEC_SEG VERIFY: first page flags={:?} phys={:#x}",
+                    flags, phys.as_u64(),
+                );
+                // Read first 16 bytes to confirm data was copied
+                let code_ptr = (physical_memory_offset + phys.as_u64()).as_ptr::<u8>();
+                crate::serial::print(format_args!("[PROC] EXEC_SEG VERIFY: first 16 bytes:"));
+                for i in 0..16u64 {
+                    unsafe {
+                        let b = core::ptr::read_volatile(code_ptr.add(i as usize));
+                        crate::serial::print(format_args!(" {:02x}", b));
+                    }
+                }
+                crate::serial::println!("");
+            }
         }
         crate::serial::println!("[STG: PROC_NEW_DONE]");
         Ok(process)

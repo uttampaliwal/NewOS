@@ -46,17 +46,7 @@ pub fn get_bsp_cpu_id() -> u32 {
 }
 
 pub fn get_current_cpu_id() -> u32 {
-    match crate::acpi::get_lapic_address() {
-        Some(lapic_base) => {
-            // SAFETY: `lapic_base` is a valid LAPIC MMIO physical address obtained
-            // from ACPI; the +0x20 offset is the LAPIC ID register, which is
-            // always 4-byte aligned and readable on x86_64 APIC-capable hardware.
-            let lapic_id_reg =
-                unsafe { core::ptr::read_volatile((lapic_base as usize + 0x20) as *const u32) };
-            lapic_id_reg >> 24
-        }
-        None => 0,
-    }
+    BSP_CPU_ID.load(Ordering::Relaxed)
 }
 
 pub fn set_current_cpu_data(data: &PerCpuData) {

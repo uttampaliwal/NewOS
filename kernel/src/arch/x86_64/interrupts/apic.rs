@@ -18,21 +18,17 @@ impl LocalApic {
     }
 
     /// Read a register from the Local APIC.
-    // SAFETY: Caller of `read` guarantees self.base_addr points to a valid LAPIC MMIO region.
+    /// Uses the HHDM-mapped LAPIC_BASE to avoid page faults when running
+    /// with a user process page table.
     unsafe fn read(&self, offset: u32) -> u32 {
-        unsafe {
-            let ptr = (self.base_addr.as_u64() + offset as u64) as *const u32;
-            ptr.read_volatile()
-        }
+        unsafe { super::lapic_read(offset) }
     }
 
     /// Write a register to the Local APIC.
-    // SAFETY: Caller of `write` guarantees self.base_addr points to a valid LAPIC MMIO region.
+    /// Uses the HHDM-mapped LAPIC_BASE to avoid page faults when running
+    /// with a user process page table.
     unsafe fn write(&mut self, offset: u32, value: u32) {
-        unsafe {
-            let ptr = (self.base_addr.as_u64() + offset as u64) as *mut u32;
-            ptr.write_volatile(value);
-        }
+        unsafe { super::lapic_write(offset, value) }
     }
 
     /// Initialize the Local APIC.

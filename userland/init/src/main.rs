@@ -11,6 +11,9 @@ use libturnix::{exec, exit, fork, kill, print, read_shutdown_signal, shutdown, w
 const SIGTERM: u8 = 15;
 const SIGKILL: u8 = 9;
 
+// ── DIAGNOSTIC: static marker written via raw syscall ────────────────
+static INIT_MARKER: [u8; 6] = *b"INIT0\n";
+
 // ── Print helpers ────────────────────────────────────────────────────────
 fn print_u64(mut n: u64) {
     if n == 0 {
@@ -37,6 +40,22 @@ fn println(s: &str) {
 // ── Entry point ──────────────────────────────────────────────────────────
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
+    // ── DIAGNOSTIC: raw syscall to prove _start executes ─────
+    {
+        let ptr = INIT_MARKER.as_ptr() as u64;
+        let len = INIT_MARKER.len() as u64;
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                in("rax") 1u64,
+                in("rdi") ptr,
+                in("rsi") len,
+                out("rcx") _,
+                out("r11") _,
+            );
+        }
+    }
+
     println("turnix Init Daemon v4");
     println("[BOOT OK]");
 
@@ -199,7 +218,19 @@ fn shutdown_services(services: &mut [ServiceManifest], count: usize) {
 // ── Standard no_std cruft ────────────────────────────────────────────────
 #[cfg(not(test))]
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(info: &PanicInfo) -> ! {
+    print("PANIC: ");
+    use core::fmt::Write;
+    struct PanicWriter;
+    impl Write for PanicWriter {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            print(s);
+            Ok(())
+        }
+    }
+    let mut w = PanicWriter;
+    let _ = write!(w, "{}", info.message());
+    print("\n");
     exit(1);
 }
 

@@ -54,7 +54,7 @@ fn test_insert_task(task: Task) {
     let mut task = task;
     task.deadline = deadline;
     task.eligible = task.vruntime <= sched.min_vruntime;
-    sched.cpu_queues[target].insert(deadline, task);
+    sched.cpu_queues[target].insert((deadline, task.id.0), task);
     sched.task_count += 1;
 }
 
@@ -115,7 +115,7 @@ fn test_pick_eevdf_vruntime_fairness() {
         task.weight = 1024;
         task.eligible = true;
         task.deadline = compute_deadline(vruntime, DEFAULT_TIMESLICE, 1024);
-        queue.insert(task.deadline, task);
+        queue.insert((task.deadline, task.id.0), task);
     }
     let picked = pick_eevdf(&queue).expect("should pick a task");
     // All tasks have equal vruntime and weight; first one inserted wins.
@@ -134,7 +134,7 @@ fn test_pick_eevdf_weight_priority() {
     low.vruntime = 0;
     low.eligible = true;
     low.deadline = compute_deadline(0, DEFAULT_TIMESLICE, 15);
-    queue.insert(low.deadline, low);
+    queue.insert((low.deadline, low.id.0), low);
 
     // High-weight task (nice -20): small virtual deadline
     let mut high = make_test_task(811);
@@ -143,7 +143,7 @@ fn test_pick_eevdf_weight_priority() {
     high.eligible = true;
     high.deadline = compute_deadline(0, DEFAULT_TIMESLICE, 88761);
     let high_id = high.id;
-    queue.insert(high.deadline, high);
+    queue.insert((high.deadline, high.id.0), high);
 
     let picked = pick_eevdf(&queue).expect("should pick a task");
     // High weight => smaller virtual deadline => picked first
@@ -201,7 +201,7 @@ fn test_insert_maintains_deadline_order() {
     }
     let sched = SCHEDULER.lock();
     let queue = &sched.cpu_queues[0];
-    let deadlines: alloc::vec::Vec<u64> = queue.keys().copied().collect();
+    let deadlines: alloc::vec::Vec<(u64, usize)> = queue.keys().copied().collect();
     assert!(
         deadlines.windows(2).all(|w| w[0] <= w[1]),
         "BTreeMap keys must be sorted: {:?}",
@@ -238,18 +238,18 @@ fn test_multiple_pick_round_robin() {
         let mut task = make_test_task(pid);
         task.eligible = true;
         task.deadline = deadline;
-        queue.insert(deadline, task);
+        queue.insert((deadline, task.id.0), task);
     }
     let mut picked_ids = alloc::vec::Vec::new();
     for _ in 0..3 {
         let picked = pick_eevdf(&queue).expect("should pick a task");
         let picked_deadline = picked.deadline;
         picked_ids.push(picked.id);
-        let mut task = queue.remove(&picked_deadline).unwrap();
+        let mut task = queue.remove(&(picked_deadline, picked.id.0)).unwrap();
         task.vruntime += 100;
         task.deadline = compute_deadline(task.vruntime, DEFAULT_TIMESLICE, task.weight);
         task.eligible = true;
-        queue.insert(task.deadline, task);
+        queue.insert((task.deadline, task.id.0), task);
     }
     // All three distinct tasks should have been picked
     let unique: alloc::collections::BTreeSet<_> = picked_ids.iter().collect();
