@@ -11,10 +11,11 @@ use libturnix::allocator::BumpAllocator;
 #[global_allocator]
 static ALLOCATOR: BumpAllocator = BumpAllocator;
 
-use display_manager::{PASSWD_PATH, PasswdEntry, authenticate};
+use display_manager::{PASSWD_PATH, PasswdEntry};
 use libturnix::{close, exit, fork, open, print, println, read, setgid, setuid, waitpid};
 use turnix_abi::syscall::{CapData, CapHeader, LINUX_CAPABILITY_VERSION};
 
+#[allow(dead_code)]
 fn greet() {
     println("");
     println("╔══════════════════════════════════╗");
@@ -23,6 +24,7 @@ fn greet() {
     println("╚══════════════════════════════════╝");
 }
 
+#[allow(dead_code)]
 fn read_line() -> String {
     let mut buf = [0u8; 1];
     let mut s = String::new();
@@ -48,11 +50,13 @@ fn read_line() -> String {
     }
 }
 
+#[allow(dead_code)]
 fn read_username() -> String {
     print("login: ");
     read_line()
 }
 
+#[allow(dead_code)]
 fn read_password() -> String {
     print("password: ");
     let pwd = read_line();
@@ -60,6 +64,7 @@ fn read_password() -> String {
     pwd
 }
 
+#[allow(dead_code)]
 fn load_passwd() -> Option<String> {
     let fd = open(PASSWD_PATH)?;
     let mut buf = [0u8; 4096];

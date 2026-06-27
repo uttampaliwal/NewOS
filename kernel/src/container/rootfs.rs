@@ -11,7 +11,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use spin::Mutex;
 
-use crate::fs::vfs::{FsBackend, FsError, InodeId};
+use crate::fs::vfs::{FsBackend, InodeId};
 use crate::fs::overlay::OverlayFs;
 use crate::fs::tmpfs::TmpfsBackend;
 

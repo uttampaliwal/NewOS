@@ -448,30 +448,13 @@ impl Task {
         let user_cs = if parent_frame.user_cs & 0x3 == 0x3 {
             parent_frame.user_cs
         } else {
-            crate::serial::println!(
-                "[fork] WARN: parent CS={:#x} not user-mode, using 0x2b",
-                parent_frame.user_cs
-            );
             0x2b // USER_CODE_SEGMENT
         };
         let user_ss = if parent_frame.user_ss & 0x3 == 0x3 {
             parent_frame.user_ss
         } else {
-            crate::serial::println!(
-                "[fork] WARN: parent SS={:#x} not user-mode, using 0x23",
-                parent_frame.user_ss
-            );
             0x23 // USER_DATA_SEGMENT
         };
-
-        crate::serial::println!(
-            "[fork] child frame: RIP={:#x} CS={:#x} RFLAGS={:#x} RSP={:#x} SS={:#x}",
-            parent_frame.user_rip,
-            user_cs,
-            safe_rflags,
-            parent_frame.user_rsp,
-            user_ss
-        );
 
         let mut stack_ptr = stack_top_virt.as_mut_ptr::<u64>();
 

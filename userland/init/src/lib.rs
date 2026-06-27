@@ -15,33 +15,21 @@ pub struct ServiceManifest {
 
 // Embedded TOML service manifests.
 pub const SERVICE_TOML: &[u8] = b"\
-[service.ipc-broker]
-path = \"ipc-broker\"
-after = []
-
-[service.service-manager]
-path = \"service-manager\"
-after = [\"ipc-broker\"]
-
-[service.log-daemon]
-path = \"log-daemon\"
-after = [\"ipc-broker\"]
-
-[service.network-manager]
-path = \"network-manager\"
-after = [\"ipc-broker\", \"log-daemon\"]
-
 [service.compositor]
 path = \"compositor\"
-after = [\"service-manager\"]
+after = []
 
 [service.display-manager]
 path = \"display-manager\"
 after = [\"compositor\"]
 
+[service.desktop-shell]
+path = \"desktop-shell\"
+after = [\"compositor\"]
+
 [service.shell]
 path = \"shell\"
-after = [\"compositor\", \"log-daemon\"]
+after = [\"compositor\"]
 
 [service.fault-tester]
 path = \"fault-tester\"
@@ -302,11 +290,11 @@ mod tests {
         let count = parse_services(SERVICE_TOML, &mut svcs);
         assert!(
             count >= 2,
-            "must parse at least shell and fault-tester, got {count}"
+            "must parse at least compositor and shell, got {count}"
         );
         let s = count;
         let _ = s;
-        assert!(svcs[0].after_count == 0, "shell has no deps");
+        assert!(svcs[0].after_count == 0, "compositor has no deps");
 
         let ft = svcs.iter().find(|s| s.name == "fault-tester");
         assert!(ft.is_some(), "fault-tester must be parsed");

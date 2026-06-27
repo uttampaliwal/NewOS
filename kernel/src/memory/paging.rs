@@ -50,44 +50,27 @@ pub fn create_process_pml4(
     frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
     physical_memory_offset: VirtAddr,
 ) -> PhysFrame<Size4KiB> {
-    crate::serial::println!("[STG: PML4_ALLOC]");
-    crate::serial::println!("[STG: PML4_ZEROING]");
-    // Allocate through the zeroing wrapper so the new frame is clean.
     let mut zeroing = ZeroingFrameAllocator {
         inner: frame_allocator,
         physical_memory_offset,
     };
-    crate::serial::println!("[STG: PML4_ZEROING_DONE]");
-    crate::serial::println!("[STG: PML4_ALLOCATING]");
     let new_frame = zeroing
         .allocate_frame()
         .expect("failed to allocate frame for process PML4");
-    crate::serial::println!("[STG: PML4_ALLOC_DONE]");
 
-    crate::serial::println!("[STG: PML4_CR3]");
     let (kernel_pml4_frame, _) = Cr3::read();
     let kernel_pml4_ptr =
         (physical_memory_offset + kernel_pml4_frame.start_address().as_u64()).as_ptr::<PageTable>();
-    crate::serial::println!("[STG: PML4_CR3_DONE]");
     let new_pml4_ptr =
         (physical_memory_offset + new_frame.start_address().as_u64()).as_mut_ptr::<PageTable>();
-    crate::serial::println!("[STG: PML4_PTRS_DONE]");
 
-    // SAFETY: kernel_pml4_ptr is derived from the Cr3 PML4 frame plus the
-    // physical-memory offset, and new_pml4_ptr from a freshly allocated,
-    // zeroed frame plus the same offset. Both are valid for 512-entry page
-    // table access. Only higher-half indices (256..512) are written.
     unsafe {
         let kernel_pml4 = &*kernel_pml4_ptr;
         let new_pml4 = &mut *new_pml4_ptr;
 
-        crate::serial::println!("[STG: PML4_CLONE_START]");
-        // Clone higher-half mappings (indices 256 to 511)
-        // These stay SUPERVISOR-only (no USER bit).
         for i in 256..512 {
             new_pml4[i] = kernel_pml4[i].clone();
         }
-        crate::serial::println!("[STG: PML4_CLONE_DONE]");
     }
 
     new_frame
