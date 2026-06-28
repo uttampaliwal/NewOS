@@ -459,6 +459,40 @@ pub fn handle_exec(args: SyscallArgs) -> SyscallResult {
     SyscallResult::Success(0)
 }
 
+/// Exec syscall handler with frame access.
+///
+/// After exec replaces the process image, the IRETQ frame must point to the
+/// new entry point and stack, not the old user_rip (which was right after the
+/// syscall instruction in the old binary).
+pub fn handle_exec_with_frame(
+    frame: &mut crate::arch::x86_64::syscall_arch::SyscallFrame,
+) -> u64 {
+    let args = turnix_abi::syscall::SyscallArgs {
+        arg0: frame.rdi,
+        arg1: frame.rsi,
+        arg2: frame.rdx,
+        arg3: frame.r10,
+        arg4: frame.r8,
+        arg5: frame.r9,
+    };
+
+    match handle_exec(args) {
+        SyscallResult::Success(v) => {
+            // Update the IRETQ frame so the process starts at the new entry point.
+            let process = match crate::task::scheduler::get_current_process() {
+                Some(p) => p,
+                None => return (-9i64) as u64,
+            };
+            let entry = process.entry_point();
+            let stack = process.stack_top();
+            frame.user_rip = entry.as_u64();
+            frame.user_rsp = stack.as_u64();
+            v
+        }
+        SyscallResult::Error(e) => (-e) as u64,
+    }
+}
+
 pub fn handle_fork_with_frame(frame: &crate::arch::x86_64::syscall_arch::SyscallFrame) -> u64 {
     // 1. Get the current (parent) process
     let parent_process = match crate::task::scheduler::get_current_process() {

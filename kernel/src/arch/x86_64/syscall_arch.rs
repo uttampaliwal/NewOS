@@ -177,6 +177,12 @@ pub extern "C" fn syscall_dispatch(frame: &mut SyscallFrame) -> u64 {
             return crate::syscall::handler::handle_clone_with_frame(frame);
         }
 
+        // Exec needs access to the frame so it can redirect user_rip/user_rsp
+        // to the new entry point and stack.
+        if syscall == Syscall::Exec {
+            return crate::syscall::handler::handle_exec_with_frame(frame);
+        }
+
         // Sigreturn needs access to the frame to restore saved registers.
         if syscall == Syscall::Sigreturn {
             let result = crate::task::signals::handle_sigreturn_with_frame(frame);

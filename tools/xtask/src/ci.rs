@@ -64,8 +64,16 @@ pub fn build_qemu_command(workspace_root: &Path, headless: bool) -> ProcessComma
     );
 
     let mut cmd = ProcessCommand::new("qemu-system-x86_64");
-    cmd.arg("-cpu").arg("max");
-    cmd.arg("-machine").arg("q35");
+    if cfg!(target_os = "windows") {
+        cmd.arg("-cpu").arg("Haswell");
+    } else {
+        cmd.arg("-cpu").arg("max");
+    }
+    if cfg!(target_os = "windows") {
+        cmd.arg("-machine").arg("q35,kernel-irqchip=on");
+    } else {
+        cmd.arg("-machine").arg("q35");
+    }
     cmd.arg("-m").arg("512M");
     cmd.arg("-monitor").arg("none");
     cmd.arg("-no-reboot");
@@ -79,7 +87,12 @@ pub fn build_qemu_command(workspace_root: &Path, headless: bool) -> ProcessComma
     } else if let Ok(display) = std::env::var("TURNIX_QEMU_DISPLAY") {
         cmd.arg("-display").arg(display);
     } else {
-        cmd.arg("-display").arg("sdl,gl=on");
+        let default_display = if cfg!(target_os = "windows") {
+            "default"
+        } else {
+            "sdl,gl=on"
+        };
+        cmd.arg("-display").arg(default_display);
     }
 
     // Acceleration
@@ -163,8 +176,13 @@ pub fn boot_qemu_with_sentinel(
     );
 
     let mut cmd = ProcessCommand::new("qemu-system-x86_64");
-    cmd.arg("-cpu").arg("max");
-    cmd.arg("-machine").arg("q35");
+    if cfg!(target_os = "windows") {
+        cmd.arg("-cpu").arg("Haswell");
+        cmd.arg("-machine").arg("q35,kernel-irqchip=on");
+    } else {
+        cmd.arg("-cpu").arg("max");
+        cmd.arg("-machine").arg("q35");
+    }
     cmd.arg("-m").arg("512M");
     cmd.arg("-monitor").arg("none");
     cmd.arg("-no-reboot");

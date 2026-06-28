@@ -684,17 +684,30 @@ fn run_uefi(workspace_root: &Path) {
             .expect("ESP root should exist"),
     );
     let mut qemu = ProcessCommand::new("qemu-system-x86_64");
-    qemu.arg("-cpu").arg("qemu64");
-    qemu.arg("-machine")
-        .arg("q35")
-        .arg("-m")
+    if cfg!(target_os = "windows") {
+        qemu.arg("-cpu").arg("Haswell");
+    } else {
+        qemu.arg("-cpu").arg("qemu64");
+    }
+    if cfg!(target_os = "windows") {
+        qemu.arg("-machine").arg("q35,kernel-irqchip=on");
+    } else {
+        qemu.arg("-machine").arg("q35");
+    }
+    qemu.arg("-m")
         .arg("512M")
         .arg("-serial")
         .arg("stdio")
         .arg("-monitor")
         .arg("none")
-        .arg("-display")
-        .arg(env::var("TURNIX_QEMU_DISPLAY").unwrap_or_else(|_| "sdl,gl=on".to_string()))
+        .arg("-display");
+
+    let default_display = if cfg!(target_os = "windows") {
+        "default"
+    } else {
+        "sdl,gl=on"
+    };
+    qemu.arg(env::var("TURNIX_QEMU_DISPLAY").unwrap_or_else(|_| default_display.to_string()))
         .arg("-no-reboot")
         .arg("-device")
         .arg("isa-debug-exit,iobase=0xf4,iosize=0x04")

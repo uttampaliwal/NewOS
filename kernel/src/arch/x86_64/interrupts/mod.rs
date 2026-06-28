@@ -438,6 +438,12 @@ extern "x86-interrupt" fn page_fault_handler(
             addr,
             error_code
         );
+        if let Some(pid) = crate::task::scheduler::get_current_process_id() {
+            crate::serial::println!(
+                "  PID={:?}",
+                pid
+            );
+        }
         crate::task::scheduler::exit_current_task();
     }
 

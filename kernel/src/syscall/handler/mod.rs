@@ -12,7 +12,7 @@ mod tests;
 
 use turnix_abi::syscall::{Syscall, SyscallArgs, SyscallHeader};
 
-pub use process::{handle_clone_with_frame, handle_fork_with_frame};
+pub use process::{handle_clone_with_frame, handle_exec_with_frame, handle_fork_with_frame};
 
 #[derive(Debug)]
 pub enum SyscallResult {
