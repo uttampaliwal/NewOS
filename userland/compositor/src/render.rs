@@ -80,13 +80,9 @@ pub fn composite_surfaces(output_phys: u64, screen_w: u32, screen_h: u32, surfac
 
 /// Get the physical memory offset provided by the bootloader.
 fn get_phys_mem_offset() -> u64 {
-    // The physical memory offset is stored at a well-known location by the
-    // kernel at boot. On Turnix, userspace can read it from a fixed virtual
-    // address or query it via a syscall.
-    // For bochs-display, the framebuffer is directly accessible via the
-    // physical memory offset. We use 0xFFFF_8000_0000_0000 which is the
-    // standard x86-64 kernel mapping offset.
-    0xFFFF_8000_0000_0000
+    // mmap_framebuffer and gbm_map now return user-virtual addresses directly.
+    // No HHDM offset is needed.
+    0
 }
 
 #[cfg(test)]

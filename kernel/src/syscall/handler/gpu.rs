@@ -43,11 +43,41 @@ pub fn handle_gbm_create(args: SyscallArgs) -> SyscallResult {
 }
 
 pub fn handle_gbm_map(args: SyscallArgs) -> SyscallResult {
+    use x86_64::VirtAddr;
+
     let id = args.arg0;
-    match gpu::gbm::gbm_map(id) {
-        Some(addr) => SyscallResult::Success(addr),
-        None => SyscallResult::Error(2),
+    let (phys_start, size, _stride) = match gpu::gbm::gbm_map_full(id) {
+        Some(info) => info,
+        None => return SyscallResult::Error(2),
+    };
+
+    // Map GBM buffer into the calling process at a bump address.
+    // GBM buffers are small, map them after the framebuffer (0x7001_0000_0000+).
+    let user_virt = 0x7001_0000_0000u64 + id * 0x0100_0000; // 16 MiB spacing per buffer
+
+    let process = match crate::task::scheduler::get_current_process() {
+        Some(p) => p,
+        None => return SyscallResult::Error(1),
+    };
+    let pmo = crate::boot::get_phys_mem_offset();
+
+    let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
+    let alloc = match guard.as_mut() {
+        Some(a) => a,
+        None => return SyscallResult::Error(1),
+    };
+
+    unsafe {
+        process.map_phys_to_user(
+            VirtAddr::new(user_virt),
+            phys_start,
+            size,
+            alloc,
+            pmo,
+        );
     }
+
+    SyscallResult::Success(user_virt)
 }
 
 pub fn handle_gbm_destroy(args: SyscallArgs) -> SyscallResult {

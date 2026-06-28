@@ -4,6 +4,10 @@ use x86_64::structures::paging::{
     FrameAllocator, OffsetPageTable, PageTable, PageTableFlags, PhysFrame, Size4KiB,
 };
 
+// Force an extra symbol to shift code layout and avoid a latent LLVM alignment ICE.
+#[used]
+static PAGING_PAD: u64 = 0;
+
 /// A frame allocator wrapper that zeroes every allocated frame before returning
 /// it. This is required for page table frames: the x86_64 mapper reads entries
 /// before writing them, so stale data in recycled frames causes spurious faults
@@ -70,16 +74,6 @@ pub fn create_process_pml4(
 
         for i in 256..512 {
             new_pml4[i] = kernel_pml4[i].clone();
-        }
-
-        // Make the HHDM (higher-half direct map) accessible from userspace.
-        // The HHDM maps all physical memory starting at 0xFFFF_8000_0000_0000.
-        // Userspace compositor/GBM needs this to access framebuffer and buffer memory.
-        // PML4 index 510 = 0xFFFF_8000_0000_0000.
-        if new_pml4[510].flags().contains(PageTableFlags::PRESENT) {
-            new_pml4[510].set_flags(
-                new_pml4[510].flags() | PageTableFlags::USER_ACCESSIBLE,
-            );
         }
     }
 

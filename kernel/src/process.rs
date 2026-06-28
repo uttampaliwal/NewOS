@@ -957,6 +957,79 @@ impl Process {
         }
     }
 
+    /// Maps a range of **existing** physical frames into this process at `virt_start`.
+    /// Returns the user-virtual address where the mapping begins.
+    ///
+    /// Unlike `map_user_region`, this does NOT allocate data frames — it maps the
+    /// caller-provided physical frames directly. Only intermediate page-table frames
+    /// are allocated from `frame_allocator`.
+    pub unsafe fn map_phys_to_user(
+        &self,
+        virt_start: VirtAddr,
+        phys_start: u64,
+        size: u64,
+        frame_allocator: &mut impl x86_64::structures::paging::FrameAllocator<Size4KiB>,
+        physical_memory_offset: VirtAddr,
+    ) -> VirtAddr {
+        let pml4_frame = self.pml4_frame();
+        let pml4_ptr = (physical_memory_offset + pml4_frame.start_address().as_u64())
+            .as_mut_ptr::<PageTable>();
+
+        unsafe {
+            let mut process_mapper = OffsetPageTable::new(&mut *pml4_ptr, physical_memory_offset);
+            let flags = PageTableFlags::PRESENT
+                | PageTableFlags::USER_ACCESSIBLE
+                | PageTableFlags::WRITABLE;
+
+            struct ZeroingAlloc<'z, Z: x86_64::structures::paging::FrameAllocator<Size4KiB>> {
+                inner: &'z mut Z,
+                phys_offset: VirtAddr,
+            }
+            unsafe impl<'z, Z: x86_64::structures::paging::FrameAllocator<Size4KiB>>
+                x86_64::structures::paging::FrameAllocator<Size4KiB> for ZeroingAlloc<'z, Z>
+            {
+                fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
+                    let frame = self.inner.allocate_frame()?;
+                    let ptr =
+                        (self.phys_offset + frame.start_address().as_u64()).as_mut_ptr::<u8>();
+                    unsafe { core::ptr::write_bytes(ptr, 0, 4096) };
+                    Some(frame)
+                }
+            }
+            let mut zeroing = ZeroingAlloc {
+                inner: frame_allocator,
+                phys_offset: physical_memory_offset,
+            };
+
+            let num_pages = (size + 4095) / 4096;
+            for i in 0..num_pages {
+                let page = Page::<Size4KiB>::containing_address(VirtAddr::new(
+                    virt_start.as_u64() + i * 4096,
+                ));
+                let frame = PhysFrame::<Size4KiB>::containing_address(x86_64::PhysAddr::new(
+                    phys_start + i * 4096,
+                ));
+                if process_mapper
+                    .translate_addr(page.start_address())
+                    .is_none()
+                {
+                    process_mapper
+                        .map_to(page, frame, flags, &mut zeroing)
+                        .expect("map_phys_to_user: map_to failed")
+                        .ignore();
+                }
+            }
+
+            // Ensure PML4 entry has USER_ACCESSIBLE
+            let p4_idx = virt_start.p4_index();
+            let pml4 = &mut *pml4_ptr;
+            let f4 = pml4[p4_idx].flags();
+            pml4[p4_idx].set_flags(f4 | PageTableFlags::USER_ACCESSIBLE);
+        }
+
+        virt_start
+    }
+
     /// Maps a kernel-only region into this process's address space.
     ///
     /// # Safety

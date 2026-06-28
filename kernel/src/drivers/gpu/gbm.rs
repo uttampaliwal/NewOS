@@ -80,6 +80,13 @@ impl GbmManager {
         self.buffers.get(&id).map(|buf| buf.frames[0].start_address)
     }
 
+    pub fn get_phys_addrs(&self, id: GbmBufferId) -> Option<(u64, u64, u32)> {
+        self.buffers.get(&id).map(|buf| {
+            let first = buf.frames[0].start_address;
+            (first, buf.size, buf.stride)
+        })
+    }
+
     pub fn destroy(&mut self, id: GbmBufferId) {
         if let Some(buf) = self.buffers.remove(&id) {
             let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
@@ -106,6 +113,10 @@ pub fn gbm_create(width: u32, height: u32, format: u32) -> Option<GbmBufferId> {
 
 pub fn gbm_map(id: GbmBufferId) -> Option<u64> {
     GBM_MANAGER.lock().get_phys_addr(id)
+}
+
+pub fn gbm_map_full(id: GbmBufferId) -> Option<(u64, u64, u32)> {
+    GBM_MANAGER.lock().get_phys_addrs(id)
 }
 
 pub fn gbm_destroy(id: GbmBufferId) {

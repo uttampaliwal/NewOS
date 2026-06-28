@@ -18,6 +18,7 @@ use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use spin::Mutex;
 
 use crate::drivers::framework::{DeviceDriver, DeviceInfo};
+use x86_64::VirtAddr;
 
 // ---------------------------------------------------------------------------
 // DRM constants
@@ -426,17 +427,39 @@ pub fn current_pid() -> u64 {
 
 /// Handle `mmap_framebuffer` from userland.
 ///
-/// Returns the virtual address where the framebuffer is mapped, or an error.
-/// Only the registered Compositor process may call this successfully.
-pub fn handle_mmap_framebuffer(caller_pid: u64) -> Result<u64, i64> {
-    let mgr = DRM_MANAGER.lock();
+/// Maps the framebuffer physical pages into the calling process's address space
+/// and returns the user-virtual address.
+pub fn handle_mmap_framebuffer(_caller_pid: u64) -> Result<u64, i64> {
+    let (fb_phys, fb_size) = {
+        let mgr = DRM_MANAGER.lock();
+        let addr = mgr.framebuffer_addr();
+        let size = mgr.framebuffer_size();
+        if addr == 0 || size == 0 {
+            return Err(-1);
+        }
+        (addr, size)
+    };
 
-    let addr = mgr.framebuffer_addr();
-    if addr == 0 {
-        return Err(-1); // ENOENT
+    let process = crate::task::scheduler::get_current_process().ok_or(-1i64)?;
+    let pmo = crate::boot::get_phys_mem_offset();
+
+    // Map framebuffer at a fixed user-virtual address
+    let user_virt = 0x7000_0000_0000u64;
+
+    let mut guard = crate::boot::FRAME_ALLOCATOR.lock();
+    let alloc = guard.as_mut().ok_or(-1i64)?;
+
+    unsafe {
+        process.map_phys_to_user(
+            VirtAddr::new(user_virt),
+            fb_phys,
+            fb_size,
+            alloc,
+            pmo,
+        );
     }
 
-    Ok(addr)
+    Ok(user_virt)
 }
 
 /// Check whether a resolution change has occurred.
